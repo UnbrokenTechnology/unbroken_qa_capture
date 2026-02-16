@@ -173,8 +173,11 @@ export async function updateSessionNotes(
 
 // Capture operations
 export async function getBugCaptures(bugId: string): Promise<Capture[]> {
-  // TODO: Implement when backend command is available
   return await invoke<Capture[]>('get_bug_captures', { bugId })
+}
+
+export async function updateCaptureConsoleFlag(captureId: string, isConsoleCapture: boolean): Promise<void> {
+  await invoke('update_capture_console_flag', { captureId, isConsoleCapture })
 }
 
 // Settings operations

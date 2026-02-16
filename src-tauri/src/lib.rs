@@ -796,6 +796,51 @@ fn reset_setup(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e: rusqlite::Error| e.to_string())
 }
 
+#[tauri::command]
+fn get_bug_captures(bug_id: String, app: tauri::AppHandle) -> Result<Vec<database::Capture>, String> {
+    use database::{Database, CaptureOps, CaptureRepository};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = CaptureRepository::new(db.connection());
+
+    repo.list_by_bug(&bug_id)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn update_capture_console_flag(
+    capture_id: String,
+    is_console_capture: bool,
+    app: tauri::AppHandle
+) -> Result<(), String> {
+    use database::{Database, CaptureOps, CaptureRepository};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = CaptureRepository::new(db.connection());
+
+    // Get the capture
+    let mut capture = repo.get(&capture_id)
+        .map_err(|e: rusqlite::Error| e.to_string())?
+        .ok_or_else(|| format!("Capture not found: {}", capture_id))?;
+
+    // Update the is_console_capture field
+    capture.is_console_capture = is_console_capture;
+
+    // Save back to database
+    repo.update(&capture)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -954,7 +999,9 @@ pub fn run() {
             delete_setting,
             has_completed_setup,
             mark_setup_complete,
-            reset_setup
+            reset_setup,
+            get_bug_captures,
+            update_capture_console_flag
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

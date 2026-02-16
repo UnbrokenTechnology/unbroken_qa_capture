@@ -35,13 +35,49 @@
         </div>
       </div>
 
+      <!-- Metadata Fields -->
+      <div class="row q-col-gutter-sm q-mb-sm">
+        <div class="col-12">
+          <q-input
+            v-model="localMeetingId"
+            outlined
+            dense
+            label="Meeting ID / URL"
+            placeholder="e.g., Zoom meeting ID or URL"
+            :disable="!activeBug"
+            @update:model-value="onMeetingIdChanged"
+          >
+            <template v-slot:prepend>
+              <q-icon name="videocam" />
+            </template>
+          </q-input>
+        </div>
+        <div class="col-12">
+          <q-input
+            v-model="localSoftwareVersion"
+            outlined
+            dense
+            label="Software Version"
+            placeholder="e.g., 2.4.1"
+            :disable="!activeBug"
+            @update:model-value="onSoftwareVersionChanged"
+          >
+            <template v-slot:prepend>
+              <q-icon name="info" />
+            </template>
+          </q-input>
+        </div>
+      </div>
+
+      <!-- Notes Field -->
       <q-input
         v-model="localNotes"
         class="notepad-input"
         type="textarea"
         outlined
+        label="Notes"
         placeholder="Type your notes here... (Auto-saves)"
-        :rows="8"
+        :rows="6"
         :disable="!activeBug"
         @update:model-value="onNotesChanged"
       />
@@ -86,6 +122,8 @@ const bugStore = useBugStore()
 // State
 const position = ref({ x: props.initialX, y: props.initialY })
 const localNotes = ref('')
+const localMeetingId = ref('')
+const localSoftwareVersion = ref('')
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const saveError = ref<string | null>(null)
 let saveDebounceTimeout: number | null = null
@@ -134,6 +172,8 @@ const saveStatusLabel = computed(() => {
 async function loadNotes() {
   if (!activeBug.value) {
     localNotes.value = ''
+    localMeetingId.value = ''
+    localSoftwareVersion.value = ''
     return
   }
 
@@ -143,9 +183,13 @@ async function loadNotes() {
       activeBug.value.folder_path
     )
     localNotes.value = notes
+    localMeetingId.value = activeBug.value.meeting_id || ''
+    localSoftwareVersion.value = activeBug.value.software_version || ''
   } catch (error) {
     console.error('Failed to load notes:', error)
     localNotes.value = ''
+    localMeetingId.value = ''
+    localSoftwareVersion.value = ''
   }
 }
 
@@ -192,6 +236,58 @@ function onNotesChanged() {
   }, 500) // 500ms debounce
 }
 
+async function saveMetadata(field: 'meeting_id' | 'software_version', value: string) {
+  if (!activeBug.value) {
+    return
+  }
+
+  saveStatus.value = 'saving'
+  saveError.value = null
+
+  try {
+    await bugStore.updateBackendBug(activeBug.value.id, {
+      [field]: value || null
+    })
+    saveStatus.value = 'saved'
+
+    // Clear "Saved" status after 2 seconds
+    if (savedStatusTimeout !== null) {
+      clearTimeout(savedStatusTimeout)
+    }
+    savedStatusTimeout = window.setTimeout(() => {
+      if (saveStatus.value === 'saved') {
+        saveStatus.value = 'idle'
+      }
+    }, 2000)
+  } catch (error) {
+    saveStatus.value = 'error'
+    saveError.value = error instanceof Error ? error.message : String(error)
+    console.error('Failed to save metadata:', error)
+  }
+}
+
+function onMeetingIdChanged() {
+  // Debounce auto-save
+  if (saveDebounceTimeout !== null) {
+    clearTimeout(saveDebounceTimeout)
+  }
+
+  saveDebounceTimeout = window.setTimeout(() => {
+    saveMetadata('meeting_id', localMeetingId.value)
+  }, 500)
+}
+
+function onSoftwareVersionChanged() {
+  // Debounce auto-save
+  if (saveDebounceTimeout !== null) {
+    clearTimeout(saveDebounceTimeout)
+  }
+
+  saveDebounceTimeout = window.setTimeout(() => {
+    saveMetadata('software_version', localSoftwareVersion.value)
+  }, 500)
+}
+
 async function setupWindow() {
   try {
     const appWindow = getCurrentWindow()
@@ -220,7 +316,7 @@ onUnmounted(() => {
 watch(
   () => activeBug.value,
   async (_newBug, oldBug) => {
-    // Save notes for the old bug before switching
+    // Save notes and metadata for the old bug before switching
     if (oldBug && saveDebounceTimeout !== null) {
       clearTimeout(saveDebounceTimeout)
       // Save with the old bug's data
@@ -230,12 +326,24 @@ watch(
           oldBug.folder_path,
           localNotes.value
         )
+
+        // Save metadata changes
+        const updates: any = {}
+        if (localMeetingId.value !== (oldBug.meeting_id || '')) {
+          updates.meeting_id = localMeetingId.value || null
+        }
+        if (localSoftwareVersion.value !== (oldBug.software_version || '')) {
+          updates.software_version = localSoftwareVersion.value || null
+        }
+        if (Object.keys(updates).length > 0) {
+          await bugStore.updateBackendBug(oldBug.id, updates)
+        }
       } catch (error) {
-        console.error('Failed to save notes for old bug:', error)
+        console.error('Failed to save notes/metadata for old bug:', error)
       }
     }
 
-    // Load notes for the new bug
+    // Load notes and metadata for the new bug
     await loadNotes()
   }
 )

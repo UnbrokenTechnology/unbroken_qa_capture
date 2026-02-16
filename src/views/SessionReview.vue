@@ -270,6 +270,43 @@
                 </div>
               </div>
 
+              <!-- Metadata Fields (Editable) -->
+              <div class="q-mb-md">
+                <div class="text-caption text-grey-7 q-mb-xs">
+                  Metadata
+                </div>
+                <div class="row q-col-gutter-sm">
+                  <div class="col-12 col-sm-6">
+                    <q-input
+                      :model-value="selectedBug.meeting_id || ''"
+                      outlined
+                      dense
+                      label="Meeting ID / URL"
+                      placeholder="e.g., Zoom meeting ID or URL"
+                      @update:model-value="(val) => updateMetadata('meeting_id', String(val || ''))"
+                    >
+                      <template v-slot:prepend>
+                        <q-icon name="videocam" />
+                      </template>
+                    </q-input>
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <q-input
+                      :model-value="selectedBug.software_version || ''"
+                      outlined
+                      dense
+                      label="Software Version"
+                      placeholder="e.g., 2.4.1"
+                      @update:model-value="(val) => updateMetadata('software_version', String(val || ''))"
+                    >
+                      <template v-slot:prepend>
+                        <q-icon name="info" />
+                      </template>
+                    </q-input>
+                  </div>
+                </div>
+              </div>
+
               <!-- Notes (Editable) -->
               <div class="q-mb-md">
                 <div class="text-caption text-grey-7 q-mb-xs">
@@ -389,6 +426,7 @@
                     v-for="(capture, index) in selectedBugCaptures"
                     :key="capture.id"
                     class="screenshot-container"
+                    style="position: relative;"
                   >
                     <q-img
                       :src="`file://${capture.file_path}`"
@@ -406,6 +444,18 @@
                         </div>
                       </template>
                     </q-img>
+                    <q-btn
+                      :icon="capture.is_console_capture ? 'terminal' : 'radio_button_unchecked'"
+                      :color="capture.is_console_capture ? 'primary' : 'grey-7'"
+                      size="sm"
+                      round
+                      class="console-tag-btn"
+                      @click.stop="toggleConsoleCapture(capture.id, !capture.is_console_capture)"
+                    >
+                      <q-tooltip>
+                        {{ capture.is_console_capture ? 'Unmark as console capture' : 'Mark as console capture' }}
+                      </q-tooltip>
+                    </q-btn>
                   </div>
                 </div>
               </div>
@@ -803,6 +853,44 @@ async function updateNotes(notes: string) {
     await bugStore.updateBackendBug(selectedBug.value.id, { notes })
   } catch (err) {
     console.error('Failed to update notes:', err)
+  }
+}
+
+async function updateMetadata(field: 'meeting_id' | 'software_version', value: string) {
+  if (!selectedBug.value) return
+
+  try {
+    await bugStore.updateBackendBug(selectedBug.value.id, {
+      [field]: value || null
+    })
+  } catch (err) {
+    console.error('Failed to update metadata:', err)
+  }
+}
+
+async function toggleConsoleCapture(captureId: string, isConsole: boolean) {
+  try {
+    await tauri.updateCaptureConsoleFlag(captureId, isConsole)
+
+    // Reload captures for selected bug
+    if (selectedBugId.value) {
+      const captures = await tauri.getBugCaptures(selectedBugId.value)
+      bugCaptures.value[selectedBugId.value] = captures.filter(c => c.file_type === 'screenshot')
+    }
+
+    $q.notify({
+      type: 'positive',
+      message: isConsole ? 'Marked as console capture' : 'Unmarked as console capture',
+      position: 'top',
+      timeout: 1000
+    })
+  } catch (err) {
+    console.error('Failed to toggle console capture:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to update console capture status',
+      position: 'top'
+    })
   }
 }
 
@@ -1414,6 +1502,14 @@ onMounted(async () => {
   overflow: hidden;
   cursor: pointer;
   border: 1px solid #e0e0e0;
+  position: relative;
+}
+
+.console-tag-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
 }
 
 .screenshot {
