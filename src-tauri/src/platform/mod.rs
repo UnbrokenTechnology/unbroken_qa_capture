@@ -19,6 +19,7 @@
 
 mod capture;
 mod registry;
+pub(crate) mod registry_cache;
 mod error;
 
 #[cfg(target_os = "windows")]
