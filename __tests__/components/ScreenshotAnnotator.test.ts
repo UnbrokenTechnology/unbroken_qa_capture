@@ -92,6 +92,10 @@ describe('ScreenshotAnnotator.vue', () => {
             props: ['color', 'icon', 'label', 'loading', 'disable', 'dense', 'flat', 'round', 'size'],
           },
           QBtnGroup: { template: '<div><slot /></div>' },
+          QBtnToggle: {
+            template: '<div />',
+            props: ['modelValue', 'options', 'color', 'toggleColor'],
+          },
           QCardSection: { template: '<div><slot /></div>' },
           QSeparator: { template: '<div />' },
           QMenu: {
@@ -101,10 +105,6 @@ describe('ScreenshotAnnotator.vue', () => {
           QColor: {
             template: '<div />',
             props: ['modelValue'],
-          },
-          QSlider: {
-            template: '<div />',
-            props: ['modelValue', 'min', 'max', 'step', 'color'],
           },
           QTooltip: { template: '<div><slot /></div>' },
         },
@@ -176,28 +176,76 @@ describe('ScreenshotAnnotator.vue', () => {
   })
 
   describe('Color and Stroke', () => {
-    it('starts with default color #FF0000', () => {
+    it('starts with PRD default color #FF3B30 (red)', () => {
       // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentColor).toBe('#FF0000')
+      expect(wrapper.vm.currentColor).toBe('#FF3B30')
     })
 
-    it('starts with default stroke width 3', () => {
+    it('starts with PRD default stroke width 4 (medium)', () => {
       // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.strokeWidth).toBe(3)
+      expect(wrapper.vm.strokeWidth).toBe(4)
     })
 
-    it('can update color', async () => {
+    it('has 6 PRD-compliant preset colors', () => {
       // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.currentColor = '#00FF00'
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentColor).toBe('#00FF00')
+      expect(wrapper.vm.presetColors).toEqual([
+        '#FF3B30', // red
+        '#FFCC00', // yellow
+        '#007AFF', // blue
+        '#34C759', // green
+        '#FFFFFF', // white
+        '#000000', // black
+      ])
     })
 
-    it('can update stroke width', async () => {
+    it('has 3 PRD-compliant stroke width options', () => {
       // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.strokeWidth = 10
+      expect(wrapper.vm.strokeWidthOptions).toEqual([
+        { label: 'Thin', value: 2 },
+        { label: 'Medium', value: 4 },
+        { label: 'Thick', value: 8 },
+      ])
+    })
+
+    it('can select preset color', async () => {
+      // @ts-expect-error - Accessing internal method for testing
+      wrapper.vm.selectColor('#FFCC00')
       // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.strokeWidth).toBe(10)
+      expect(wrapper.vm.currentColor).toBe('#FFCC00')
+    })
+
+    it('can update stroke width to thin (2px)', async () => {
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.strokeWidth = 2
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.strokeWidth).toBe(2)
+    })
+
+    it('can update stroke width to thick (8px)', async () => {
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.strokeWidth = 8
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.strokeWidth).toBe(8)
+    })
+
+    it('returns correct color name for preset colors', () => {
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#FF3B30')).toBe('Red')
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#FFCC00')).toBe('Yellow')
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#007AFF')).toBe('Blue')
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#34C759')).toBe('Green')
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#FFFFFF')).toBe('White')
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#000000')).toBe('Black')
+    })
+
+    it('returns hex code for unknown colors', () => {
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#123456')).toBe('#123456')
     })
   })
 
