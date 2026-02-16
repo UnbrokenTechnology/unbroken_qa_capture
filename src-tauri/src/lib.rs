@@ -3,6 +3,7 @@ mod database;
 pub mod platform;
 mod session_manager;
 mod hotkey;
+mod claude_cli;
 
 #[cfg(test)]
 mod hotkey_tests;
@@ -411,6 +412,113 @@ fn is_hotkey_registered(shortcut: String) -> Result<bool, String> {
     Ok(manager.is_registered(&shortcut))
 }
 
+// Claude CLI commands
+
+#[tauri::command]
+fn get_claude_status() -> claude_cli::ClaudeStatus {
+    claude_cli::get_claude_status()
+}
+
+#[tauri::command]
+fn refresh_claude_status() -> claude_cli::ClaudeStatus {
+    claude_cli::refresh_claude_status()
+}
+
+#[tauri::command]
+async fn generate_bug_description(
+    bug_context: claude_cli::BugContext,
+) -> Result<claude_cli::ClaudeResponse, String> {
+    use claude_cli::{PromptBuilder, PromptTask, ClaudeRequest, RealClaudeInvoker, ClaudeInvoker};
+
+    // Check if Claude is ready
+    let status = claude_cli::get_claude_status();
+    if !status.is_ready() {
+        return Err(format!("Claude CLI not ready: {:?}", status));
+    }
+
+    // Build prompt
+    let prompt = PromptBuilder::build_prompt(
+        &PromptTask::DescribeBug,
+        Some(&bug_context),
+        None,
+    );
+
+    // Create request with images
+    let request = ClaudeRequest::new_with_images(
+        prompt,
+        bug_context.screenshot_paths.clone(),
+        PromptTask::DescribeBug,
+    )
+    .with_bug_id(bug_context.bug_id.clone());
+
+    // Invoke Claude
+    let invoker = RealClaudeInvoker::new();
+    invoker
+        .invoke(request)
+        .map_err(|e| format!("Failed to generate description: {}", e))
+}
+
+#[tauri::command]
+async fn parse_console_screenshot(
+    screenshot_path: String,
+) -> Result<claude_cli::ClaudeResponse, String> {
+    use claude_cli::{PromptBuilder, PromptTask, ClaudeRequest, RealClaudeInvoker, ClaudeInvoker};
+    use std::path::PathBuf;
+
+    // Check if Claude is ready
+    let status = claude_cli::get_claude_status();
+    if !status.is_ready() {
+        return Err(format!("Claude CLI not ready: {:?}", status));
+    }
+
+    // Build prompt
+    let prompt = PromptBuilder::build_console_parse_prompt();
+
+    // Create request with the screenshot
+    let request = ClaudeRequest::new_with_images(
+        prompt,
+        vec![PathBuf::from(screenshot_path)],
+        PromptTask::ParseConsole,
+    );
+
+    // Invoke Claude
+    let invoker = RealClaudeInvoker::new();
+    invoker
+        .invoke(request)
+        .map_err(|e| format!("Failed to parse console: {}", e))
+}
+
+#[tauri::command]
+async fn refine_bug_description(
+    current_description: String,
+    refinement_instructions: String,
+    bug_id: String,
+) -> Result<claude_cli::ClaudeResponse, String> {
+    use claude_cli::{PromptBuilder, PromptTask, ClaudeRequest, RealClaudeInvoker, ClaudeInvoker};
+
+    // Check if Claude is ready
+    let status = claude_cli::get_claude_status();
+    if !status.is_ready() {
+        return Err(format!("Claude CLI not ready: {:?}", status));
+    }
+
+    // Build refinement prompt
+    let prompt = PromptBuilder::build_refinement_prompt(
+        &current_description,
+        &refinement_instructions,
+    );
+
+    // Create request
+    let request = ClaudeRequest::new_text(prompt, PromptTask::RefineDescription)
+        .with_bug_id(bug_id);
+
+    // Invoke Claude
+    let invoker = RealClaudeInvoker::new();
+    invoker
+        .invoke(request)
+        .map_err(|e| format!("Failed to refine description: {}", e))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -544,7 +652,12 @@ pub fn run() {
             get_active_bug_id,
             get_hotkey_config,
             update_hotkey_config,
-            is_hotkey_registered
+            is_hotkey_registered,
+            get_claude_status,
+            refresh_claude_status,
+            generate_bug_description,
+            parse_console_screenshot,
+            refine_bug_description
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
