@@ -223,3 +223,58 @@ export async function ticketingGetCredentials(): Promise<TicketingCredentials | 
 export async function ticketingSaveCredentials(credentials: TicketingCredentials): Promise<void> {
   await invoke('ticketing_save_credentials', { credentials })
 }
+
+// ============================================================================
+// Claude CLI Commands
+// ============================================================================
+
+export interface ClaudeStatus {
+  Ready?: { version: string }
+  NotAuthenticated?: { version: string; message: string }
+  NotInstalled?: { message: string }
+}
+
+export interface BugContext {
+  bug_id: string
+  bug_type: string
+  notes?: string
+  screenshot_paths: string[]
+  metadata?: Record<string, unknown>
+}
+
+export interface ClaudeResponse {
+  text: string
+  task: string
+  bug_id?: string
+}
+
+export async function getClaudeStatus(): Promise<ClaudeStatus> {
+  return await invoke<ClaudeStatus>('get_claude_status')
+}
+
+export async function refreshClaudeStatus(): Promise<ClaudeStatus> {
+  return await invoke<ClaudeStatus>('refresh_claude_status')
+}
+
+export async function generateBugDescription(bugContext: BugContext): Promise<ClaudeResponse> {
+  return await invoke<ClaudeResponse>('generate_bug_description', { bugContext })
+}
+
+export async function refineBugDescription(
+  currentDescription: string,
+  refinementInstructions: string,
+  bugId: string
+): Promise<ClaudeResponse> {
+  return await invoke<ClaudeResponse>('refine_bug_description', {
+    currentDescription,
+    refinementInstructions,
+    bugId
+  })
+}
+
+export async function saveBugDescription(
+  folderPath: string,
+  description: string
+): Promise<void> {
+  await invoke('save_bug_description', { folderPath, description })
+}

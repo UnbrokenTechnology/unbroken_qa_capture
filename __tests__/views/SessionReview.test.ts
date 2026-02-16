@@ -9,6 +9,20 @@ import { useSessionStore } from '@/stores/session'
 import type { Bug, Session, Capture } from '@/types/backend'
 import * as tauri from '@/api/tauri'
 
+// Create a mock notify function
+const mockNotify = vi.fn()
+
+// Mock useQuasar
+vi.mock('quasar', async () => {
+  const actual = await vi.importActual('quasar')
+  return {
+    ...actual,
+    useQuasar: () => ({
+      notify: mockNotify
+    })
+  }
+})
+
 // Mock Tauri API
 vi.mock('@/api/tauri', () => ({
   getBugCaptures: vi.fn(),
@@ -18,7 +32,11 @@ vi.mock('@/api/tauri', () => ({
   ticketingSaveCredentials: vi.fn(),
   ticketingAuthenticate: vi.fn(),
   ticketingCreateTicket: vi.fn(),
-  ticketingCheckConnection: vi.fn()
+  ticketingCheckConnection: vi.fn(),
+  getClaudeStatus: vi.fn(),
+  generateBugDescription: vi.fn(),
+  refineBugDescription: vi.fn(),
+  saveBugDescription: vi.fn()
 }))
 
 // Mock Tauri event listener
@@ -96,6 +114,9 @@ describe('SessionReview', () => {
 
     // Set default mock implementations
     vi.mocked(tauri.ticketingGetCredentials).mockResolvedValue(null)
+    vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+      NotInstalled: { message: 'Claude CLI not installed' }
+    })
   })
 
   const mountComponent = async () => {
@@ -125,7 +146,9 @@ describe('SessionReview', () => {
           QIcon: { template: '<span />' },
           QImg: { template: '<img :src="$attrs.src" @click="$attrs.onClick" />' },
           QDialog: { template: '<div v-if="$attrs.modelValue"><slot /></div>' },
-          QSpace: { template: '<div />' }
+          QSpace: { template: '<div />' },
+          QInput: { template: '<input :value="$attrs.modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
+          QSpinner: { template: '<div class="spinner">Loading...</div>' }
         }
       }
     })
@@ -420,5 +443,252 @@ describe('SessionReview', () => {
 
     // Dialog should be visible (stubbed, so just check if it's rendered)
     expect(wrapper.html()).toBeTruthy()
+  })
+
+  describe('AI Description Generation', () => {
+    it('should check Claude status on mount', async () => {
+      const sessionStore = useSessionStore()
+      const session = createMockSession('session-1')
+      sessionStore.activeSession = session
+
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+        Ready: { version: '1.0.0' }
+      })
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([])
+
+      await mountComponent()
+      await flushPromises()
+
+      expect(tauri.getClaudeStatus).toHaveBeenCalled()
+    })
+
+    it('should show Generate Description button when Claude is available', async () => {
+      const sessionStore = useSessionStore()
+      const session = createMockSession('session-1')
+      sessionStore.activeSession = session
+
+      const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
+
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+        Ready: { version: '1.0.0' }
+      })
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
+      vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
+
+      const wrapper = await mountComponent()
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Generate Description')
+    })
+
+    it('should show warning when Claude is not available', async () => {
+      const sessionStore = useSessionStore()
+      const session = createMockSession('session-1')
+      sessionStore.activeSession = session
+
+      const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
+
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+        NotInstalled: { message: 'Claude CLI not found' }
+      })
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
+      vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
+
+      const wrapper = await mountComponent()
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Claude CLI not available')
+      expect(wrapper.text()).toContain('Claude CLI not found')
+    })
+
+    it('should generate description when Generate button is clicked', async () => {
+      const sessionStore = useSessionStore()
+      const session = createMockSession('session-1')
+      sessionStore.activeSession = session
+
+      const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
+      const capture = createMockCapture('cap-1', 'bug-1')
+
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+        Ready: { version: '1.0.0' }
+      })
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
+      vi.mocked(tauri.getBugCaptures).mockResolvedValue([capture])
+      vi.mocked(tauri.generateBugDescription).mockResolvedValue({
+        text: 'AI-generated description text',
+        task: 'DescribeBug',
+        bug_id: 'bug-1'
+      })
+
+      const wrapper = await mountComponent()
+      await flushPromises()
+
+      const generateButton = wrapper.findAll('button').find(btn => btn.text().includes('Generate Description'))
+      expect(generateButton).toBeDefined()
+
+      if (generateButton) {
+        await generateButton.trigger('click')
+        await flushPromises()
+
+        expect(tauri.generateBugDescription).toHaveBeenCalledWith({
+          bug_id: 'bug-1',
+          bug_type: 'bug',
+          notes: 'This is a test bug with some notes',
+          screenshot_paths: ['/captures/screenshot-cap-1.png'],
+          metadata: {
+            display_id: 'BUG-001',
+            status: 'captured'
+          }
+        })
+      }
+    })
+
+    it('should show loading state while generating description', async () => {
+      const sessionStore = useSessionStore()
+      const session = createMockSession('session-1')
+      sessionStore.activeSession = session
+
+      const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
+
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+        Ready: { version: '1.0.0' }
+      })
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
+      vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
+
+      let resolveGenerate: (value: any) => void
+      const generatePromise = new Promise((resolve) => {
+        resolveGenerate = resolve
+      })
+      vi.mocked(tauri.generateBugDescription).mockReturnValue(generatePromise as any)
+
+      const wrapper = await mountComponent()
+      await flushPromises()
+
+      const generateButton = wrapper.findAll('button').find(btn => btn.text().includes('Generate Description'))
+      if (generateButton) {
+        await generateButton.trigger('click')
+        await flushPromises()
+
+        expect(wrapper.text()).toContain('Generating description with Claude')
+
+        resolveGenerate!({
+          text: 'Generated description',
+          task: 'DescribeBug'
+        })
+        await flushPromises()
+      }
+    })
+
+    it('should show Refine and Save buttons after description is generated', async () => {
+      const sessionStore = useSessionStore()
+      const session = createMockSession('session-1')
+      sessionStore.activeSession = session
+
+      const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
+
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+        Ready: { version: '1.0.0' }
+      })
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
+      vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
+      vi.mocked(tauri.generateBugDescription).mockResolvedValue({
+        text: 'AI-generated description',
+        task: 'DescribeBug'
+      })
+
+      const wrapper = await mountComponent()
+      await flushPromises()
+
+      const generateButton = wrapper.findAll('button').find(btn => btn.text().includes('Generate Description'))
+      if (generateButton) {
+        await generateButton.trigger('click')
+        await flushPromises()
+
+        expect(wrapper.text()).toContain('Refine')
+        expect(wrapper.text()).toContain('Save')
+      }
+    })
+
+    it('should save description when Save button is clicked', async () => {
+      const sessionStore = useSessionStore()
+      const session = createMockSession('session-1')
+      sessionStore.activeSession = session
+
+      const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
+
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+        Ready: { version: '1.0.0' }
+      })
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
+      vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
+      vi.mocked(tauri.generateBugDescription).mockResolvedValue({
+        text: 'AI-generated description',
+        task: 'DescribeBug'
+      })
+      vi.mocked(tauri.saveBugDescription).mockResolvedValue(undefined)
+
+      const wrapper = await mountComponent()
+      await flushPromises()
+
+      const generateButton = wrapper.findAll('button').find(btn => btn.text().includes('Generate Description'))
+      if (generateButton) {
+        await generateButton.trigger('click')
+        await flushPromises()
+
+        const saveButton = wrapper.findAll('button').find(btn => btn.text().includes('Save'))
+        if (saveButton) {
+          await saveButton.trigger('click')
+          await flushPromises()
+
+          expect(tauri.saveBugDescription).toHaveBeenCalledWith(
+            '/bugs/bug-bug-1',
+            'AI-generated description'
+          )
+        }
+      }
+    })
+
+    it('should refine description when Refine button is clicked', async () => {
+      const sessionStore = useSessionStore()
+      const session = createMockSession('session-1')
+      sessionStore.activeSession = session
+
+      const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
+
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+        Ready: { version: '1.0.0' }
+      })
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
+      vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
+      vi.mocked(tauri.generateBugDescription).mockResolvedValue({
+        text: 'Initial description',
+        task: 'DescribeBug'
+      })
+      vi.mocked(tauri.refineBugDescription).mockResolvedValue({
+        text: 'Refined description',
+        task: 'RefineDescription'
+      })
+
+      const wrapper = await mountComponent()
+      await flushPromises()
+
+      // Generate description first
+      const generateButton = wrapper.findAll('button').find(btn => btn.text().includes('Generate Description'))
+      if (generateButton) {
+        await generateButton.trigger('click')
+        await flushPromises()
+
+        // Click Refine button
+        const refineButton = wrapper.findAll('button').find(btn => btn.text().includes('Refine'))
+        if (refineButton) {
+          await refineButton.trigger('click')
+          await flushPromises()
+
+          // Refine dialog should be visible
+          expect(wrapper.html()).toContain('How would you like to refine')
+        }
+      }
+    })
   })
 })

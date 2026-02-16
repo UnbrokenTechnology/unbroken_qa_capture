@@ -623,6 +623,27 @@ async fn refine_bug_description(
         .map_err(|e| format!("Failed to refine description: {}", e))
 }
 
+#[tauri::command]
+async fn save_bug_description(
+    folder_path: String,
+    description: String,
+) -> Result<(), String> {
+    use std::path::Path;
+
+    // Ensure the folder exists
+    let bug_folder = Path::new(&folder_path);
+    if !bug_folder.exists() {
+        return Err(format!("Bug folder does not exist: {}", folder_path));
+    }
+
+    // Write description to description.md file
+    let description_file = bug_folder.join("description.md");
+    std::fs::write(&description_file, description)
+        .map_err(|e| format!("Failed to write description.md: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -770,7 +791,8 @@ pub fn run() {
             refresh_claude_status,
             generate_bug_description,
             parse_console_screenshot,
-            refine_bug_description
+            refine_bug_description,
+            save_bug_description
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
