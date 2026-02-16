@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { Quasar } from 'quasar'
+import router from './router'
 
 // Import icon libraries
 import '@quasar/extras/material-icons/material-icons.css'
@@ -15,6 +16,9 @@ const app = createApp(App)
 
 // Use Pinia for state management
 app.use(createPinia())
+
+// Use Vue Router
+app.use(router)
 
 // Use Quasar
 app.use(Quasar, {
