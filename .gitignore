@@ -1,5 +1,8 @@
 .swarm/
 
+# Environment files
+.env
+
 # Logs
 logs
 *.log
