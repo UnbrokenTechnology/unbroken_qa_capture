@@ -2,6 +2,7 @@ mod template;
 mod database;
 pub mod platform;
 mod session_manager;
+mod session_summary;
 mod hotkey;
 mod claude_cli;
 mod ticketing;
@@ -374,6 +375,23 @@ fn get_active_bug_id() -> Result<Option<String>, String> {
         .as_ref()
         .ok_or("Session manager not initialized")?;
     Ok(manager.get_active_bug_id())
+}
+
+#[tauri::command]
+fn generate_session_summary(session_id: String, include_ai_summary: bool) -> Result<String, String> {
+    use session_summary::SessionSummaryGenerator;
+
+    let manager_guard = SESSION_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Session manager not initialized")?;
+
+    // Get db_path from the session manager's db_path field
+    // We'll create a new generator with the same db_path
+    let db_path = manager.db_path.clone();
+
+    let generator = SessionSummaryGenerator::new(db_path);
+    generator.generate_summary(&session_id, include_ai_summary)
 }
 
 // ─── Hotkey Manager Commands ─────────────────────────────────────────────
@@ -842,6 +860,7 @@ pub fn run() {
             end_bug_capture,
             get_active_session_id,
             get_active_bug_id,
+            generate_session_summary,
             get_hotkey_config,
             update_hotkey_config,
             is_hotkey_registered,
