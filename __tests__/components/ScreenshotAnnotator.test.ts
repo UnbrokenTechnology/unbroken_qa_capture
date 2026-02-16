@@ -92,6 +92,10 @@ describe('ScreenshotAnnotator.vue', () => {
             props: ['color', 'icon', 'label', 'loading', 'disable', 'dense', 'flat', 'round', 'size'],
           },
           QBtnGroup: { template: '<div><slot /></div>' },
+          QBtnToggle: {
+            template: '<div />',
+            props: ['modelValue', 'options', 'color', 'toggleColor'],
+          },
           QCardSection: { template: '<div><slot /></div>' },
           QSeparator: { template: '<div />' },
           QMenu: {
@@ -101,10 +105,6 @@ describe('ScreenshotAnnotator.vue', () => {
           QColor: {
             template: '<div />',
             props: ['modelValue'],
-          },
-          QSlider: {
-            template: '<div />',
-            props: ['modelValue', 'min', 'max', 'step', 'color'],
           },
           QTooltip: { template: '<div><slot /></div>' },
         },
@@ -176,28 +176,76 @@ describe('ScreenshotAnnotator.vue', () => {
   })
 
   describe('Color and Stroke', () => {
-    it('starts with default color #FF0000', () => {
+    it('starts with PRD default color #FF3B30 (red)', () => {
       // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentColor).toBe('#FF0000')
+      expect(wrapper.vm.currentColor).toBe('#FF3B30')
     })
 
-    it('starts with default stroke width 3', () => {
+    it('starts with PRD default stroke width 4 (medium)', () => {
       // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.strokeWidth).toBe(3)
+      expect(wrapper.vm.strokeWidth).toBe(4)
     })
 
-    it('can update color', async () => {
+    it('has 6 PRD-compliant preset colors', () => {
       // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.currentColor = '#00FF00'
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentColor).toBe('#00FF00')
+      expect(wrapper.vm.presetColors).toEqual([
+        '#FF3B30', // red
+        '#FFCC00', // yellow
+        '#007AFF', // blue
+        '#34C759', // green
+        '#FFFFFF', // white
+        '#000000', // black
+      ])
     })
 
-    it('can update stroke width', async () => {
+    it('has 3 PRD-compliant stroke width options', () => {
       // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.strokeWidth = 10
+      expect(wrapper.vm.strokeWidthOptions).toEqual([
+        { label: 'Thin', value: 2 },
+        { label: 'Medium', value: 4 },
+        { label: 'Thick', value: 8 },
+      ])
+    })
+
+    it('can select preset color', async () => {
+      // @ts-expect-error - Accessing internal method for testing
+      wrapper.vm.selectColor('#FFCC00')
       // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.strokeWidth).toBe(10)
+      expect(wrapper.vm.currentColor).toBe('#FFCC00')
+    })
+
+    it('can update stroke width to thin (2px)', async () => {
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.strokeWidth = 2
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.strokeWidth).toBe(2)
+    })
+
+    it('can update stroke width to thick (8px)', async () => {
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.strokeWidth = 8
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.strokeWidth).toBe(8)
+    })
+
+    it('returns correct color name for preset colors', () => {
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#FF3B30')).toBe('Red')
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#FFCC00')).toBe('Yellow')
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#007AFF')).toBe('Blue')
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#34C759')).toBe('Green')
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#FFFFFF')).toBe('White')
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#000000')).toBe('Black')
+    })
+
+    it('returns hex code for unknown colors', () => {
+      // @ts-expect-error - Accessing internal method for testing
+      expect(wrapper.vm.getColorName('#123456')).toBe('#123456')
     })
   })
 
@@ -433,6 +481,270 @@ describe('ScreenshotAnnotator.vue', () => {
     it('has tooltips for undo/redo buttons', () => {
       expect(wrapper.html()).toContain('Undo')
       expect(wrapper.html()).toContain('Redo')
+    })
+  })
+
+  describe('Keyboard Shortcuts', () => {
+    beforeEach(async () => {
+      // Open the dialog and initialize canvas
+      await wrapper.setProps({ modelValue: true })
+      await wrapper.vm.$nextTick()
+    })
+
+    it('switches to text tool with T key', async () => {
+      const event = new KeyboardEvent('keydown', { key: 'T' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.currentTool).toBe('text')
+    })
+
+    it('switches to text tool with lowercase t key', async () => {
+      const event = new KeyboardEvent('keydown', { key: 't' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.currentTool).toBe('text')
+    })
+
+    it('switches to rectangle tool with R key', async () => {
+      const event = new KeyboardEvent('keydown', { key: 'R' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.currentTool).toBe('rectangle')
+    })
+
+    it('switches to rectangle tool with lowercase r key', async () => {
+      const event = new KeyboardEvent('keydown', { key: 'r' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.currentTool).toBe('rectangle')
+    })
+
+    it('switches to circle tool with O key', async () => {
+      const event = new KeyboardEvent('keydown', { key: 'O' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.currentTool).toBe('circle')
+    })
+
+    it('switches to circle tool with lowercase o key', async () => {
+      const event = new KeyboardEvent('keydown', { key: 'o' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.currentTool).toBe('circle')
+    })
+
+    it('switches to freehand tool with D key', async () => {
+      const event = new KeyboardEvent('keydown', { key: 'D' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.currentTool).toBe('freehand')
+    })
+
+    it('switches to freehand tool with lowercase d key', async () => {
+      const event = new KeyboardEvent('keydown', { key: 'd' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.currentTool).toBe('freehand')
+    })
+
+    it('calls undo with Ctrl+Z', async () => {
+      // Set up canvas and history to enable undo
+      const mockCanvas = {
+        getActiveObject: vi.fn(() => null),
+        toJSON: vi.fn(() => ({})),
+        loadFromJSON: vi.fn(() => Promise.resolve()),
+        renderAll: vi.fn(),
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.history = ['state1', 'state2']
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.historyStep = 1
+
+      const event = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.historyStep).toBe(0)
+    })
+
+    it('calls redo with Ctrl+Shift+Z', async () => {
+      // Set up canvas and history to enable redo
+      const mockCanvas = {
+        getActiveObject: vi.fn(() => null),
+        toJSON: vi.fn(() => ({})),
+        loadFromJSON: vi.fn(() => Promise.resolve()),
+        renderAll: vi.fn(),
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.history = ['state1', 'state2', 'state3']
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.historyStep = 1
+
+      const event = new KeyboardEvent('keydown', { key: 'Z', ctrlKey: true, shiftKey: true })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.historyStep).toBe(2)
+    })
+
+    it('calls save with Ctrl+S', async () => {
+      const mockCanvas = {
+        toDataURL: vi.fn(() => 'data:image/png;base64,mockdata'),
+        getActiveObject: vi.fn(() => null),
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+
+      const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+      await wrapper.vm.$nextTick() // Additional tick for async save
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.isOpen).toBe(false) // Dialog should close after save
+    })
+
+    it('closes dialog with Escape key', async () => {
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.isOpen).toBe(true)
+
+      const event = new KeyboardEvent('keydown', { key: 'Escape' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.isOpen).toBe(false)
+    })
+
+    it('deletes selected object with Delete key', async () => {
+      const mockCanvas = {
+        getActiveObject: vi.fn(() => ({ /* mock object */ })),
+        remove: vi.fn(),
+        renderAll: vi.fn(),
+        toJSON: vi.fn(() => ({})),
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+
+      const event = new KeyboardEvent('keydown', { key: 'Delete' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      expect(mockCanvas.remove).toHaveBeenCalled()
+    })
+
+    it('deletes selected object with Backspace key', async () => {
+      const mockCanvas = {
+        getActiveObject: vi.fn(() => ({ /* mock object */ })),
+        remove: vi.fn(),
+        renderAll: vi.fn(),
+        toJSON: vi.fn(() => ({})),
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+
+      const event = new KeyboardEvent('keydown', { key: 'Backspace' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      expect(mockCanvas.remove).toHaveBeenCalled()
+    })
+
+    it('does not delete if no object is selected', async () => {
+      const mockCanvas = {
+        getActiveObject: vi.fn(() => null),
+        remove: vi.fn(),
+        renderAll: vi.fn(),
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+
+      const event = new KeyboardEvent('keydown', { key: 'Delete' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      expect(mockCanvas.remove).not.toHaveBeenCalled()
+    })
+
+    it('ignores shortcuts when dialog is closed', async () => {
+      await wrapper.setProps({ modelValue: false })
+      await wrapper.vm.$nextTick()
+
+      const event = new KeyboardEvent('keydown', { key: 'T' })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.currentTool).toBe('select') // Should remain unchanged
+    })
+
+    it('ignores shortcuts when editing text in input element', async () => {
+      // Create a mock input element
+      const input = document.createElement('input')
+      document.body.appendChild(input)
+      input.focus()
+
+      const event = new KeyboardEvent('keydown', {
+        key: 'T',
+        bubbles: true,
+      })
+      Object.defineProperty(event, 'target', { value: input, enumerable: true })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.currentTool).toBe('select') // Should remain unchanged
+
+      document.body.removeChild(input)
+    })
+
+    it('ignores shortcuts when editing text in textarea element', async () => {
+      // Create a mock textarea element
+      const textarea = document.createElement('textarea')
+      document.body.appendChild(textarea)
+      textarea.focus()
+
+      const event = new KeyboardEvent('keydown', {
+        key: 'R',
+        bubbles: true,
+      })
+      Object.defineProperty(event, 'target', { value: textarea, enumerable: true })
+      window.dispatchEvent(event)
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.currentTool).toBe('select') // Should remain unchanged
+
+      document.body.removeChild(textarea)
+    })
+
+    it('cleans up event listener on unmount', () => {
+      const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener')
+      wrapper.unmount()
+
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function))
     })
   })
 })

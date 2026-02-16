@@ -68,15 +68,29 @@
             inset
           />
 
-          <!-- Color Picker -->
+          <!-- Color Palette -->
           <div class="row items-center q-gutter-xs">
             <span class="text-caption">Color:</span>
+            <!-- Preset colors -->
+            <q-btn
+              v-for="color in presetColors"
+              :key="color"
+              round
+              size="sm"
+              :style="{ backgroundColor: color, border: currentColor === color ? '2px solid white' : '1px solid #555' }"
+              @click="selectColor(color)"
+            >
+              <q-tooltip>{{ getColorName(color) }}</q-tooltip>
+            </q-btn>
+            <!-- Custom color picker -->
             <q-btn
               round
               size="sm"
-              :style="{ backgroundColor: currentColor }"
+              icon="palette"
+              color="grey-7"
               @click="showColorPicker = true"
             >
+              <q-tooltip>Custom Color</q-tooltip>
               <q-menu v-model="showColorPicker">
                 <q-color
                   v-model="currentColor"
@@ -94,16 +108,13 @@
           <!-- Stroke Width -->
           <div class="row items-center q-gutter-xs">
             <span class="text-caption">Width:</span>
-            <q-slider
+            <q-btn-toggle
               v-model="strokeWidth"
-              :min="1"
-              :max="20"
-              :step="1"
-              style="width: 100px"
+              :options="strokeWidthOptions"
               color="primary"
+              toggle-color="primary"
               @update:model-value="updateStrokeWidth"
             />
-            <span class="text-caption">{{ strokeWidth }}px</span>
           </div>
 
           <q-separator
@@ -173,10 +184,27 @@ const isOpen = ref(props.modelValue)
 const canvasElement = ref<HTMLCanvasElement | null>(null)
 const canvas = ref<Canvas | null>(null)
 const currentTool = ref<'select' | 'text' | 'rectangle' | 'circle' | 'freehand'>('select')
-const currentColor = ref('#FF0000')
-const strokeWidth = ref(3)
+const currentColor = ref('#FF3B30')
+const strokeWidth = ref(4)
 const showColorPicker = ref(false)
 const saving = ref(false)
+
+// PRD-compliant color presets
+const presetColors = ref([
+  '#FF3B30', // red
+  '#FFCC00', // yellow
+  '#007AFF', // blue
+  '#34C759', // green
+  '#FFFFFF', // white
+  '#000000', // black
+])
+
+// PRD-compliant stroke width options
+const strokeWidthOptions = ref([
+  { label: 'Thin', value: 2 },
+  { label: 'Medium', value: 4 },
+  { label: 'Thick', value: 8 },
+])
 
 // Undo/Redo state
 const history = ref<string[]>([])
@@ -208,9 +236,15 @@ onMounted(() => {
   if (props.modelValue) {
     initializeCanvas()
   }
+
+  // Set up keyboard shortcuts
+  window.addEventListener('keydown', handleKeyDown)
 })
 
 onBeforeUnmount(() => {
+  // Clean up keyboard shortcuts
+  window.removeEventListener('keydown', handleKeyDown)
+
   if (canvas.value) {
     canvas.value.dispose()
   }
@@ -381,6 +415,23 @@ function setTool(tool: typeof currentTool.value) {
   canvas.value.selection = tool === 'select'
 }
 
+function selectColor(color: string) {
+  currentColor.value = color
+  updateColor()
+}
+
+function getColorName(color: string): string {
+  const colorNames: Record<string, string> = {
+    '#FF3B30': 'Red',
+    '#FFCC00': 'Yellow',
+    '#007AFF': 'Blue',
+    '#34C759': 'Green',
+    '#FFFFFF': 'White',
+    '#000000': 'Black',
+  }
+  return colorNames[color] || color
+}
+
 function updateColor() {
   if (!canvas.value) return
 
@@ -498,6 +549,74 @@ async function saveAnnotatedScreenshot() {
     console.error('Failed to save annotated screenshot:', error)
   } finally {
     saving.value = false
+  }
+}
+
+function handleKeyDown(event: KeyboardEvent) {
+  // Don't trigger shortcuts when editing text
+  const target = event.target as HTMLElement
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+    return
+  }
+
+  // Don't trigger shortcuts when dialog is closed
+  if (!isOpen.value) {
+    return
+  }
+
+  // Check if we're editing text in Fabric canvas
+  const activeObject = canvas.value?.getActiveObject()
+  if (activeObject && activeObject instanceof IText && (activeObject as any).isEditing) {
+    return
+  }
+
+  // Tool shortcuts
+  if (event.key === 't' || event.key === 'T') {
+    event.preventDefault()
+    setTool('text')
+  } else if (event.key === 'r' || event.key === 'R') {
+    event.preventDefault()
+    setTool('rectangle')
+  } else if (event.key === 'o' || event.key === 'O') {
+    event.preventDefault()
+    setTool('circle')
+  } else if (event.key === 'd' || event.key === 'D') {
+    event.preventDefault()
+    setTool('freehand')
+  }
+  // Undo/Redo shortcuts
+  else if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
+    event.preventDefault()
+    redo()
+  } else if (event.ctrlKey && event.key === 'z') {
+    event.preventDefault()
+    undo()
+  }
+  // Save shortcut
+  else if (event.ctrlKey && event.key === 's') {
+    event.preventDefault()
+    saveAnnotatedScreenshot()
+  }
+  // Cancel shortcut
+  else if (event.key === 'Escape') {
+    event.preventDefault()
+    close()
+  }
+  // Delete selected object
+  else if (event.key === 'Delete' || event.key === 'Backspace') {
+    event.preventDefault()
+    deleteSelectedObject()
+  }
+}
+
+function deleteSelectedObject() {
+  if (!canvas.value) return
+
+  const activeObject = canvas.value.getActiveObject()
+  if (activeObject) {
+    canvas.value.remove(activeObject)
+    canvas.value.renderAll()
+    saveHistory()
   }
 }
 
