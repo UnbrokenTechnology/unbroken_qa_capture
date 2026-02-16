@@ -813,6 +813,41 @@ fn get_bug_captures(bug_id: String, app: tauri::AppHandle) -> Result<Vec<databas
 }
 
 #[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
+fn enable_startup() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use platform::{Platform, WindowsPlatform};
+        let platform = WindowsPlatform;
+        platform.enable_startup().map_err(|e| e.to_string())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Startup configuration is only supported on Windows".to_string())
+    }
+}
+
+#[tauri::command]
+fn disable_startup() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use platform::{Platform, WindowsPlatform};
+        let platform = WindowsPlatform;
+        platform.disable_startup().map_err(|e| e.to_string())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Startup configuration is only supported on Windows".to_string())
+    }
+}
+
+#[tauri::command]
 fn update_capture_console_flag(
     capture_id: String,
     is_console_capture: bool,
@@ -1001,7 +1036,10 @@ pub fn run() {
             mark_setup_complete,
             reset_setup,
             get_bug_captures,
-            update_capture_console_flag
+            update_capture_console_flag,
+            get_app_version,
+            enable_startup,
+            disable_startup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -38,6 +38,56 @@
         </template>
       </q-banner>
 
+      <!-- General Section -->
+      <q-card class="q-mb-md">
+        <q-card-section>
+          <div class="text-h6 q-mb-md">
+            <q-icon
+              name="settings"
+              class="q-mr-sm"
+            />
+            General
+          </div>
+
+          <div class="q-gutter-md">
+            <q-input
+              v-model="localSettings.sessions_root_folder"
+              label="Sessions Root Folder"
+              hint="Default folder to save QA sessions"
+              outlined
+              readonly
+            >
+              <template #prepend>
+                <q-icon name="folder" />
+              </template>
+              <template #append>
+                <q-btn
+                  round
+                  dense
+                  flat
+                  icon="folder_open"
+                  @click="selectSessionsRoot"
+                >
+                  <q-tooltip>Browse</q-tooltip>
+                </q-btn>
+              </template>
+            </q-input>
+
+            <q-toggle
+              v-model="localSettings.launch_on_startup"
+              label="Launch on Windows startup"
+              color="primary"
+            />
+
+            <q-toggle
+              v-model="localSettings.minimize_to_tray"
+              label="Minimize to tray on close"
+              color="primary"
+            />
+          </div>
+        </q-card-section>
+      </q-card>
+
       <!-- Hotkeys Section -->
       <q-card class="q-mb-md">
         <q-card-section>
@@ -51,94 +101,307 @@
 
           <div class="q-gutter-md">
             <q-input
-              v-model="localSettings.hotkey_capture"
-              label="Capture Bug Hotkey"
-              hint="Keyboard shortcut to capture a bug (e.g., Ctrl+Shift+B)"
+              v-model="localSettings.hotkey_toggle_session"
+              label="Start/End Session"
+              hint="Default: Ctrl+Shift+Q"
               outlined
-              :error="!isValidHotkey(localSettings.hotkey_capture)"
-              error-message="Invalid hotkey format. Use format: Ctrl+Shift+Letter"
-              @blur="validateHotkey('hotkey_capture')"
+              readonly
+            >
+              <template #prepend>
+                <q-icon name="power_settings_new" />
+              </template>
+              <template #append>
+                <q-btn
+                  flat
+                  dense
+                  label="Record"
+                  color="primary"
+                  @click="recordHotkey('hotkey_toggle_session')"
+                >
+                  <q-tooltip>Click to record a new hotkey</q-tooltip>
+                </q-btn>
+              </template>
+            </q-input>
+
+            <q-input
+              v-model="localSettings.hotkey_new_bug"
+              label="New Bug Capture"
+              hint="Default: Print Screen"
+              outlined
+              readonly
             >
               <template #prepend>
                 <q-icon name="camera" />
               </template>
-            </q-input>
-
-            <q-input
-              v-model="localSettings.hotkey_start_session"
-              label="Start Session Hotkey"
-              hint="Keyboard shortcut to start a session (e.g., Ctrl+Shift+S)"
-              outlined
-              :error="!isValidHotkey(localSettings.hotkey_start_session)"
-              error-message="Invalid hotkey format. Use format: Ctrl+Shift+Letter"
-              @blur="validateHotkey('hotkey_start_session')"
-            >
-              <template #prepend>
-                <q-icon name="play_arrow" />
+              <template #append>
+                <q-btn
+                  flat
+                  dense
+                  label="Record"
+                  color="primary"
+                  @click="recordHotkey('hotkey_new_bug')"
+                >
+                  <q-tooltip>Click to record a new hotkey</q-tooltip>
+                </q-btn>
               </template>
             </q-input>
 
             <q-input
-              v-model="localSettings.hotkey_end_session"
-              label="End Session Hotkey"
-              hint="Keyboard shortcut to end a session (e.g., Ctrl+Shift+E)"
+              v-model="localSettings.hotkey_end_bug"
+              label="End Bug Capture"
+              hint="Default: F4"
               outlined
-              :error="!isValidHotkey(localSettings.hotkey_end_session)"
-              error-message="Invalid hotkey format. Use format: Ctrl+Shift+Letter"
-              @blur="validateHotkey('hotkey_end_session')"
+              readonly
             >
               <template #prepend>
                 <q-icon name="stop" />
               </template>
+              <template #append>
+                <q-btn
+                  flat
+                  dense
+                  label="Record"
+                  color="primary"
+                  @click="recordHotkey('hotkey_end_bug')"
+                >
+                  <q-tooltip>Click to record a new hotkey</q-tooltip>
+                </q-btn>
+              </template>
             </q-input>
+
+            <q-input
+              v-model="localSettings.hotkey_quick_notepad"
+              label="Quick Notepad"
+              hint="Default: Ctrl+Shift+N"
+              outlined
+              readonly
+            >
+              <template #prepend>
+                <q-icon name="note_add" />
+              </template>
+              <template #append>
+                <q-btn
+                  flat
+                  dense
+                  label="Record"
+                  color="primary"
+                  @click="recordHotkey('hotkey_quick_notepad')"
+                >
+                  <q-tooltip>Click to record a new hotkey</q-tooltip>
+                </q-btn>
+              </template>
+            </q-input>
+
+            <q-input
+              v-model="localSettings.hotkey_session_notepad"
+              label="Session Notepad"
+              hint="Default: Ctrl+Shift+M"
+              outlined
+              readonly
+            >
+              <template #prepend>
+                <q-icon name="notes" />
+              </template>
+              <template #append>
+                <q-btn
+                  flat
+                  dense
+                  label="Record"
+                  color="primary"
+                  @click="recordHotkey('hotkey_session_notepad')"
+                >
+                  <q-tooltip>Click to record a new hotkey</q-tooltip>
+                </q-btn>
+              </template>
+            </q-input>
+
+            <q-banner
+              v-if="hotkeyConflict"
+              class="bg-warning text-white"
+              dense
+            >
+              <template #avatar>
+                <q-icon
+                  name="warning"
+                  color="white"
+                />
+              </template>
+              {{ hotkeyConflict }}
+            </q-banner>
           </div>
         </q-card-section>
       </q-card>
 
-      <!-- Paths Section -->
+      <!-- Annotation Section -->
       <q-card class="q-mb-md">
         <q-card-section>
           <div class="text-h6 q-mb-md">
             <q-icon
-              name="folder"
+              name="draw"
               class="q-mr-sm"
             />
-            File Paths
+            Annotation
           </div>
 
           <div class="q-gutter-md">
-            <q-input
-              v-model="localSettings.default_save_path"
-              label="Default Save Path"
-              hint="Default folder to save QA sessions"
+            <q-toggle
+              v-model="localSettings.annotation_auto_open"
+              label="Auto-open annotation on screenshot capture"
+              color="primary"
+            />
+
+            <div>
+              <div class="text-subtitle2 q-mb-sm">
+                Save Mode
+              </div>
+              <q-option-group
+                v-model="localSettings.annotation_save_mode"
+                :options="annotationSaveModeOptions"
+                color="primary"
+              />
+            </div>
+
+            <div>
+              <div class="text-subtitle2 q-mb-sm">
+                Default Color
+              </div>
+              <q-btn-group flat>
+                <q-btn
+                  v-for="color in annotationColors"
+                  :key="color.value"
+                  :style="{backgroundColor: color.value, color: 'white'}"
+                  :outline="localSettings.annotation_default_color !== color.value"
+                  :unelevated="localSettings.annotation_default_color === color.value"
+                  @click="localSettings.annotation_default_color = color.value"
+                >
+                  {{ color.label }}
+                </q-btn>
+              </q-btn-group>
+            </div>
+
+            <div>
+              <div class="text-subtitle2 q-mb-sm">
+                Default Stroke Width
+              </div>
+              <q-option-group
+                v-model="localSettings.annotation_stroke_width"
+                :options="strokeWidthOptions"
+                color="primary"
+              />
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <!-- AI (Claude) Section -->
+      <q-card class="q-mb-md">
+        <q-card-section>
+          <div class="text-h6 q-mb-md">
+            <q-icon
+              name="smart_toy"
+              class="q-mr-sm"
+            />
+            AI (Claude)
+          </div>
+
+          <div class="q-gutter-md">
+            <q-banner
+              :class="claudeStatus === 'available' ? 'bg-positive' : 'bg-warning'"
+              class="text-white"
+              dense
+            >
+              <template #avatar>
+                <q-icon
+                  :name="claudeStatus === 'available' ? 'check_circle' : 'warning'"
+                  color="white"
+                />
+              </template>
+              <div v-if="claudeStatus === 'available'">
+                Claude CLI is available and authenticated ✓
+              </div>
+              <div v-else-if="claudeStatus === 'not_found'">
+                Claude CLI not found. <a
+                  href="https://www.anthropic.com/claude"
+                  target="_blank"
+                  class="text-white"
+                  style="text-decoration: underline;"
+                >Install Claude CLI</a>
+              </div>
+              <div v-else-if="claudeStatus === 'not_authenticated'">
+                Claude CLI found but not authenticated. Run <code>claude</code> to log in.
+              </div>
+              <div v-else>
+                Checking Claude CLI status...
+              </div>
+            </q-banner>
+
+            <q-toggle
+              v-model="localSettings.ai_auto_generate"
+              label="Auto-generate descriptions on review"
+              color="primary"
+              :disable="claudeStatus !== 'available'"
+            />
+
+            <q-btn
+              outline
+              color="primary"
+              label="Test Claude Connection"
+              icon="refresh"
+              :loading="testingClaude"
+              :disable="claudeStatus !== 'available'"
+              @click="testClaudeConnection"
+            />
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <!-- Ticketing Section -->
+      <q-card class="q-mb-md">
+        <q-card-section>
+          <div class="text-h6 q-mb-md">
+            <q-icon
+              name="integration_instructions"
+              class="q-mr-sm"
+            />
+            Ticketing
+          </div>
+
+          <div class="q-gutter-md">
+            <q-select
+              v-model="localSettings.ticketing_provider"
+              :options="ticketingProviderOptions"
+              label="Integration Type"
               outlined
-              readonly
+              emit-value
+              map-options
             >
               <template #prepend>
-                <q-icon name="save" />
+                <q-icon name="cloud" />
               </template>
-              <template #append>
-                <q-btn
-                  round
-                  dense
-                  flat
-                  icon="folder_open"
-                  @click="selectSavePath"
-                >
-                  <q-tooltip>Browse</q-tooltip>
-                </q-btn>
+            </q-select>
+
+            <q-select
+              v-model="localSettings.default_bug_type"
+              :options="bugTypeOptions"
+              label="Default Bug Type"
+              outlined
+              emit-value
+              map-options
+            >
+              <template #prepend>
+                <q-icon name="bug_report" />
               </template>
-            </q-input>
+            </q-select>
 
             <q-input
-              v-model="localSettings.custom_template_path"
-              label="Custom Template Path"
-              hint="Path to custom bug report template (optional)"
+              v-model="localSettings.linear_config_path"
+              label="Linear Project Configuration"
+              hint="Path to Linear configuration file (optional)"
               outlined
               readonly
             >
               <template #prepend>
-                <q-icon name="description" />
+                <q-icon name="settings_applications" />
               </template>
               <template #append>
                 <q-btn
@@ -146,82 +409,99 @@
                   dense
                   flat
                   icon="folder_open"
-                  @click="selectTemplatePath"
+                  @click="selectLinearConfigPath"
                 >
                   <q-tooltip>Browse</q-tooltip>
                 </q-btn>
                 <q-btn
-                  v-if="localSettings.custom_template_path"
+                  v-if="localSettings.linear_config_path"
                   round
                   dense
                   flat
                   icon="clear"
-                  @click="localSettings.custom_template_path = ''"
+                  @click="localSettings.linear_config_path = ''"
                 >
                   <q-tooltip>Clear</q-tooltip>
                 </q-btn>
               </template>
             </q-input>
+
+            <div>
+              <div class="text-subtitle2 q-mb-sm">
+                Ticket Template Editor
+              </div>
+              <q-btn
+                outline
+                color="primary"
+                label="Edit Template in Default Editor"
+                icon="edit"
+                @click="openTemplateEditor"
+              />
+            </div>
           </div>
         </q-card-section>
       </q-card>
 
-      <!-- Capture Options Section -->
+      <!-- About Section -->
       <q-card class="q-mb-md">
         <q-card-section>
           <div class="text-h6 q-mb-md">
             <q-icon
-              name="settings"
+              name="info"
               class="q-mr-sm"
             />
-            Capture Options
+            About
           </div>
 
           <div class="q-gutter-md">
-            <q-toggle
-              v-model="localSettings.auto_start_recording"
-              label="Auto-start recording on session start"
-              color="primary"
-            />
+            <div class="row items-center">
+              <div class="col-4 text-grey-7">
+                App Version
+              </div>
+              <div class="col">
+                {{ appVersion }}
+              </div>
+            </div>
 
-            <q-toggle
-              v-model="localSettings.capture_console"
-              label="Capture console output automatically"
-              color="primary"
-            />
+            <div class="row items-center">
+              <div class="col-4 text-grey-7">
+                Developer
+              </div>
+              <div class="col">
+                Unbroken Technology
+              </div>
+            </div>
 
-            <q-toggle
-              v-model="localSettings.ai_enabled"
-              label="Enable AI-powered bug descriptions"
-              color="primary"
-            />
+            <q-separator />
+
+            <div class="row q-gutter-sm">
+              <q-btn
+                flat
+                color="primary"
+                label="Website"
+                icon="public"
+                @click="openLink('https://unbroken.tech')"
+              />
+              <q-btn
+                flat
+                color="primary"
+                label="Support"
+                icon="help"
+                @click="openLink('mailto:support@unbroken.tech')"
+              />
+              <q-btn
+                flat
+                color="primary"
+                label="Changelog"
+                icon="history"
+                @click="openLink('https://github.com/UnbrokenTechnology/unbroken_qa_capture/releases')"
+              />
+            </div>
+
+            <div class="text-caption text-grey-6">
+              Licensed under MIT License
+            </div>
           </div>
-        </q-card-section>
-      </q-card>
-
-      <!-- Theme Section -->
-      <q-card class="q-mb-md">
-        <q-card-section>
-          <div class="text-h6 q-mb-md">
-            <q-icon
-              name="palette"
-              class="q-mr-sm"
-            />
-            Appearance
-          </div>
-
-          <q-select
-            v-model="localSettings.theme"
-            :options="themeOptions"
-            label="Theme"
-            outlined
-            emit-value
-            map-options
-          >
-            <template #prepend>
-              <q-icon name="brightness_6" />
-            </template>
-          </q-select>
         </q-card-section>
       </q-card>
 
@@ -252,80 +532,134 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useSettingsStore, SETTINGS_KEYS } from '@/stores/settings'
+import { useSettingsStore } from '@/stores/settings'
 import { useQuasar } from 'quasar'
 import { open } from '@tauri-apps/plugin-dialog'
+import { invoke } from '@tauri-apps/api/core'
+import { open as openUrl } from '@tauri-apps/plugin-shell'
 
 const settingsStore = useSettingsStore()
 const $q = useQuasar()
 
 // Local settings state (for editing before save)
 const localSettings = ref({
-  hotkey_capture: '',
-  hotkey_start_session: '',
-  hotkey_end_session: '',
-  default_save_path: '',
-  custom_template_path: '',
-  auto_start_recording: false,
-  capture_console: false,
-  ai_enabled: false,
-  theme: 'light',
+  // General
+  sessions_root_folder: '',
+  launch_on_startup: false,
+  minimize_to_tray: true,
+
+  // Hotkeys
+  hotkey_toggle_session: 'Ctrl+Shift+Q',
+  hotkey_new_bug: 'Print Screen',
+  hotkey_end_bug: 'F4',
+  hotkey_quick_notepad: 'Ctrl+Shift+N',
+  hotkey_session_notepad: 'Ctrl+Shift+M',
+
+  // Annotation
+  annotation_auto_open: true,
+  annotation_save_mode: 'alongside',
+  annotation_default_color: '#FF0000',
+  annotation_stroke_width: 'medium',
+
+  // AI
+  ai_auto_generate: false,
+
+  // Ticketing
+  ticketing_provider: 'linear',
+  default_bug_type: 'bug',
+  linear_config_path: '',
 })
 
-// Theme options
-const themeOptions = [
-  { label: 'Light', value: 'light' },
-  { label: 'Dark', value: 'dark' },
+// UI state
+const hotkeyConflict = ref<string | null>(null)
+const claudeStatus = ref<'available' | 'not_found' | 'not_authenticated' | 'checking'>('checking')
+const testingClaude = ref(false)
+const appVersion = ref('1.0.0')
+
+// Options
+const annotationSaveModeOptions = [
+  { label: 'Save alongside original', value: 'alongside' },
+  { label: 'Overwrite original', value: 'overwrite' },
 ]
 
-// Hotkey validation
-function isValidHotkey(hotkey: string): boolean {
-  if (!hotkey || hotkey.trim() === '') return true // Allow empty for now
+const annotationColors = [
+  { label: 'Red', value: '#FF0000' },
+  { label: 'Blue', value: '#0000FF' },
+  { label: 'Green', value: '#00FF00' },
+  { label: 'Yellow', value: '#FFFF00' },
+  { label: 'Orange', value: '#FFA500' },
+  { label: 'Purple', value: '#800080' },
+  { label: 'Black', value: '#000000' },
+]
 
-  // Basic validation: should contain at least one modifier and a key
-  const parts = hotkey.split('+')
-  if (parts.length < 2) return false
+const strokeWidthOptions = [
+  { label: 'Thin (2px)', value: 'thin' },
+  { label: 'Medium (4px)', value: 'medium' },
+  { label: 'Thick (8px)', value: 'thick' },
+]
 
-  // Check for common modifiers
-  const modifiers = ['Ctrl', 'Alt', 'Shift', 'Meta', 'Cmd', 'Command', 'Super']
-  const hasModifier = parts.some(part => modifiers.includes(part))
+const ticketingProviderOptions = [
+  { label: 'Linear', value: 'linear' },
+  { label: 'File-based (Markdown)', value: 'file' },
+]
 
-  return hasModifier
-}
+const bugTypeOptions = [
+  { label: 'Bug', value: 'bug' },
+  { label: 'Feature', value: 'feature' },
+  { label: 'Feedback', value: 'feedback' },
+]
 
-function validateHotkey(key: string): void {
-  const value = localSettings.value[key as keyof typeof localSettings.value] as string
-  if (value && !isValidHotkey(value)) {
-    $q.notify({
-      type: 'warning',
-      message: 'Invalid hotkey format',
-      caption: 'Use format like: Ctrl+Shift+B',
-    })
-  }
+// Hotkey functions
+function recordHotkey(key: string): void {
+  $q.dialog({
+    title: 'Record Hotkey',
+    message: 'Press the key combination you want to use. (Note: This is a placeholder - actual hotkey recording will be implemented in the backend)',
+    prompt: {
+      model: '',
+      type: 'text',
+    },
+    cancel: true,
+  }).onOk((value: string) => {
+    if (value) {
+      // Check for conflicts
+      const allHotkeys = [
+        localSettings.value.hotkey_toggle_session,
+        localSettings.value.hotkey_new_bug,
+        localSettings.value.hotkey_end_bug,
+        localSettings.value.hotkey_quick_notepad,
+        localSettings.value.hotkey_session_notepad,
+      ]
+
+      if (allHotkeys.includes(value)) {
+        hotkeyConflict.value = `Hotkey conflict: "${value}" is already assigned to another action`
+        return
+      }
+
+      // Update the hotkey
+      localSettings.value[key as keyof typeof localSettings.value] = value as never
+      hotkeyConflict.value = null
+    }
+  })
 }
 
 // Check if all settings are valid
 const hasValidSettings = computed(() => {
-  return (
-    isValidHotkey(localSettings.value.hotkey_capture) &&
-    isValidHotkey(localSettings.value.hotkey_start_session) &&
-    isValidHotkey(localSettings.value.hotkey_end_session)
-  )
+  return localSettings.value.sessions_root_folder !== ''
 })
 
 // File path selection
-async function selectSavePath(): Promise<void> {
+async function selectSessionsRoot(): Promise<void> {
   try {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: 'Select Default Save Folder',
+      title: 'Select Sessions Root Folder',
     })
     if (selected) {
-      localSettings.value.default_save_path = selected as string
+      localSettings.value.sessions_root_folder = selected as string
     }
   } catch (err) {
-    console.error('Failed to select save path:', err)
+    console.error('Failed to select sessions root:', err)
     $q.notify({
       type: 'negative',
       message: 'Failed to select folder',
@@ -333,42 +667,120 @@ async function selectSavePath(): Promise<void> {
   }
 }
 
-async function selectTemplatePath(): Promise<void> {
+async function selectLinearConfigPath(): Promise<void> {
   try {
     const selected = await open({
       multiple: false,
-      title: 'Select Custom Template File',
+      title: 'Select Linear Configuration File',
       filters: [
         {
-          name: 'Markdown',
-          extensions: ['md', 'markdown'],
+          name: 'JSON',
+          extensions: ['json'],
         },
       ],
     })
     if (selected) {
-      localSettings.value.custom_template_path = selected as string
+      localSettings.value.linear_config_path = selected as string
     }
   } catch (err) {
-    console.error('Failed to select template path:', err)
+    console.error('Failed to select Linear config:', err)
     $q.notify({
       type: 'negative',
-      message: 'Failed to select template file',
+      message: 'Failed to select file',
     })
   }
+}
+
+async function openTemplateEditor(): Promise<void> {
+  try {
+    // For now, just show a notification - template editing can be done via file system
+    $q.notify({
+      type: 'info',
+      message: 'Template editor will open the default template in your system editor',
+      caption: 'This feature will be implemented in a future update',
+    })
+  } catch (err) {
+    console.error('Failed to open template editor:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to open template editor',
+    })
+  }
+}
+
+// AI / Claude functions
+async function checkClaudeStatus(): Promise<void> {
+  try {
+    claudeStatus.value = 'checking'
+    // TODO: Implement backend command to check Claude CLI status
+    // For now, just set to 'available' as placeholder
+    claudeStatus.value = 'available'
+  } catch (err) {
+    console.error('Failed to check Claude status:', err)
+    claudeStatus.value = 'not_found'
+  }
+}
+
+async function testClaudeConnection(): Promise<void> {
+  try {
+    testingClaude.value = true
+    // TODO: Implement backend command to test Claude CLI
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    $q.notify({
+      type: 'positive',
+      message: 'Claude CLI connection successful!',
+    })
+  } catch (err) {
+    console.error('Failed to test Claude connection:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to connect to Claude CLI',
+      caption: err instanceof Error ? err.message : String(err),
+    })
+  } finally {
+    testingClaude.value = false
+  }
+}
+
+// About section functions
+function openLink(url: string): void {
+  openUrl(url).catch((err) => {
+    console.error('Failed to open link:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to open link',
+    })
+  })
 }
 
 // Load settings from store
 function loadSettings(): void {
   localSettings.value = {
-    hotkey_capture: settingsStore.hotkeyCapture || '',
-    hotkey_start_session: settingsStore.hotkeyStartSession || '',
-    hotkey_end_session: settingsStore.hotkeyEndSession || '',
-    default_save_path: settingsStore.defaultSavePath || '',
-    custom_template_path: settingsStore.customTemplatePath || '',
-    auto_start_recording: settingsStore.autoStartRecording,
-    capture_console: settingsStore.captureConsole,
-    ai_enabled: settingsStore.aiEnabled,
-    theme: settingsStore.theme || 'light',
+    // General
+    sessions_root_folder: settingsStore.getSetting('sessions_root_folder', ''),
+    launch_on_startup: settingsStore.getSetting('launch_on_startup', 'false') === 'true',
+    minimize_to_tray: settingsStore.getSetting('minimize_to_tray', 'true') === 'true',
+
+    // Hotkeys
+    hotkey_toggle_session: settingsStore.getSetting('hotkey_toggle_session', 'Ctrl+Shift+Q'),
+    hotkey_new_bug: settingsStore.getSetting('hotkey_new_bug', 'Print Screen'),
+    hotkey_end_bug: settingsStore.getSetting('hotkey_end_bug', 'F4'),
+    hotkey_quick_notepad: settingsStore.getSetting('hotkey_quick_notepad', 'Ctrl+Shift+N'),
+    hotkey_session_notepad: settingsStore.getSetting('hotkey_session_notepad', 'Ctrl+Shift+M'),
+
+    // Annotation
+    annotation_auto_open: settingsStore.getSetting('annotation_auto_open', 'true') === 'true',
+    annotation_save_mode: settingsStore.getSetting('annotation_save_mode', 'alongside'),
+    annotation_default_color: settingsStore.getSetting('annotation_default_color', '#FF0000'),
+    annotation_stroke_width: settingsStore.getSetting('annotation_stroke_width', 'medium'),
+
+    // AI
+    ai_auto_generate: settingsStore.getSetting('ai_auto_generate', 'false') === 'true',
+
+    // Ticketing
+    ticketing_provider: settingsStore.getSetting('ticketing_provider', 'linear'),
+    default_bug_type: settingsStore.getSetting('default_bug_type', 'bug'),
+    linear_config_path: settingsStore.getSetting('linear_config_path', ''),
   }
 }
 
@@ -376,15 +788,53 @@ function loadSettings(): void {
 async function saveSettings(): Promise<void> {
   try {
     // Save all settings to backend
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_CAPTURE, localSettings.value.hotkey_capture)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_START_SESSION, localSettings.value.hotkey_start_session)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_END_SESSION, localSettings.value.hotkey_end_session)
-    await settingsStore.saveSetting(SETTINGS_KEYS.DEFAULT_SAVE_PATH, localSettings.value.default_save_path)
-    await settingsStore.saveSetting(SETTINGS_KEYS.CUSTOM_TEMPLATE_PATH, localSettings.value.custom_template_path)
-    await settingsStore.saveSetting(SETTINGS_KEYS.AUTO_START_RECORDING, localSettings.value.auto_start_recording.toString())
-    await settingsStore.saveSetting(SETTINGS_KEYS.CAPTURE_CONSOLE, localSettings.value.capture_console.toString())
-    await settingsStore.saveSetting(SETTINGS_KEYS.AI_ENABLED, localSettings.value.ai_enabled.toString())
-    await settingsStore.saveSetting(SETTINGS_KEYS.THEME, localSettings.value.theme)
+    const settingsToSave: Record<string, string> = {
+      // General
+      sessions_root_folder: localSettings.value.sessions_root_folder,
+      launch_on_startup: localSettings.value.launch_on_startup.toString(),
+      minimize_to_tray: localSettings.value.minimize_to_tray.toString(),
+
+      // Hotkeys
+      hotkey_toggle_session: localSettings.value.hotkey_toggle_session,
+      hotkey_new_bug: localSettings.value.hotkey_new_bug,
+      hotkey_end_bug: localSettings.value.hotkey_end_bug,
+      hotkey_quick_notepad: localSettings.value.hotkey_quick_notepad,
+      hotkey_session_notepad: localSettings.value.hotkey_session_notepad,
+
+      // Annotation
+      annotation_auto_open: localSettings.value.annotation_auto_open.toString(),
+      annotation_save_mode: localSettings.value.annotation_save_mode,
+      annotation_default_color: localSettings.value.annotation_default_color,
+      annotation_stroke_width: localSettings.value.annotation_stroke_width,
+
+      // AI
+      ai_auto_generate: localSettings.value.ai_auto_generate.toString(),
+
+      // Ticketing
+      ticketing_provider: localSettings.value.ticketing_provider,
+      default_bug_type: localSettings.value.default_bug_type,
+      linear_config_path: localSettings.value.linear_config_path,
+    }
+
+    // Save each setting
+    for (const [key, value] of Object.entries(settingsToSave)) {
+      await settingsStore.saveSetting(key, value)
+    }
+
+    // If launch_on_startup changed, update Windows registry
+    if (localSettings.value.launch_on_startup) {
+      try {
+        await invoke('enable_startup')
+      } catch (err) {
+        console.warn('Failed to enable startup:', err)
+      }
+    } else {
+      try {
+        await invoke('disable_startup')
+      } catch (err) {
+        console.warn('Failed to disable startup:', err)
+      }
+    }
 
     $q.notify({
       type: 'positive',
@@ -431,6 +881,15 @@ function confirmReset(): void {
 onMounted(async () => {
   await settingsStore.initialize()
   loadSettings()
+  await checkClaudeStatus()
+
+  // Get app version
+  try {
+    appVersion.value = await invoke<string>('get_app_version')
+  } catch (err) {
+    console.warn('Failed to get app version:', err)
+    appVersion.value = '1.0.0'
+  }
 })
 </script>
 

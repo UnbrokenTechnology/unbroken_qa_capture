@@ -33,6 +33,23 @@ pub use capture::{CaptureBridge, CaptureEvent, WatcherHandle};
 pub use registry::RegistryBridge;
 pub use error::{PlatformError, Result};
 
+/// Platform trait for OS-specific operations
+pub trait Platform {
+    /// Enable application startup on system boot
+    fn enable_startup(&self) -> Result<()>;
+
+    /// Disable application startup on system boot
+    fn disable_startup(&self) -> Result<()>;
+}
+
+/// Windows platform implementation
+#[cfg(target_os = "windows")]
+pub use windows::WindowsPlatform;
+
+/// macOS platform implementation (stub)
+#[cfg(target_os = "macos")]
+pub use macos::MacPlatform;
+
 /// Returns the platform-specific `CaptureBridge` implementation for the current OS.
 ///
 /// # Platform Selection

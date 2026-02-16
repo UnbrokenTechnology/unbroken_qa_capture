@@ -258,3 +258,22 @@ mod tests {
         // Just verify they can be constructed
     }
 }
+
+/// macOS platform stub implementation
+pub struct MacPlatform;
+
+impl super::Platform for MacPlatform {
+    fn enable_startup(&self) -> Result<()> {
+        Err(PlatformError::NotImplemented {
+            operation: "enable_startup".to_string(),
+            platform: "macOS".to_string(),
+        })
+    }
+
+    fn disable_startup(&self) -> Result<()> {
+        Err(PlatformError::NotImplemented {
+            operation: "disable_startup".to_string(),
+            platform: "macOS".to_string(),
+        })
+    }
+}
