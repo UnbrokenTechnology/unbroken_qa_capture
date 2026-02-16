@@ -236,9 +236,15 @@ onMounted(() => {
   if (props.modelValue) {
     initializeCanvas()
   }
+
+  // Set up keyboard shortcuts
+  window.addEventListener('keydown', handleKeyDown)
 })
 
 onBeforeUnmount(() => {
+  // Clean up keyboard shortcuts
+  window.removeEventListener('keydown', handleKeyDown)
+
   if (canvas.value) {
     canvas.value.dispose()
   }
@@ -543,6 +549,74 @@ async function saveAnnotatedScreenshot() {
     console.error('Failed to save annotated screenshot:', error)
   } finally {
     saving.value = false
+  }
+}
+
+function handleKeyDown(event: KeyboardEvent) {
+  // Don't trigger shortcuts when editing text
+  const target = event.target as HTMLElement
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+    return
+  }
+
+  // Don't trigger shortcuts when dialog is closed
+  if (!isOpen.value) {
+    return
+  }
+
+  // Check if we're editing text in Fabric canvas
+  const activeObject = canvas.value?.getActiveObject()
+  if (activeObject && activeObject instanceof IText && (activeObject as any).isEditing) {
+    return
+  }
+
+  // Tool shortcuts
+  if (event.key === 't' || event.key === 'T') {
+    event.preventDefault()
+    setTool('text')
+  } else if (event.key === 'r' || event.key === 'R') {
+    event.preventDefault()
+    setTool('rectangle')
+  } else if (event.key === 'o' || event.key === 'O') {
+    event.preventDefault()
+    setTool('circle')
+  } else if (event.key === 'd' || event.key === 'D') {
+    event.preventDefault()
+    setTool('freehand')
+  }
+  // Undo/Redo shortcuts
+  else if (event.ctrlKey && event.shiftKey && event.key === 'Z') {
+    event.preventDefault()
+    redo()
+  } else if (event.ctrlKey && event.key === 'z') {
+    event.preventDefault()
+    undo()
+  }
+  // Save shortcut
+  else if (event.ctrlKey && event.key === 's') {
+    event.preventDefault()
+    saveAnnotatedScreenshot()
+  }
+  // Cancel shortcut
+  else if (event.key === 'Escape') {
+    event.preventDefault()
+    close()
+  }
+  // Delete selected object
+  else if (event.key === 'Delete' || event.key === 'Backspace') {
+    event.preventDefault()
+    deleteSelectedObject()
+  }
+}
+
+function deleteSelectedObject() {
+  if (!canvas.value) return
+
+  const activeObject = canvas.value.getActiveObject()
+  if (activeObject) {
+    canvas.value.remove(activeObject)
+    canvas.value.renderAll()
+    saveHistory()
   }
 }
 
