@@ -1,4 +1,5 @@
 mod template;
+pub mod platform;
 
 use std::sync::Mutex;
 use template::TemplateManager;
