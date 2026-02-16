@@ -241,13 +241,93 @@
                 </div>
               </div>
 
-              <!-- Description -->
+              <!-- AI Description Generation -->
+              <div class="q-mb-md">
+                <div class="row items-center justify-between q-mb-xs">
+                  <div class="text-caption text-grey-7">
+                    AI-Generated Description
+                  </div>
+                  <div class="row q-gutter-sm">
+                    <q-btn
+                      v-if="!aiDescription && !isGenerating"
+                      size="sm"
+                      color="primary"
+                      icon="psychology"
+                      label="Generate Description"
+                      :disable="!claudeAvailable"
+                      @click="generateDescription"
+                    />
+                    <q-btn
+                      v-if="aiDescription && !isGenerating"
+                      size="sm"
+                      color="secondary"
+                      icon="auto_fix_high"
+                      label="Refine"
+                      :disable="!claudeAvailable"
+                      @click="showRefineDialog = true"
+                    />
+                    <q-btn
+                      v-if="aiDescription && !isGenerating"
+                      size="sm"
+                      color="positive"
+                      icon="save"
+                      label="Save"
+                      @click="saveDescription"
+                    />
+                  </div>
+                </div>
+
+                <!-- Loading State -->
+                <div
+                  v-if="isGenerating"
+                  class="q-pa-md text-center"
+                >
+                  <q-spinner
+                    color="primary"
+                    size="3em"
+                  />
+                  <div class="text-caption text-grey-7 q-mt-md">
+                    Generating description with Claude...
+                  </div>
+                </div>
+
+                <!-- Generated Description Editor -->
+                <q-input
+                  v-if="aiDescription && !isGenerating"
+                  v-model="aiDescription"
+                  type="textarea"
+                  outlined
+                  autogrow
+                  :min-rows="6"
+                  placeholder="AI-generated description will appear here..."
+                  class="description-editor"
+                />
+
+                <!-- Claude Not Available Warning -->
+                <div
+                  v-if="!claudeAvailable && !isGenerating && !aiDescription"
+                  class="q-pa-md bg-warning text-white rounded"
+                >
+                  <div class="row items-center">
+                    <q-icon
+                      name="warning"
+                      size="sm"
+                      class="q-mr-sm"
+                    />
+                    <div>
+                      Claude CLI not available. {{ claudeStatusMessage }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Existing Description (if any) -->
               <div
                 v-if="selectedBug.description"
                 class="q-mb-md"
               >
                 <div class="text-caption text-grey-7 q-mb-xs">
-                  Description
+                  Saved Description
                 </div>
                 <div class="text-body2 whitespace-pre-wrap">
                   {{ selectedBug.description }}
@@ -298,6 +378,44 @@
         </div>
       </div>
     </div>
+
+    <!-- Refine Description Dialog -->
+    <q-dialog v-model="showRefineDialog">
+      <q-card style="min-width: 500px">
+        <q-card-section>
+          <div class="text-h6">
+            Refine Description
+          </div>
+        </q-card-section>
+
+        <q-card-section>
+          <q-input
+            v-model="refinementInstructions"
+            type="textarea"
+            outlined
+            autogrow
+            :min-rows="3"
+            label="How would you like to refine the description?"
+            placeholder="e.g., 'make steps more specific' or 'add technical details'"
+          />
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn
+            flat
+            label="Cancel"
+            color="grey"
+            @click="showRefineDialog = false"
+          />
+          <q-btn
+            label="Refine"
+            color="primary"
+            :disable="!refinementInstructions.trim()"
+            @click="refineDescription"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
 
     <!-- Full-size Screenshot Dialog -->
     <q-dialog
@@ -373,6 +491,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useQuasar } from 'quasar'
 import { useBugStore } from '@/stores/bug'
 import { useSessionStore } from '@/stores/session'
 import type { BugType, BugStatus, Capture } from '@/types/backend'
@@ -381,12 +500,21 @@ import * as tauri from '@/api/tauri'
 const router = useRouter()
 const bugStore = useBugStore()
 const sessionStore = useSessionStore()
+const $q = useQuasar()
 
 // State
 const selectedBugId = ref<string | null>(null)
 const bugCaptures = ref<Record<string, Capture[]>>({})
 const showScreenshotDialog = ref(false)
 const currentScreenshotIndex = ref(0)
+
+// AI Description Generation State
+const aiDescription = ref<string>('')
+const isGenerating = ref(false)
+const claudeAvailable = ref(false)
+const claudeStatusMessage = ref('')
+const showRefineDialog = ref(false)
+const refinementInstructions = ref('')
 
 // Computed
 const bugs = computed(() => bugStore.backendBugs)
@@ -466,8 +594,127 @@ function formatDate(dateStr: string): string {
   return date.toLocaleString()
 }
 
+// AI Description Generation Methods
+async function checkClaudeStatus() {
+  try {
+    const status = await tauri.getClaudeStatus()
+    if ('Ready' in status && status.Ready) {
+      claudeAvailable.value = true
+      claudeStatusMessage.value = `Claude CLI v${status.Ready.version} is ready`
+    } else if ('NotAuthenticated' in status && status.NotAuthenticated) {
+      claudeAvailable.value = false
+      claudeStatusMessage.value = status.NotAuthenticated.message
+    } else if ('NotInstalled' in status && status.NotInstalled) {
+      claudeAvailable.value = false
+      claudeStatusMessage.value = status.NotInstalled.message
+    }
+  } catch (err) {
+    console.error('Failed to check Claude status:', err)
+    claudeAvailable.value = false
+    claudeStatusMessage.value = 'Failed to check Claude CLI status'
+  }
+}
+
+async function generateDescription() {
+  if (!selectedBug.value) return
+
+  try {
+    isGenerating.value = true
+
+    // Gather screenshot paths for the bug
+    const screenshotPaths = selectedBugCaptures.value.map(c => c.file_path)
+
+    // Build bug context
+    const bugContext: tauri.BugContext = {
+      bug_id: selectedBug.value.id,
+      bug_type: selectedBug.value.type,
+      notes: selectedBug.value.notes || undefined,
+      screenshot_paths: screenshotPaths,
+      metadata: {
+        display_id: selectedBug.value.display_id,
+        status: selectedBug.value.status,
+      }
+    }
+
+    // Call Claude CLI
+    const response = await tauri.generateBugDescription(bugContext)
+    aiDescription.value = response.text
+
+    $q.notify({
+      type: 'positive',
+      message: 'Description generated successfully',
+      position: 'top'
+    })
+  } catch (err) {
+    console.error('Failed to generate description:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to generate description: ${err}`,
+      position: 'top'
+    })
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+async function refineDescription() {
+  if (!selectedBug.value || !aiDescription.value) return
+
+  try {
+    showRefineDialog.value = false
+    isGenerating.value = true
+
+    const response = await tauri.refineBugDescription(
+      aiDescription.value,
+      refinementInstructions.value,
+      selectedBug.value.id
+    )
+    aiDescription.value = response.text
+    refinementInstructions.value = ''
+
+    $q.notify({
+      type: 'positive',
+      message: 'Description refined successfully',
+      position: 'top'
+    })
+  } catch (err) {
+    console.error('Failed to refine description:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to refine description: ${err}`,
+      position: 'top'
+    })
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+async function saveDescription() {
+  if (!selectedBug.value || !aiDescription.value) return
+
+  try {
+    await tauri.saveBugDescription(selectedBug.value.folder_path, aiDescription.value)
+
+    $q.notify({
+      type: 'positive',
+      message: 'Description saved to description.md',
+      position: 'top'
+    })
+  } catch (err) {
+    console.error('Failed to save description:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to save description: ${err}`,
+      position: 'top'
+    })
+  }
+}
+
 // Lifecycle
 onMounted(async () => {
+  // Check Claude CLI status
+  await checkClaudeStatus()
+
   // Load bugs for the active session
   if (sessionStore.activeSession) {
     await bugStore.loadBugsBySession(sessionStore.activeSession.id)
@@ -540,5 +787,14 @@ onMounted(async () => {
 
 .whitespace-pre-wrap {
   white-space: pre-wrap;
+}
+
+.description-editor {
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.rounded {
+  border-radius: 4px;
 }
 </style>
