@@ -13,7 +13,7 @@ mod hotkey_tests;
 use std::sync::{Arc, Mutex};
 use template::TemplateManager;
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItemBuilder};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, Emitter, AppHandle};
 use session_manager::{SessionManager, EventEmitter, RealFileSystem};
@@ -1199,11 +1199,26 @@ pub fn run() {
 
             // Build tray menu
             let menu = Menu::new(app)?;
-            let toggle_item = MenuItem::new(app, "Start Session", true, None::<&str>)?;
-            let capture_item = MenuItem::new(app, "New Bug Capture", true, None::<&str>)?;
-            let show_item = MenuItem::new(app, "Open Main Window", true, None::<&str>)?;
-            let settings_item = MenuItem::new(app, "Settings", true, None::<&str>)?;
-            let quit_item = MenuItem::new(app, "Quit", true, None::<&str>)?;
+            let toggle_item = MenuItemBuilder::new("Start Session")
+                .id("start-session")
+                .enabled(true)
+                .build(app)?;
+            let capture_item = MenuItemBuilder::new("New Bug Capture")
+                .id("new-bug-capture")
+                .enabled(true)
+                .build(app)?;
+            let show_item = MenuItemBuilder::new("Open Main Window")
+                .id("open-main-window")
+                .enabled(true)
+                .build(app)?;
+            let settings_item = MenuItemBuilder::new("Settings")
+                .id("settings")
+                .enabled(true)
+                .build(app)?;
+            let quit_item = MenuItemBuilder::new("Quit")
+                .id("quit")
+                .enabled(true)
+                .build(app)?;
 
             menu.append(&toggle_item)?;
             menu.append(&capture_item)?;
@@ -1218,22 +1233,22 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app_handle, event| {
                     match event.id().as_ref() {
-                        "Start Session" => {
+                        "start-session" => {
                             app_handle.emit("tray-menu-start-session", ()).ok();
                         }
-                        "New Bug Capture" => {
+                        "new-bug-capture" => {
                             app_handle.emit("tray-menu-new-bug", ()).ok();
                         }
-                        "Open Main Window" => {
+                        "open-main-window" => {
                             if let Some(window) = app_handle.get_webview_window("main") {
                                 window.show().ok();
                                 window.set_focus().ok();
                             }
                         }
-                        "Settings" => {
+                        "settings" => {
                             app_handle.emit("tray-menu-settings", ()).ok();
                         }
-                        "Quit" => {
+                        "quit" => {
                             app_handle.exit(0);
                         }
                         _ => {}
