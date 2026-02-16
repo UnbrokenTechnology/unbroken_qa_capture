@@ -148,6 +148,18 @@ export async function updateBugNotes(
   await invoke('update_bug_notes', { bugId, folderPath, notes })
 }
 
+export async function getSessionNotes(sessionId: string, folderPath: string): Promise<string> {
+  return await invoke<string>('get_session_notes', { sessionId, folderPath })
+}
+
+export async function updateSessionNotes(
+  sessionId: string,
+  folderPath: string,
+  notes: string
+): Promise<void> {
+  await invoke('update_session_notes', { sessionId, folderPath, notes })
+}
+
 // Settings operations
 export async function getSetting(key: string): Promise<string | null> {
   // TODO: Implement when backend command is available

@@ -225,6 +225,44 @@ async fn update_bug_notes(
     Ok(())
 }
 
+#[tauri::command]
+async fn get_session_notes(_session_id: String, folder_path: String) -> Result<String, String> {
+    use std::path::Path;
+
+    // Try to read from session-notes.md file
+    let notes_file = Path::new(&folder_path).join("session-notes.md");
+    if notes_file.exists() {
+        std::fs::read_to_string(&notes_file)
+            .map_err(|e| format!("Failed to read session-notes.md: {}", e))
+    } else {
+        // Return empty string if file doesn't exist yet
+        Ok(String::new())
+    }
+}
+
+#[tauri::command]
+async fn update_session_notes(
+    _session_id: String,
+    folder_path: String,
+    notes: String,
+) -> Result<(), String> {
+    use std::path::Path;
+
+    // Ensure the folder exists
+    let session_folder = Path::new(&folder_path);
+    if !session_folder.exists() {
+        std::fs::create_dir_all(session_folder)
+            .map_err(|e| format!("Failed to create session folder: {}", e))?;
+    }
+
+    // Write notes to session-notes.md file
+    let notes_file = session_folder.join("session-notes.md");
+    std::fs::write(&notes_file, notes)
+        .map_err(|e| format!("Failed to write session-notes.md: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -297,7 +335,9 @@ pub fn run() {
             update_tray_icon,
             update_tray_tooltip,
             get_bug_notes,
-            update_bug_notes
+            update_bug_notes,
+            get_session_notes,
+            update_session_notes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
