@@ -15,7 +15,14 @@
           @click="goBack"
           class="q-mr-md"
         />
-        <div class="text-h4">{{ bug.title }}</div>
+        <div class="text-h4 flex-1">{{ bug.title }}</div>
+        <q-btn
+          color="primary"
+          icon="content_copy"
+          label="Copy to Clipboard"
+          @click="copyToClipboard"
+          :loading="copying"
+        />
       </div>
 
       <!-- Bug Metadata Card -->
@@ -167,12 +174,16 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBugStore } from '@/stores/bug'
+import { invoke } from '@tauri-apps/api/core'
+import { useQuasar } from 'quasar'
 
 const route = useRoute()
 const router = useRouter()
 const bugStore = useBugStore()
+const $q = useQuasar()
 
 const currentSlide = ref(0)
+const copying = ref(false)
 
 // Get bug ID from route params
 const bugId = computed(() => route.params.id as string)
@@ -183,6 +194,34 @@ const bug = computed(() => bugStore.getBugById(bugId.value))
 // Navigate back to bug list
 function goBack() {
   router.back()
+}
+
+// Copy bug to clipboard
+async function copyToClipboard() {
+  if (!bug.value) return
+
+  copying.value = true
+  try {
+    await invoke('copy_bug_to_clipboard', {
+      folderPath: bug.value.folder_path
+    })
+
+    $q.notify({
+      type: 'positive',
+      message: 'Bug report copied to clipboard',
+      position: 'top',
+      timeout: 2000
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: `Failed to copy bug report: ${error}`,
+      position: 'top',
+      timeout: 3000
+    })
+  } finally {
+    copying.value = false
+  }
 }
 
 // Load bug data on mount if needed
@@ -206,5 +245,9 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+.flex-1 {
+  flex: 1;
 }
 </style>

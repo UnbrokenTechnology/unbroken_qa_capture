@@ -1,10 +1,29 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import { Quasar } from 'quasar'
+import { Quasar, Notify } from 'quasar'
 import BugDetail from '@/views/BugDetail.vue'
 import { useBugStore, type Bug } from '@/stores/bug'
+
+// Mock Tauri invoke
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn()
+}))
+
+// Create a mock notify function
+const mockNotify = vi.fn()
+
+// Mock useQuasar
+vi.mock('quasar', async () => {
+  const actual = await vi.importActual('quasar')
+  return {
+    ...actual,
+    useQuasar: () => ({
+      notify: mockNotify
+    })
+  }
+})
 
 const createMockBug = (id: string): Bug => ({
   id,
@@ -41,6 +60,9 @@ describe('BugDetail', () => {
     pinia = createPinia()
     setActivePinia(pinia)
 
+    // Clear mock notify between tests
+    mockNotify.mockClear()
+
     router = createRouter({
       history: createMemoryHistory(),
       routes: [
@@ -59,12 +81,16 @@ describe('BugDetail', () => {
 
     return mount(BugDetail, {
       global: {
-        plugins: [pinia, router, Quasar],
+        plugins: [
+          pinia,
+          router,
+          [Quasar, { plugins: { Notify } }]
+        ],
         stubs: {
           QPage: { template: '<div><slot /></div>' },
           QCard: { template: '<div><slot /></div>' },
           QCardSection: { template: '<div><slot /></div>' },
-          QBtn: { template: '<button @click="$attrs.onClick"><slot /></button>' },
+          QBtn: { template: '<button @click="$attrs.onClick">{{ $attrs.label }}<slot /></button>' },
           QCarousel: { template: '<div><slot /></div>' },
           QCarouselSlide: { template: '<div><slot /></div>' },
           QImg: { template: '<img />' },
@@ -189,5 +215,78 @@ describe('BugDetail', () => {
 
     expect(wrapper.text()).not.toContain('Meeting ID')
     expect(wrapper.text()).not.toContain('Software Version')
+  })
+
+  it('should display copy to clipboard button', async () => {
+    const store = useBugStore()
+    const bug = createMockBug('1')
+    store.addBug(bug)
+
+    const wrapper = await mountComponent('1')
+
+    expect(wrapper.text()).toContain('Copy to Clipboard')
+  })
+
+  it('should call copy_bug_to_clipboard command with correct folder path', async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const store = useBugStore()
+    const bug = createMockBug('1')
+    store.addBug(bug)
+
+    const wrapper = await mountComponent('1')
+    const buttons = wrapper.findAll('button')
+    const copyButton = buttons.at(1)! // Second button is the copy button
+
+    await copyButton.trigger('click')
+
+    expect(invoke).toHaveBeenCalledWith('copy_bug_to_clipboard', {
+      folderPath: '/test/path'
+    })
+  })
+
+  it('should show success notification when copy succeeds', async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    vi.mocked(invoke).mockResolvedValueOnce(undefined)
+
+    const store = useBugStore()
+    const bug = createMockBug('1')
+    store.addBug(bug)
+
+    const wrapper = await mountComponent('1')
+    const buttons = wrapper.findAll('button')
+    const copyButton = buttons.at(1)!
+
+    await copyButton.trigger('click')
+    await flushPromises()
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: 'positive',
+      message: 'Bug report copied to clipboard',
+      position: 'top',
+      timeout: 2000
+    })
+  })
+
+  it('should show error notification when copy fails', async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    vi.mocked(invoke).mockRejectedValueOnce('Failed to read bug data')
+
+    const store = useBugStore()
+    const bug = createMockBug('1')
+    store.addBug(bug)
+
+    const wrapper = await mountComponent('1')
+    const buttons = wrapper.findAll('button')
+    const copyButton = buttons.at(1)!
+
+    await copyButton.trigger('click')
+    await flushPromises()
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: 'negative',
+      message: 'Failed to copy bug report: Failed to read bug data',
+      position: 'top',
+      timeout: 3000
+    })
   })
 })
