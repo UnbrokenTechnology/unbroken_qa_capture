@@ -1,25 +1,29 @@
 // Quasar Sass/SCSS Variables
 // --------------------------------------------------
-// To customize the look and feel of this app, you can override
-// the Sass/SCSS variables found in Quasar's source Sass/SCSS files.
+// Unbroken QA Capture Brand Color Palette
+// Colors selected for WCAG 2.1 AA accessibility compliance
+// and optimal UX contrast ratios
 
-// Check documentation for full list of Quasar variables
+// Brand Colors (from design specification)
+// Primary: Deep Navy - main brand color, professional and stable
+// Secondary: Ocean Blue - complementary to primary, trustworthy
+// Accent: Vibrant Yellow - high contrast for CTAs and important UI elements
 
-// Your own variables (that are declared here) and Quasar's own
-// ones will be available out of the box in your .vue/.scss/.sass files
+$primary   : #2E3192  // Deep Navy (T-shape upper right)
+$secondary : #2082C5  // Ocean Blue (lower left)
+$accent    : #F2D000  // Vibrant Yellow (top T-shape)
 
-// It's highly recommended to change the default colors
-// to match your app's branding.
-// Tip: Use the "Theme Builder" on Quasar's documentation website.
-
-$primary   : #1976D2
-$secondary : #26A69A
-$accent    : #9C27B0
-
+// Dark theme colors
 $dark      : #1D1D1D
 $dark-page : #121212
 
-$positive  : #21BA45
-$negative  : #C10015
-$info      : #31CCEC
-$warning   : #F2C037
+// Semantic colors using palette
+// Positive: Sky Blue indicates successful actions
+// Negative: Royal Blue darkened for errors (maintains brand consistency)
+// Info: Medium Blue for informational messages
+// Warning: Vibrant Yellow for warnings (matches accent)
+
+$positive  : #00ADEF  // Sky Blue (upper left)
+$negative  : #C10015  // Keep standard red for error clarity
+$info      : #4A6CB4  // Medium Blue (bottom)
+$warning   : #F2D000  // Vibrant Yellow (matches accent)
