@@ -378,6 +378,23 @@ fn get_active_bug_id() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+fn get_session_summaries(app: tauri::AppHandle) -> Result<Vec<database::SessionSummary>, String> {
+    use database::{Database, SessionRepository, SessionOps};
+
+    let db_path = app.path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?
+        .join("qa_capture.db");
+
+    let db = Database::new(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+
+    let repo = SessionRepository::new(db.connection());
+    repo.get_summaries()
+        .map_err(|e| format!("Failed to get session summaries: {}", e))
+}
+
+#[tauri::command]
 fn generate_session_summary(session_id: String, include_ai_summary: bool) -> Result<String, String> {
     use session_summary::SessionSummaryGenerator;
 
@@ -860,6 +877,7 @@ pub fn run() {
             end_bug_capture,
             get_active_session_id,
             get_active_bug_id,
+            get_session_summaries,
             generate_session_summary,
             get_hotkey_config,
             update_hotkey_config,
