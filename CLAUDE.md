@@ -3,6 +3,12 @@
 This file guides autonomous AI agents working on this project.
 Read PROJECT.md for business context and product vision.
 
+## Repository
+
+- **GitHub:** https://github.com/UnbrokenTechnology/unbroken_qa_capture
+- **Organization:** Unbroken Technology (`UnbrokenTechnology`)
+- **Remotes:** `origin` (GitHub), `swarm` (local agent orchestration)
+
 ## Workflow
 
 ### Sub-Agents
