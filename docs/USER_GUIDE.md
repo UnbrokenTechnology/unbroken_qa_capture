@@ -241,3 +241,221 @@ Once you've completed the wizard, here's how to capture your first bug:
 - **Settings Reference:** Customize Unbroken QA Capture to match your workflow
 
 For detailed guidance on each topic, see the corresponding sections in this User Guide.
+
+---
+
+## Keyboard Shortcuts Reference
+
+Unbroken QA Capture uses global hotkeys to keep the tool accessible without interrupting your testing workflow. This section provides a complete reference of all keyboard shortcuts available in the application.
+
+### Global Hotkeys
+
+These hotkeys work system-wide, even when the application is not in focus. They allow you to control QA sessions and bug captures while actively using the application under test.
+
+| Hotkey | Action | Available In | Description |
+|--------|--------|--------------|-------------|
+| **Ctrl+Shift+Q** | Start / End Session | All states | Toggle a QA session on/off. Press once to start a session, press again to end it and enter Review Mode. |
+| **Print Screen** | Start Bug Capture + Screenshot | Active Session, Bug Capture | Starts a new bug capture (Bug-01, Bug-02, etc.) and triggers the Windows Snipping Tool for screenshot capture. If already in bug capture mode, adds another screenshot to the current bug. |
+| **F4** | End Bug Capture | Bug Capture Mode | Ends the current bug capture and returns to Active Session mode. All screenshots, notes, and metadata are saved to the bug's folder. |
+| **Ctrl+Shift+N** | Toggle Quick Notepad | Bug Capture Mode | Opens or closes the quick notepad for the current bug. Use this to paste meeting URLs, jot context notes, or add any text information related to the bug. The notepad content is saved with the bug. |
+| **Ctrl+Shift+M** | Toggle Session Notepad | Active Session, Bug Capture | Opens or closes the session notepad. Use this for session-wide notes that aren't specific to a single bug (e.g., test environment details, general observations). |
+
+**Notes:**
+- All global hotkeys can be customized in Settings → Hotkeys
+- If a hotkey conflicts with another application, you'll receive a notification and can choose an alternative in Settings
+- Global hotkeys respond within 100ms of the keypress
+- The application must be running (system tray icon visible) for global hotkeys to work
+
+---
+
+### Annotation Window Hotkeys
+
+These keyboard shortcuts are available when the annotation window is open. They provide quick access to annotation tools and actions without needing to click toolbar buttons.
+
+#### Tool Selection
+
+| Hotkey | Tool | Description |
+|--------|------|-------------|
+| **T** | Text Tool | Add text labels and annotations to screenshots. Click to place text, then type your annotation. |
+| **R** | Rectangle Tool | Draw rectangular outlines around UI elements. Click and drag to create a rectangle. |
+| **O** | Oval Tool | Draw oval/circular outlines around UI elements. Click and drag to create an oval. |
+| **D** | Freehand Draw Tool | Draw freehand lines and arrows. Click and drag to draw freely. |
+
+**Tips:**
+- Press the tool hotkey again to deselect the current tool and return to selection mode
+- Tool hotkeys are single letters (no modifier keys) for fastest access during annotation work
+- The active tool is highlighted in the toolbar
+
+#### Editing Actions
+
+| Hotkey | Action | Description |
+|--------|--------|-------------|
+| **Ctrl+Z** | Undo | Undo the last annotation action. Supports multiple levels of undo. |
+| **Ctrl+Shift+Z** | Redo | Redo a previously undone action. |
+| **Delete** or **Backspace** | Delete Selected | Delete the currently selected annotation object. |
+
+#### File Operations
+
+| Hotkey | Action | Description |
+|--------|--------|-------------|
+| **Ctrl+S** | Save and Close | Save all annotations to the screenshot and close the annotation window. The annotated image is saved to the current bug's folder. |
+| **Escape** | Cancel and Close | Close the annotation window without saving changes. You'll be prompted to confirm if you have unsaved annotations. |
+
+**Notes:**
+- Annotation window hotkeys only work when the annotation window has focus
+- Changes are auto-saved to a temporary file as you work (recovery available if the window crashes)
+- The annotation window is modal and always-on-top to prevent losing it while working
+
+---
+
+### Application States and Hotkey Availability
+
+Understanding when hotkeys are available helps you work efficiently. The application has four main states:
+
+1. **Idle (Not in Session)**
+   - Available hotkeys: `Ctrl+Shift+Q` (to start a session)
+   - All other hotkeys are disabled
+
+2. **Active Session**
+   - Available hotkeys: `Ctrl+Shift+Q` (to end session), `Print Screen` (to start bug capture), `Ctrl+Shift+M` (for session notepad)
+   - The tray icon shows green to indicate an active session
+
+3. **Bug Capture Mode**
+   - Available hotkeys: All global hotkeys work in this state
+   - `Print Screen` adds more screenshots to the current bug
+   - `F4` ends the current bug capture
+   - `Ctrl+Shift+N` opens the quick notepad for this bug
+   - `Ctrl+Shift+M` opens the session notepad
+   - The tray icon shows red to indicate bug capture mode
+
+4. **Review Mode**
+   - Available hotkeys: Standard UI navigation (Tab, Enter, Escape)
+   - Global hotkeys are disabled during review
+   - Review mode is entered automatically when you end a session
+
+---
+
+### Customizing Hotkeys
+
+All global hotkeys can be customized to match your preferences and avoid conflicts with other applications.
+
+**To customize a hotkey:**
+
+1. Open the Settings panel (right-click the tray icon → Settings, or use the main window menu)
+2. Navigate to **Settings → Hotkeys**
+3. Click on the hotkey you want to change
+4. Press your desired key combination
+5. The application will check for conflicts:
+   - **Green checkmark:** The hotkey is available
+   - **Warning icon:** Another application has registered this hotkey (you can choose to override or select a different combination)
+6. Click **Save** to apply changes
+
+**Best practices for custom hotkeys:**
+- Avoid combinations used by applications you frequently test (e.g., VS Code's `Ctrl+Shift+P`, Chrome's `Ctrl+Shift+T`)
+- Keep `Print Screen` as the bug capture trigger if possible — it's intuitive for QA testers
+- Choose `F`-keys (`F4`, `F5`, `F6`) for actions that need quick access, as they're rarely used by applications
+- Use `Ctrl+Shift+` combinations for session controls to avoid conflicts with standard `Ctrl+` shortcuts
+
+**Hotkey conflicts:**
+- If you see a warning about a conflict, the other application has priority
+- You can override the conflict, but the other application's hotkey will stop working
+- The Settings panel shows which application registered the conflicting hotkey (when Windows provides this information)
+
+---
+
+### Quick Reference Card
+
+Print or save this quick reference for easy access during testing sessions:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│          UNBROKEN QA CAPTURE — HOTKEY REFERENCE             │
+├─────────────────────────────────────────────────────────────┤
+│ SESSION CONTROL                                             │
+│   Ctrl+Shift+Q .......... Start / End Session               │
+│                                                              │
+│ BUG CAPTURE                                                 │
+│   Print Screen .......... Start Bug + Screenshot            │
+│   F4 .................... End Bug Capture                   │
+│                                                              │
+│ NOTEPADS                                                    │
+│   Ctrl+Shift+N .......... Quick Notepad (current bug)       │
+│   Ctrl+Shift+M .......... Session Notepad (all bugs)        │
+│                                                              │
+│ ANNOTATION TOOLS                                            │
+│   T ..................... Text Tool                         │
+│   R ..................... Rectangle Tool                    │
+│   O ..................... Oval Tool                         │
+│   D ..................... Freehand Draw Tool                │
+│                                                              │
+│ ANNOTATION ACTIONS                                          │
+│   Ctrl+Z ................ Undo                              │
+│   Ctrl+Shift+Z .......... Redo                              │
+│   Delete / Backspace .... Delete Selected                  │
+│   Ctrl+S ................ Save and Close                    │
+│   Escape ................ Cancel and Close                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Troubleshooting Hotkeys
+
+**Problem: Hotkeys aren't working**
+
+- **Check 1:** Is the application running? Look for the Unbroken QA Capture icon in your system tray (notification area). If it's not there, launch the application from the Start menu.
+
+- **Check 2:** Is another application using the same hotkey? Right-click the tray icon → Settings → Hotkeys. If you see a conflict warning, choose a different hotkey or close the conflicting application.
+
+- **Check 3:** Are you in the correct state? Some hotkeys only work in specific states. For example, `F4` only works during bug capture mode, and `Print Screen` only works during an active session.
+
+- **Check 4:** Windows hotkey registration limits. Windows has a limit on the number of global hotkeys that can be registered system-wide. If you're running many applications with global hotkeys, some may fail to register. Try closing other applications or restarting Windows.
+
+**Problem: Print Screen opens Windows Snipping Tool but doesn't start a bug capture**
+
+- This means the global hotkey registration failed. Check the application logs (Settings → Advanced → View Logs) for errors like "Failed to register hotkey: Print Screen already in use".
+
+- Try customizing the bug capture hotkey to a different combination (Settings → Hotkeys → Bug Capture Trigger).
+
+**Problem: Annotation window hotkeys don't work**
+
+- Make sure the annotation window has focus (click on it if another window is on top).
+
+- If a specific hotkey doesn't work (e.g., `Ctrl+Z`), check if your keyboard layout or language settings are interfering. Try switching to English (US) keyboard layout.
+
+**Problem: I accidentally pressed a hotkey and started/ended something I didn't mean to**
+
+- **Session accidentally started:** Press `Ctrl+Shift+Q` again immediately to end the session. You'll enter Review Mode with an empty session (no bugs). Just close the review window — no files are created for empty sessions.
+
+- **Bug capture accidentally started:** Press `F4` to end the bug capture. An empty bug folder will be created but won't appear in Review Mode (only bugs with at least one screenshot are shown).
+
+- **Notepad accidentally opened:** Press the same hotkey again (`Ctrl+Shift+N` or `Ctrl+Shift+M`) to close the notepad. Any text you typed is auto-saved.
+
+---
+
+### Accessibility Notes
+
+**For users who cannot use standard keyboard shortcuts:**
+
+- All global hotkeys can be triggered via the system tray menu (right-click the Unbroken icon)
+- The main application window provides buttons for all actions (no hotkeys required)
+- Mouse-only operation is fully supported — hotkeys are a convenience, not a requirement
+
+**For users with motor impairments:**
+
+- Consider changing hotkeys to combinations that are easier for you to press (e.g., single `F`-keys instead of multi-key combinations)
+- The application supports Windows accessibility features (Sticky Keys, Filter Keys, etc.)
+- Annotation tools can be selected by clicking the toolbar — hotkeys are optional
+
+**For users with visual impairments:**
+
+- The application works with Windows screen readers (Narrator, JAWS, NVDA)
+- All hotkey actions provide audio feedback (configurable in Settings → Accessibility)
+- High-contrast mode is supported (Settings → Appearance → High Contrast)
+
+---
+
+**Related Sections:**
+- [Getting Started → First-Run Setup Wizard → Step 4: Hotkeys](#step-4-hotkeys) — Initial hotkey configuration
+- [Settings Reference → Hotkeys](#) — Detailed hotkey customization options (see Settings Reference section)
+- [Troubleshooting](#) — More solutions for common hotkey issues (see Troubleshooting section)
