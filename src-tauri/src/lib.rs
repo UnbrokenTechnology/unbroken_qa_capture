@@ -1,4 +1,5 @@
 mod template;
+mod database;
 pub mod platform;
 
 use std::sync::Mutex;
