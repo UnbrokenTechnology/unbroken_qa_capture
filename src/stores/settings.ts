@@ -15,6 +15,7 @@ export const SETTINGS_KEYS = {
   AI_ENABLED: 'ai_enabled',
   THEME: 'theme',
   ANNOTATION_SAVE_MODE: 'annotation_save_mode',
+  AUTO_OPEN_ANNOTATION: 'auto_open_annotation',
 } as const
 
 export type SettingsKey = typeof SETTINGS_KEYS[keyof typeof SETTINGS_KEYS]
@@ -31,6 +32,7 @@ const DEFAULT_SETTINGS: Record<SettingsKey, string> = {
   [SETTINGS_KEYS.AI_ENABLED]: 'false',
   [SETTINGS_KEYS.THEME]: 'light',
   [SETTINGS_KEYS.ANNOTATION_SAVE_MODE]: 'alongside',
+  [SETTINGS_KEYS.AUTO_OPEN_ANNOTATION]: 'true',
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -60,6 +62,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const aiEnabled = computed(() => settings.value[SETTINGS_KEYS.AI_ENABLED] === 'true')
   const theme = computed(() => settings.value[SETTINGS_KEYS.THEME])
   const annotationSaveMode = computed(() => settings.value[SETTINGS_KEYS.ANNOTATION_SAVE_MODE] as 'alongside' | 'overwrite')
+  const autoOpenAnnotation = computed(() => settings.value[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION] === 'true')
 
   // ============================================================================
   // Actions - Backend Operations
@@ -240,6 +243,7 @@ export const useSettingsStore = defineStore('settings', () => {
     aiEnabled,
     theme,
     annotationSaveMode,
+    autoOpenAnnotation,
 
     // Actions - Backend
     loadSetting,

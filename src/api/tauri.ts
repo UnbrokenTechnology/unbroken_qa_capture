@@ -290,3 +290,11 @@ export async function saveBugDescription(
 ): Promise<void> {
   await invoke('save_bug_description', { folderPath, description })
 }
+
+// ============================================================================
+// Annotation Commands
+// ============================================================================
+
+export async function openAnnotationWindow(imagePath: string): Promise<void> {
+  await invoke('open_annotation_window', { imagePath })
+}

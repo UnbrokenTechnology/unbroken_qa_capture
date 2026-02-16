@@ -1055,6 +1055,19 @@ fn update_capture_console_flag(
 // ─── Annotation Window Commands ──────────────────────────────────────
 
 #[tauri::command]
+async fn emit_screenshot_captured(
+    file_path: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    // Emit screenshot:captured event to frontend
+    app.emit("screenshot:captured", serde_json::json!({
+        "filePath": file_path,
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+    }))
+    .map_err(|e| format!("Failed to emit screenshot:captured event: {}", e))
+}
+
+#[tauri::command]
 async fn open_annotation_window(
     image_path: String,
     app: tauri::AppHandle,
@@ -1293,6 +1306,7 @@ pub fn run() {
             get_app_version,
             enable_startup,
             disable_startup,
+            emit_screenshot_captured,
             open_annotation_window
         ])
         .run(tauri::generate_context!())

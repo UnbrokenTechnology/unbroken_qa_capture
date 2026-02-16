@@ -67,7 +67,26 @@ describe('Settings Store', () => {
     expect(store.theme).toBe('light')
     expect(store.autoStartRecording).toBe(false)
     expect(store.captureConsole).toBe(true)
+    expect(store.autoOpenAnnotation).toBe(true)
     expect(store.hasError).toBe(false)
+  })
+
+  it('should have autoOpenAnnotation setting with default value true', () => {
+    const store = useSettingsStore()
+    expect(store.settings[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION]).toBe('true')
+    expect(store.autoOpenAnnotation).toBe(true)
+  })
+
+  it('should correctly parse autoOpenAnnotation boolean value', () => {
+    const store = useSettingsStore()
+
+    // Test true value
+    store.settings[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION] = 'true'
+    expect(store.autoOpenAnnotation).toBe(true)
+
+    // Test false value
+    store.settings[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION] = 'false'
+    expect(store.autoOpenAnnotation).toBe(false)
   })
 
   describe('loadSetting', () => {

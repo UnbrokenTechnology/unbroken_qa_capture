@@ -236,6 +236,32 @@ export const useSessionStore = defineStore('session', () => {
   // ============================================================================
 
   async function setupEventListeners(): Promise<void> {
+    // Listen for screenshot:captured events (auto-open annotation if enabled)
+    const unlistenScreenshotCaptured = await listen<{ filePath: string; timestamp: number }>(
+      'screenshot:captured',
+      async (event) => {
+        const { filePath } = event.payload
+
+        // Only auto-open if we have an active session and the setting is enabled
+        if (activeSession.value?.status === 'active') {
+          // Import settings store dynamically to avoid circular dependency
+          const { useSettingsStore } = await import('./settings')
+          const settingsStore = useSettingsStore()
+
+          if (settingsStore.autoOpenAnnotation) {
+            // Import tauri API dynamically
+            const { openAnnotationWindow } = await import('../api/tauri')
+            try {
+              await openAnnotationWindow(filePath)
+            } catch (err) {
+              console.error('Failed to auto-open annotation window:', err)
+            }
+          }
+        }
+      }
+    )
+    eventUnlisteners.value.push(unlistenScreenshotCaptured)
+
     // Listen for session created events
     const unlistenSessionCreated = await listen<Session>('session-created', (event) => {
       const session = event.payload
