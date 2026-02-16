@@ -18,6 +18,9 @@
           <q-tooltip>{{ showStatusWidget ? 'Hide' : 'Show' }} Status Widget</q-tooltip>
         </q-btn>
       </q-toolbar>
+
+      <!-- Session Toolbar -->
+      <SessionToolbar />
     </q-header>
 
     <q-page-container>
@@ -45,6 +48,7 @@ import { useRouter } from 'vue-router'
 import { useTrayStore } from './stores/tray'
 import { useSessionStore } from './stores/session'
 import SessionStatusWidget from './components/SessionStatusWidget.vue'
+import SessionToolbar from './components/SessionToolbar.vue'
 import FirstRunWizard from './components/FirstRunWizard.vue'
 import * as tauri from './api/tauri'
 
