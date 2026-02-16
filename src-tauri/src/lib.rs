@@ -1,4 +1,5 @@
 mod template;
+mod database;
 
 use std::sync::Mutex;
 use template::TemplateManager;
