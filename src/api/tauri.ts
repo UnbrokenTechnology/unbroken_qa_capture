@@ -194,6 +194,19 @@ export async function deleteSetting(key: string): Promise<void> {
   await invoke('delete_setting', { key })
 }
 
+// Setup operations
+export async function hasCompletedSetup(): Promise<boolean> {
+  return await invoke<boolean>('has_completed_setup')
+}
+
+export async function markSetupComplete(): Promise<void> {
+  await invoke('mark_setup_complete')
+}
+
+export async function resetSetup(): Promise<void> {
+  await invoke('reset_setup')
+}
+
 // ============================================================================
 // Ticketing Integration Commands
 // ============================================================================

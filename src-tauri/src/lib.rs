@@ -741,6 +741,61 @@ fn delete_setting(key: String, app: tauri::AppHandle) -> Result<(), String> {
     repo.delete(&key).map_err(|e: rusqlite::Error| e.to_string())
 }
 
+// ─── Setup Commands ──────────────────────────────────────────────────────
+
+const SETUP_COMPLETE_KEY: &str = "has_completed_setup";
+
+#[tauri::command]
+fn has_completed_setup(app: tauri::AppHandle) -> Result<bool, String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+
+    match repo.get(SETUP_COMPLETE_KEY) {
+        Ok(Some(value)) => Ok(value == "true"),
+        Ok(None) => Ok(false),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn mark_setup_complete(app: tauri::AppHandle) -> Result<(), String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+
+    repo.set(SETUP_COMPLETE_KEY, "true")
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn reset_setup(app: tauri::AppHandle) -> Result<(), String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+
+    repo.delete(SETUP_COMPLETE_KEY)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -896,7 +951,10 @@ pub fn run() {
             get_setting,
             set_setting,
             get_all_settings,
-            delete_setting
+            delete_setting,
+            has_completed_setup,
+            mark_setup_complete,
+            reset_setup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1026,6 +1084,83 @@ mod tests {
         std::fs::write(&test_file, "test content").unwrap();
         assert!(test_file.exists());
         assert!(!test_file.is_dir());
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_setup_tracking() {
+        use database::{Database, SettingsRepository, SettingsOps};
+
+        // Create in-memory database
+        let db = Database::in_memory().unwrap();
+        let repo = SettingsRepository::new(db.connection());
+
+        // Initially, setup should not be completed
+        let has_setup = repo.get(SETUP_COMPLETE_KEY).unwrap();
+        assert!(has_setup.is_none());
+
+        // Mark setup as complete
+        repo.set(SETUP_COMPLETE_KEY, "true").unwrap();
+
+        // Verify setup is marked as complete
+        let has_setup = repo.get(SETUP_COMPLETE_KEY).unwrap();
+        assert_eq!(has_setup, Some("true".to_string()));
+
+        // Reset setup
+        repo.delete(SETUP_COMPLETE_KEY).unwrap();
+
+        // Verify setup is reset
+        let has_setup = repo.get(SETUP_COMPLETE_KEY).unwrap();
+        assert!(has_setup.is_none());
+    }
+
+    #[test]
+    fn test_setup_complete_flag_parsing() {
+        use database::{Database, SettingsRepository, SettingsOps};
+
+        let db = Database::in_memory().unwrap();
+        let repo = SettingsRepository::new(db.connection());
+
+        // Test "true" value
+        repo.set(SETUP_COMPLETE_KEY, "true").unwrap();
+        let value = repo.get(SETUP_COMPLETE_KEY).unwrap();
+        assert_eq!(value, Some("true".to_string()));
+
+        // Test "false" value
+        repo.set(SETUP_COMPLETE_KEY, "false").unwrap();
+        let value = repo.get(SETUP_COMPLETE_KEY).unwrap();
+        assert_eq!(value, Some("false".to_string()));
+
+        // Test empty value
+        repo.set(SETUP_COMPLETE_KEY, "").unwrap();
+        let value = repo.get(SETUP_COMPLETE_KEY).unwrap();
+        assert_eq!(value, Some("".to_string()));
+    }
+
+    #[test]
+    fn test_setup_persistence() {
+        use database::{Database, SettingsRepository, SettingsOps};
+
+        let temp_dir = std::env::temp_dir().join("test_setup_persistence");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let db_path = temp_dir.join("test.db");
+
+        // Create database and mark setup complete
+        {
+            let db = Database::open(&db_path).unwrap();
+            let repo = SettingsRepository::new(db.connection());
+            repo.set(SETUP_COMPLETE_KEY, "true").unwrap();
+        }
+
+        // Reopen database and verify setup is still complete
+        {
+            let db = Database::open(&db_path).unwrap();
+            let repo = SettingsRepository::new(db.connection());
+            let value = repo.get(SETUP_COMPLETE_KEY).unwrap();
+            assert_eq!(value, Some("true".to_string()));
+        }
 
         // Cleanup
         std::fs::remove_dir_all(&temp_dir).ok();

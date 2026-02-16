@@ -29,6 +29,12 @@
       :visible="showStatusWidget"
       @close="showStatusWidget = false"
     />
+
+    <!-- First Run Wizard -->
+    <FirstRunWizard
+      v-model="showFirstRunWizard"
+      @complete="onSetupComplete"
+    />
   </q-layout>
 </template>
 
@@ -38,10 +44,13 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useRouter } from 'vue-router'
 import { useTrayStore } from './stores/tray'
 import SessionStatusWidget from './components/SessionStatusWidget.vue'
+import FirstRunWizard from './components/FirstRunWizard.vue'
+import * as tauri from './api/tauri'
 
 const router = useRouter()
 const trayStore = useTrayStore()
 const showStatusWidget = ref(true)
+const showFirstRunWizard = ref(false)
 
 let unlistenHandlers: UnlistenFn[] = []
 
@@ -49,7 +58,21 @@ function toggleStatusWidget() {
   showStatusWidget.value = !showStatusWidget.value
 }
 
+function onSetupComplete() {
+  console.log('First-run setup completed')
+}
+
 onMounted(async () => {
+  // Check if first-run setup is needed
+  try {
+    const setupComplete = await tauri.hasCompletedSetup()
+    if (!setupComplete) {
+      showFirstRunWizard.value = true
+    }
+  } catch (err) {
+    console.error('Failed to check setup status:', err)
+  }
+
   // Initialize tray to idle state
   await trayStore.setIdle()
 
