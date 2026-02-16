@@ -39,16 +39,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useRouter } from 'vue-router'
 import { useTrayStore } from './stores/tray'
+import { useSessionStore } from './stores/session'
 import SessionStatusWidget from './components/SessionStatusWidget.vue'
 import FirstRunWizard from './components/FirstRunWizard.vue'
 import * as tauri from './api/tauri'
 
 const router = useRouter()
 const trayStore = useTrayStore()
+const sessionStore = useSessionStore()
 const showStatusWidget = ref(true)
 const showFirstRunWizard = ref(false)
 
@@ -76,6 +78,12 @@ onMounted(async () => {
   // Initialize tray to idle state
   await trayStore.setIdle()
 
+  // Load active session if exists
+  await sessionStore.loadActiveSession()
+
+  // Setup session event listeners
+  await sessionStore.setupEventListeners()
+
   // Listen for tray menu events
   const unlistenStartSession = await listen('tray-menu-start-session', () => {
     trayStore.toggleSession()
@@ -97,7 +105,30 @@ onMounted(async () => {
 onUnmounted(() => {
   // Clean up event listeners
   unlistenHandlers.forEach(unlisten => unlisten())
+  sessionStore.cleanupEventListeners()
 })
+
+// Watch for active session changes and navigate accordingly
+watch(
+  () => sessionStore.activeSession,
+  (newSession, oldSession) => {
+    // Don't navigate if we're already on the correct page
+    const currentRouteName = router.currentRoute.value.name
+
+    if (newSession && newSession.status === 'active') {
+      // Session started or became active - navigate to active session view
+      if (currentRouteName !== 'active-session') {
+        router.push({ name: 'active-session' })
+      }
+    } else if (oldSession && !newSession) {
+      // Session ended - navigate to home/idle view
+      if (currentRouteName !== 'home' && currentRouteName !== 'session-review') {
+        router.push({ name: 'home' })
+      }
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

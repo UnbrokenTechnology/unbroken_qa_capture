@@ -176,6 +176,39 @@
                 {{ selectedBug.title || 'Untitled Bug' }}
               </div>
 
+              <!-- Actions Row -->
+              <div class="row q-mb-md q-gutter-sm">
+                <q-btn
+                  color="primary"
+                  icon="content_copy"
+                  label="Copy to Clipboard"
+                  outline
+                  @click="copyBugToClipboard"
+                />
+                <q-btn
+                  color="secondary"
+                  icon="folder_open"
+                  label="Open Folder"
+                  outline
+                  @click="openBugFolder"
+                />
+                <q-btn
+                  color="negative"
+                  icon="delete"
+                  label="Delete Bug"
+                  outline
+                  @click="confirmDeleteBug"
+                />
+                <q-btn
+                  v-if="selectedBug.status !== 'ready'"
+                  color="positive"
+                  icon="check_circle"
+                  label="Mark Ready"
+                  outline
+                  @click="markBugReady"
+                />
+              </div>
+
               <!-- Bug Type Editor -->
               <div class="q-mb-md">
                 <div class="text-caption text-grey-7 q-mb-xs">
@@ -237,17 +270,20 @@
                 </div>
               </div>
 
-              <!-- Notes -->
-              <div
-                v-if="selectedBug.notes"
-                class="q-mb-md"
-              >
+              <!-- Notes (Editable) -->
+              <div class="q-mb-md">
                 <div class="text-caption text-grey-7 q-mb-xs">
                   Notes
                 </div>
-                <div class="text-body2 whitespace-pre-wrap">
-                  {{ selectedBug.notes }}
-                </div>
+                <q-input
+                  :model-value="selectedBug.notes || ''"
+                  type="textarea"
+                  outlined
+                  autogrow
+                  :min-rows="3"
+                  placeholder="Add notes about this bug..."
+                  @update:model-value="(val) => updateNotes(String(val || ''))"
+                />
               </div>
 
               <!-- AI Description Generation -->
@@ -385,6 +421,42 @@
             </q-card-section>
           </q-card>
         </div>
+      </div>
+
+      <!-- Bottom Action Bar -->
+      <div
+        v-if="sessionStore.activeSession && bugs.length > 0"
+        class="row q-gutter-md q-mt-lg q-pa-md bg-grey-2 rounded-borders"
+      >
+        <q-btn
+          color="primary"
+          icon="auto_fix_high"
+          label="Generate All Descriptions"
+          :disable="!claudeAvailable || isGenerating"
+          :loading="isGeneratingAll"
+          @click="generateAllDescriptions"
+        />
+        <q-btn
+          color="positive"
+          icon="upload"
+          label="Export to Linear"
+          :disable="finalizedBugs.length === 0"
+          @click="showPushDialog = true"
+        />
+        <q-btn
+          color="secondary"
+          icon="play_arrow"
+          label="Resume Session"
+          @click="resumeSession"
+        />
+        <q-space />
+        <q-btn
+          color="grey-7"
+          icon="close"
+          label="Close Session"
+          outline
+          @click="confirmCloseSession"
+        />
       </div>
     </div>
 
@@ -667,6 +739,7 @@ const pushProgress = ref(0)
 // AI Description Generation State
 const aiDescription = ref<string>('')
 const isGenerating = ref(false)
+const isGeneratingAll = ref(false)
 const claudeAvailable = ref(false)
 const claudeStatusMessage = ref('')
 const showRefineDialog = ref(false)
@@ -720,6 +793,16 @@ async function updateBugType(type: BugType) {
     await bugStore.updateBackendBug(selectedBug.value.id, { type })
   } catch (err) {
     console.error('Failed to update bug type:', err)
+  }
+}
+
+async function updateNotes(notes: string) {
+  if (!selectedBug.value) return
+
+  try {
+    await bugStore.updateBackendBug(selectedBug.value.id, { notes })
+  } catch (err) {
+    console.error('Failed to update notes:', err)
   }
 }
 
@@ -1005,6 +1088,256 @@ async function saveDescription() {
     $q.notify({
       type: 'negative',
       message: `Failed to save description: ${err}`,
+      position: 'top'
+    })
+  }
+}
+
+async function generateAllDescriptions() {
+  if (bugs.value.length === 0) return
+
+  isGeneratingAll.value = true
+
+  try {
+    let successCount = 0
+    let failCount = 0
+
+    for (const bug of bugs.value) {
+      try {
+        // Load captures for this bug
+        await loadBugCaptures(bug.id)
+        const captures = bugCaptures.value[bug.id] || []
+        const screenshotPaths = captures
+          .filter(c => c.file_type === 'screenshot')
+          .map(c => c.file_path)
+
+        // Build bug context
+        const bugContext: tauri.BugContext = {
+          bug_id: bug.id,
+          bug_type: bug.type,
+          notes: bug.notes || undefined,
+          screenshot_paths: screenshotPaths,
+          metadata: {
+            display_id: bug.display_id,
+            status: bug.status,
+          }
+        }
+
+        // Generate description
+        const response = await tauri.generateBugDescription(bugContext)
+
+        // Save description
+        await tauri.saveBugDescription(bug.folder_path, response.text)
+
+        successCount++
+      } catch (err) {
+        console.error(`Failed to generate description for bug ${bug.id}:`, err)
+        failCount++
+      }
+    }
+
+    if (failCount === 0) {
+      $q.notify({
+        type: 'positive',
+        message: `Generated descriptions for all ${successCount} bugs`,
+        position: 'top'
+      })
+    } else {
+      $q.notify({
+        type: 'warning',
+        message: `Generated ${successCount} descriptions, ${failCount} failed`,
+        position: 'top'
+      })
+    }
+  } catch (err) {
+    console.error('Failed to generate all descriptions:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to generate descriptions: ${err}`,
+      position: 'top'
+    })
+  } finally {
+    isGeneratingAll.value = false
+  }
+}
+
+function copyBugToClipboard() {
+  if (!selectedBug.value) return
+
+  // Build markdown format
+  const captures = selectedBugCaptures.value
+  const description = selectedBug.value.description || selectedBug.value.ai_description || selectedBug.value.notes || 'No description available'
+
+  let markdown = `# ${selectedBug.value.title || 'Untitled Bug'}\n\n`
+  markdown += `**Bug ID:** ${selectedBug.value.display_id}\n`
+  markdown += `**Type:** ${selectedBug.value.type}\n`
+  markdown += `**Status:** ${selectedBug.value.status}\n`
+  markdown += `**Folder:** ${selectedBug.value.folder_path}\n\n`
+  markdown += `## Description\n\n${description}\n\n`
+
+  if (selectedBug.value.notes) {
+    markdown += `## Notes\n\n${selectedBug.value.notes}\n\n`
+  }
+
+  if (captures.length > 0) {
+    markdown += `## Screenshots\n\n`
+    captures.forEach((capture, index) => {
+      markdown += `- Screenshot ${index + 1}: ${capture.file_path}\n`
+    })
+  }
+
+  // Copy to clipboard
+  navigator.clipboard.writeText(markdown).then(() => {
+    $q.notify({
+      type: 'positive',
+      message: 'Copied bug details to clipboard as markdown',
+      position: 'top'
+    })
+  }).catch(err => {
+    console.error('Failed to copy to clipboard:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to copy to clipboard',
+      position: 'top'
+    })
+  })
+}
+
+async function openBugFolder() {
+  if (!selectedBug.value) return
+
+  try {
+    await tauri.openBugFolder(selectedBug.value.folder_path)
+  } catch (err) {
+    console.error('Failed to open folder:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to open folder: ${err}`,
+      position: 'top'
+    })
+  }
+}
+
+function confirmDeleteBug() {
+  if (!selectedBug.value) return
+
+  $q.dialog({
+    title: 'Delete Bug',
+    message: `Are you sure you want to delete ${selectedBug.value.display_id}? This will remove all captures and data.`,
+    cancel: true,
+    persistent: true
+  }).onOk(async () => {
+    await deleteBug()
+  })
+}
+
+async function deleteBug() {
+  if (!selectedBug.value) return
+
+  const bugToDelete = selectedBug.value
+
+  try {
+    await bugStore.deleteBug(bugToDelete.id)
+
+    $q.notify({
+      type: 'positive',
+      message: 'Bug deleted successfully',
+      position: 'top'
+    })
+
+    // Select another bug if available
+    if (bugs.value.length > 0) {
+      selectBug(bugs.value[0]!.id)
+    } else {
+      selectedBugId.value = null
+    }
+  } catch (err) {
+    console.error('Failed to delete bug:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to delete bug: ${err}`,
+      position: 'top'
+    })
+  }
+}
+
+async function markBugReady() {
+  if (!selectedBug.value) return
+
+  try {
+    await bugStore.updateBackendBug(selectedBug.value.id, { status: 'ready' })
+
+    $q.notify({
+      type: 'positive',
+      message: 'Bug marked as ready',
+      position: 'top'
+    })
+  } catch (err) {
+    console.error('Failed to mark bug as ready:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to mark bug as ready: ${err}`,
+      position: 'top'
+    })
+  }
+}
+
+async function resumeSession() {
+  if (!sessionStore.activeSession) return
+
+  try {
+    await sessionStore.updateSessionStatus(sessionStore.activeSession.id, 'active')
+
+    $q.notify({
+      type: 'positive',
+      message: 'Session resumed',
+      position: 'top'
+    })
+
+    // Navigate back to active session view
+    router.push('/')
+  } catch (err) {
+    console.error('Failed to resume session:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to resume session: ${err}`,
+      position: 'top'
+    })
+  }
+}
+
+function confirmCloseSession() {
+  if (!sessionStore.activeSession) return
+
+  $q.dialog({
+    title: 'Close Session',
+    message: 'Are you sure you want to close this session? You can view it later from the history.',
+    cancel: true,
+    persistent: true
+  }).onOk(async () => {
+    await closeSession()
+  })
+}
+
+async function closeSession() {
+  if (!sessionStore.activeSession) return
+
+  try {
+    await sessionStore.endSession(sessionStore.activeSession.id)
+
+    $q.notify({
+      type: 'positive',
+      message: 'Session closed',
+      position: 'top'
+    })
+
+    // Navigate back to main view
+    router.push('/')
+  } catch (err) {
+    console.error('Failed to close session:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to close session: ${err}`,
       position: 'top'
     })
   }
