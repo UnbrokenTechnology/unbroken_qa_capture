@@ -14,6 +14,7 @@ export const SETTINGS_KEYS = {
   CAPTURE_CONSOLE: 'capture_console',
   AI_ENABLED: 'ai_enabled',
   THEME: 'theme',
+  ANNOTATION_SAVE_MODE: 'annotation_save_mode',
 } as const
 
 export type SettingsKey = typeof SETTINGS_KEYS[keyof typeof SETTINGS_KEYS]
@@ -29,6 +30,7 @@ const DEFAULT_SETTINGS: Record<SettingsKey, string> = {
   [SETTINGS_KEYS.CAPTURE_CONSOLE]: 'true',
   [SETTINGS_KEYS.AI_ENABLED]: 'false',
   [SETTINGS_KEYS.THEME]: 'light',
+  [SETTINGS_KEYS.ANNOTATION_SAVE_MODE]: 'alongside',
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -57,6 +59,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const captureConsole = computed(() => settings.value[SETTINGS_KEYS.CAPTURE_CONSOLE] === 'true')
   const aiEnabled = computed(() => settings.value[SETTINGS_KEYS.AI_ENABLED] === 'true')
   const theme = computed(() => settings.value[SETTINGS_KEYS.THEME])
+  const annotationSaveMode = computed(() => settings.value[SETTINGS_KEYS.ANNOTATION_SAVE_MODE] as 'alongside' | 'overwrite')
 
   // ============================================================================
   // Actions - Backend Operations
@@ -236,6 +239,7 @@ export const useSettingsStore = defineStore('settings', () => {
     captureConsole,
     aiEnabled,
     theme,
+    annotationSaveMode,
 
     // Actions - Backend
     loadSetting,
