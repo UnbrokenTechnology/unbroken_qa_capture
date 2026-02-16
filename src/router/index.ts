@@ -8,6 +8,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/IdleView.vue')
   },
   {
+    path: '/active-session',
+    name: 'active-session',
+    component: () => import('@/views/ActiveSessionView.vue')
+  },
+  {
     path: '/bug/:id',
     name: 'bug-detail',
     component: BugDetail,
