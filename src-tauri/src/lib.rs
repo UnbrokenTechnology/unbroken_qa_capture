@@ -1,16 +1,50 @@
 mod template;
 mod database;
 pub mod platform;
+mod session_manager;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use template::TemplateManager;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, Emitter};
+use tauri::{Manager, Emitter, AppHandle};
+use session_manager::{SessionManager, EventEmitter, RealFileSystem};
 
 // Global template manager
 static TEMPLATE_MANAGER: Mutex<Option<TemplateManager>> = Mutex::new(None);
+
+// Global session manager
+static SESSION_MANAGER: Mutex<Option<Arc<SessionManager>>> = Mutex::new(None);
+
+// Tauri event emitter implementation
+struct TauriEventEmitter {
+    app_handle: Arc<Mutex<Option<AppHandle>>>,
+}
+
+impl TauriEventEmitter {
+    fn new() -> Self {
+        TauriEventEmitter {
+            app_handle: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn set_app_handle(&self, handle: AppHandle) {
+        *self.app_handle.lock().unwrap() = Some(handle);
+    }
+}
+
+impl EventEmitter for TauriEventEmitter {
+    fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String> {
+        if let Some(handle) = self.app_handle.lock().unwrap().as_ref() {
+            handle
+                .emit(event, payload)
+                .map_err(|e| format!("Failed to emit event: {}", e))
+        } else {
+            Err("App handle not initialized".to_string())
+        }
+    }
+}
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -263,6 +297,71 @@ async fn update_session_notes(
     Ok(())
 }
 
+// ─── Session Manager Commands ────────────────────────────────────────────
+
+#[tauri::command]
+fn start_session() -> Result<database::Session, String> {
+    let manager_guard = SESSION_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Session manager not initialized")?;
+    manager.start_session()
+}
+
+#[tauri::command]
+fn end_session(session_id: String) -> Result<(), String> {
+    let manager_guard = SESSION_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Session manager not initialized")?;
+    manager.end_session(&session_id)
+}
+
+#[tauri::command]
+fn resume_session(session_id: String) -> Result<database::Session, String> {
+    let manager_guard = SESSION_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Session manager not initialized")?;
+    manager.resume_session(&session_id)
+}
+
+#[tauri::command]
+fn start_bug_capture(session_id: String) -> Result<database::Bug, String> {
+    let manager_guard = SESSION_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Session manager not initialized")?;
+    manager.start_bug_capture(&session_id)
+}
+
+#[tauri::command]
+fn end_bug_capture(bug_id: String) -> Result<(), String> {
+    let manager_guard = SESSION_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Session manager not initialized")?;
+    manager.end_bug_capture(&bug_id)
+}
+
+#[tauri::command]
+fn get_active_session_id() -> Result<Option<String>, String> {
+    let manager_guard = SESSION_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Session manager not initialized")?;
+    Ok(manager.get_active_session_id())
+}
+
+#[tauri::command]
+fn get_active_bug_id() -> Result<Option<String>, String> {
+    let manager_guard = SESSION_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Session manager not initialized")?;
+    Ok(manager.get_active_bug_id())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -270,6 +369,29 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // Initialize session manager
+            let app_handle = app.handle().clone();
+            let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+                std::env::current_dir().unwrap().join("data")
+            });
+            let db_path = data_dir.join("qa_capture.db");
+            let storage_root = data_dir.join("sessions");
+
+            // Create data directory if it doesn't exist
+            std::fs::create_dir_all(&data_dir).ok();
+
+            let emitter = Arc::new(TauriEventEmitter::new());
+            emitter.set_app_handle(app_handle);
+
+            let manager = Arc::new(SessionManager::new(
+                db_path,
+                storage_root,
+                emitter as Arc<dyn EventEmitter>,
+                Arc::new(RealFileSystem),
+            ));
+
+            *SESSION_MANAGER.lock().unwrap() = Some(manager);
+
             // Build tray menu
             let menu = Menu::new(app)?;
             let toggle_item = MenuItem::new(app, "Start Session", true, None::<&str>)?;
@@ -337,7 +459,14 @@ pub fn run() {
             get_bug_notes,
             update_bug_notes,
             get_session_notes,
-            update_session_notes
+            update_session_notes,
+            start_session,
+            end_session,
+            resume_session,
+            start_bug_capture,
+            end_bug_capture,
+            get_active_session_id,
+            get_active_bug_id
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
