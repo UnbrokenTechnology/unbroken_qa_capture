@@ -108,6 +108,113 @@ fn reload_template() -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+fn get_template_source() -> Result<String, String> {
+    // Check if there's a custom template path set
+    let manager_guard = TEMPLATE_MANAGER.lock().unwrap();
+
+    if manager_guard.is_none() {
+        // Return default template
+        return Ok(template::DEFAULT_TEMPLATE.to_string());
+    }
+
+    let manager = manager_guard.as_ref().unwrap();
+
+    // If custom template exists, read it; otherwise return default
+    if let Some(custom_path) = &manager.custom_template_path {
+        std::fs::read_to_string(custom_path)
+            .or_else(|_| Ok(template::DEFAULT_TEMPLATE.to_string()))
+    } else {
+        Ok(template::DEFAULT_TEMPLATE.to_string())
+    }
+}
+
+#[tauri::command]
+fn save_custom_template(content: String, app: tauri::AppHandle) -> Result<String, String> {
+    // Get app data directory
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+
+    // Create templates directory if it doesn't exist
+    let templates_dir = data_dir.join("templates");
+    std::fs::create_dir_all(&templates_dir)
+        .map_err(|e| format!("Failed to create templates directory: {}", e))?;
+
+    // Save custom template
+    let custom_template_path = templates_dir.join("custom_template.md");
+    std::fs::write(&custom_template_path, &content)
+        .map_err(|e| format!("Failed to save custom template: {}", e))?;
+
+    // Update template manager to use custom template
+    let mut manager_guard = TEMPLATE_MANAGER.lock().unwrap();
+
+    if manager_guard.is_none() {
+        *manager_guard = Some(TemplateManager::new());
+    }
+
+    let manager = manager_guard.as_mut().unwrap();
+    manager.set_custom_template_path(Some(custom_template_path.clone()))?;
+
+    Ok(custom_template_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn reset_template_to_default() -> Result<(), String> {
+    let mut manager_guard = TEMPLATE_MANAGER.lock().unwrap();
+
+    if manager_guard.is_none() {
+        *manager_guard = Some(TemplateManager::new());
+    }
+
+    let manager = manager_guard.as_mut().unwrap();
+    manager.set_custom_template_path(None)
+}
+
+#[tauri::command]
+fn get_template_path(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let manager_guard = TEMPLATE_MANAGER.lock().unwrap();
+
+    if let Some(manager) = manager_guard.as_ref() {
+        if let Some(custom_path) = &manager.custom_template_path {
+            return Ok(Some(custom_path.to_string_lossy().to_string()));
+        }
+    }
+
+    // Return path to default template (embedded, but we'll create a temp copy for editing)
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let templates_dir = data_dir.join("templates");
+    std::fs::create_dir_all(&templates_dir).ok();
+
+    let default_template_path = templates_dir.join("default_template.md");
+
+    // Write default template to file if it doesn't exist
+    if !default_template_path.exists() {
+        std::fs::write(&default_template_path, template::DEFAULT_TEMPLATE)
+            .map_err(|e| format!("Failed to write default template: {}", e))?;
+    }
+
+    Ok(Some(default_template_path.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+async fn open_template_in_editor(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    // Get the template path
+    let template_path = get_template_path(app.clone())?
+        .ok_or("No template path available")?;
+
+    // Open in system default editor
+    app.opener()
+        .open_path(&template_path, None::<&str>)
+        .map_err(|e| format!("Failed to open template in editor: {}", e))?;
+
+    Ok(())
+}
+
 /// Helper function to read bug data from a folder and render it using the template
 fn read_and_render_bug(folder_path: &str) -> Result<String, String> {
     use std::path::Path;
@@ -996,6 +1103,11 @@ pub fn run() {
             set_custom_template_path,
             render_bug_template,
             reload_template,
+            get_template_source,
+            save_custom_template,
+            reset_template_to_default,
+            get_template_path,
+            open_template_in_editor,
             copy_bug_to_clipboard,
             open_bug_folder,
             open_session_folder,

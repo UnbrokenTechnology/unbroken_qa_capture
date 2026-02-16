@@ -425,18 +425,75 @@
                 </q-btn>
               </template>
             </q-input>
+          </div>
+        </q-card-section>
+      </q-card>
 
-            <div>
-              <div class="text-subtitle2 q-mb-sm">
-                Ticket Template Editor
+      <!-- Ticket Template Section -->
+      <q-card class="q-mb-md">
+        <q-card-section>
+          <div class="text-h6 q-mb-md">
+            <q-icon
+              name="description"
+              class="q-mr-sm"
+            />
+            Ticket Template
+          </div>
+
+          <div class="q-gutter-md">
+            <div class="row items-center">
+              <div class="col-4 text-grey-7">
+                Template Source
               </div>
+              <div class="col">
+                {{ templateSource }}
+              </div>
+            </div>
+
+            <div class="row q-gutter-sm">
               <q-btn
                 outline
                 color="primary"
-                label="Edit Template in Default Editor"
+                label="Edit Template"
                 icon="edit"
                 @click="openTemplateEditor"
               />
+              <q-btn
+                outline
+                color="warning"
+                label="Reset to Default"
+                icon="restore"
+                @click="confirmResetTemplate"
+              />
+            </div>
+
+            <q-separator />
+
+            <div>
+              <div class="text-subtitle2 q-mb-sm">
+                Live Preview
+              </div>
+              <q-card
+                flat
+                bordered
+                class="bg-grey-1"
+              >
+                <q-card-section>
+                  <div
+                    v-if="templatePreview"
+                    class="template-preview"
+                    style="white-space: pre-wrap; font-family: monospace; font-size: 12px;"
+                  >
+                    {{ templatePreview }}
+                  </div>
+                  <div
+                    v-else
+                    class="text-grey-6"
+                  >
+                    Loading preview...
+                  </div>
+                </q-card-section>
+              </q-card>
             </div>
           </div>
         </q-card-section>
@@ -575,6 +632,8 @@ const hotkeyConflict = ref<string | null>(null)
 const claudeStatus = ref<'available' | 'not_found' | 'not_authenticated' | 'checking'>('checking')
 const testingClaude = ref(false)
 const appVersion = ref('1.0.0')
+const templateSource = ref<string>('Default')
+const templatePreview = ref<string>('')
 
 // Options
 const annotationSaveModeOptions = [
@@ -693,18 +752,87 @@ async function selectLinearConfigPath(): Promise<void> {
 
 async function openTemplateEditor(): Promise<void> {
   try {
-    // For now, just show a notification - template editing can be done via file system
+    await invoke('open_template_in_editor')
     $q.notify({
-      type: 'info',
-      message: 'Template editor will open the default template in your system editor',
-      caption: 'This feature will be implemented in a future update',
+      type: 'positive',
+      message: 'Template opened in system editor',
     })
   } catch (err) {
     console.error('Failed to open template editor:', err)
     $q.notify({
       type: 'negative',
       message: 'Failed to open template editor',
+      caption: err instanceof Error ? err.message : String(err),
     })
+  }
+}
+
+async function confirmResetTemplate(): Promise<void> {
+  $q.dialog({
+    title: 'Reset Template',
+    message: 'Are you sure you want to reset the ticket template to the default? This will discard any customizations.',
+    cancel: true,
+    persistent: true,
+  }).onOk(async () => {
+    try {
+      await invoke('reset_template_to_default')
+      await loadTemplateInfo()
+      $q.notify({
+        type: 'positive',
+        message: 'Template reset to default',
+      })
+    } catch (err) {
+      console.error('Failed to reset template:', err)
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to reset template',
+        caption: err instanceof Error ? err.message : String(err),
+      })
+    }
+  })
+}
+
+async function loadTemplateInfo(): Promise<void> {
+  try {
+    // Get template path to determine if custom or default
+    const templatePath = await invoke<string | null>('get_template_path')
+    if (templatePath && templatePath.includes('custom_template.md')) {
+      templateSource.value = 'Custom'
+    } else {
+      templateSource.value = 'Default'
+    }
+
+    // Load template preview
+    const sampleBugData = {
+      title: 'Sample Bug: Button Not Responding',
+      bug_type: 'UI',
+      description_steps: '1. Click the Submit button\\n2. Observe no response',
+      description_expected: 'Button should trigger form submission',
+      description_actual: 'Button does nothing when clicked',
+      metadata: {
+        meeting_id: 'MTG-2024-001',
+        software_version: '2.5.0',
+        environment: {
+          os: 'Windows 11 Pro',
+          display_resolution: '1920x1080',
+          dpi_scaling: '150%',
+          ram: '16GB',
+          cpu: 'Intel Core i7-11800H',
+          foreground_app: 'MyApp.exe',
+        },
+        console_captures: [],
+        custom_fields: {},
+      },
+      folder_path: 'C:\\\\QA\\\\Sessions\\\\2024-02-16\\\\bug-001',
+      captures: ['screenshot-01.png', 'screenshot-02.png'],
+      console_output: 'Error: Form validation failed\\nUncaught TypeError: Cannot read property submit',
+    }
+
+    const preview = await invoke<string>('render_bug_template', { bugData: sampleBugData })
+    templatePreview.value = preview
+  } catch (err) {
+    console.error('Failed to load template info:', err)
+    templatePreview.value = 'Failed to load preview'
   }
 }
 
@@ -882,6 +1010,7 @@ onMounted(async () => {
   await settingsStore.initialize()
   loadSettings()
   await checkClaudeStatus()
+  await loadTemplateInfo()
 
   // Get app version
   try {

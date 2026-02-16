@@ -47,7 +47,7 @@
             :disable="!activeBug"
             @update:model-value="onMeetingIdChanged"
           >
-            <template v-slot:prepend>
+            <template #prepend>
               <q-icon name="videocam" />
             </template>
           </q-input>
@@ -62,7 +62,7 @@
             :disable="!activeBug"
             @update:model-value="onSoftwareVersionChanged"
           >
-            <template v-slot:prepend>
+            <template #prepend>
               <q-icon name="info" />
             </template>
           </q-input>

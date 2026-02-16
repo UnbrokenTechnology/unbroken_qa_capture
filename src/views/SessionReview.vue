@@ -285,7 +285,7 @@
                       placeholder="e.g., Zoom meeting ID or URL"
                       @update:model-value="(val) => updateMetadata('meeting_id', String(val || ''))"
                     >
-                      <template v-slot:prepend>
+                      <template #prepend>
                         <q-icon name="videocam" />
                       </template>
                     </q-input>
@@ -299,7 +299,7 @@
                       placeholder="e.g., 2.4.1"
                       @update:model-value="(val) => updateMetadata('software_version', String(val || ''))"
                     >
-                      <template v-slot:prepend>
+                      <template #prepend>
                         <q-icon name="info" />
                       </template>
                     </q-input>

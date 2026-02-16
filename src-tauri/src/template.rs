@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_TEMPLATE: &str = include_str!("../templates/default_template.md");
+pub const DEFAULT_TEMPLATE: &str = include_str!("../templates/default_template.md");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BugMetadata {
@@ -40,7 +40,7 @@ pub struct BugData {
 
 /// Template manager handles loading, caching, and hot-reloading of ticket templates
 pub struct TemplateManager {
-    custom_template_path: Option<PathBuf>,
+    pub custom_template_path: Option<PathBuf>,
     cached_template: Arc<Mutex<String>>,
     watcher: Option<notify::RecommendedWatcher>,
 }
