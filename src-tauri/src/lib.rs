@@ -786,6 +786,75 @@ async fn save_bug_description(
     Ok(())
 }
 
+#[tauri::command]
+fn format_session_export(session_folder_path: String) -> Result<(), String> {
+    use std::path::Path;
+    use std::fs;
+
+    let session_path = Path::new(&session_folder_path);
+    if !session_path.exists() {
+        return Err(format!("Session folder does not exist: {}", session_folder_path));
+    }
+
+    // Read all entries in the session folder
+    let entries = fs::read_dir(session_path)
+        .map_err(|e| format!("Failed to read session folder: {}", e))?;
+
+    // Collect bug folders (bug_XXX format) and sort them by bug number
+    let mut bug_folders: Vec<(i32, String)> = Vec::new();
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            if let Some(folder_name) = path.file_name().and_then(|n| n.to_str()) {
+                // Check if folder name matches bug_XXX pattern
+                if let Some(stripped) = folder_name.strip_prefix("bug_") {
+                    if let Ok(bug_num) = stripped.parse::<i32>() {
+                        bug_folders.push((bug_num, path.to_string_lossy().to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by bug number
+    bug_folders.sort_by_key(|(num, _)| *num);
+
+    // Build the formatted output
+    let mut output = String::new();
+
+    for (i, (bug_num, bug_folder_path)) in bug_folders.iter().enumerate() {
+        let bug_path = Path::new(bug_folder_path);
+        let description_file = bug_path.join("description.md");
+
+        // Read description.md if it exists
+        let description = if description_file.exists() {
+            fs::read_to_string(&description_file)
+                .unwrap_or_else(|_| String::from("No description available."))
+        } else {
+            String::from("No description available.")
+        };
+
+        // Add bug header and description
+        output.push_str(&format!("# Bug {:03}\n\n", bug_num));
+        output.push_str(&description);
+
+        // Add divider if not the last bug
+        if i < bug_folders.len() - 1 {
+            output.push_str("\n\n---\n\n");
+        }
+    }
+
+    // Write to tickets-ready.md
+    let tickets_ready_file = session_path.join("tickets-ready.md");
+    fs::write(&tickets_ready_file, output)
+        .map_err(|e| format!("Failed to write tickets-ready.md: {}", e))?;
+
+    Ok(())
+}
+
 // ─── Settings Commands ───────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1140,6 +1209,7 @@ pub fn run() {
             parse_console_screenshot,
             refine_bug_description,
             save_bug_description,
+            format_session_export,
             get_setting,
             set_setting,
             get_all_settings,
@@ -1358,6 +1428,189 @@ mod tests {
             let value = repo.get(SETUP_COMPLETE_KEY).unwrap();
             assert_eq!(value, Some("true".to_string()));
         }
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_format_session_export_with_bugs() {
+        let temp_dir = std::env::temp_dir().join("test_session_export");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create bug folders with description.md files
+        let bug1_folder = temp_dir.join("bug_001");
+        std::fs::create_dir_all(&bug1_folder).unwrap();
+        std::fs::write(
+            bug1_folder.join("description.md"),
+            "This is the first bug description."
+        ).unwrap();
+
+        let bug2_folder = temp_dir.join("bug_002");
+        std::fs::create_dir_all(&bug2_folder).unwrap();
+        std::fs::write(
+            bug2_folder.join("description.md"),
+            "This is the second bug description."
+        ).unwrap();
+
+        let bug3_folder = temp_dir.join("bug_003");
+        std::fs::create_dir_all(&bug3_folder).unwrap();
+        std::fs::write(
+            bug3_folder.join("description.md"),
+            "This is the third bug description."
+        ).unwrap();
+
+        // Call format_session_export
+        let result = format_session_export(temp_dir.to_string_lossy().to_string());
+        assert!(result.is_ok());
+
+        // Read and verify tickets-ready.md
+        let tickets_file = temp_dir.join("tickets-ready.md");
+        assert!(tickets_file.exists());
+
+        let content = std::fs::read_to_string(&tickets_file).unwrap();
+
+        // Verify all bugs are present
+        assert!(content.contains("# Bug 001"));
+        assert!(content.contains("This is the first bug description."));
+        assert!(content.contains("# Bug 002"));
+        assert!(content.contains("This is the second bug description."));
+        assert!(content.contains("# Bug 003"));
+        assert!(content.contains("This is the third bug description."));
+
+        // Verify dividers are present (2 dividers for 3 bugs)
+        assert_eq!(content.matches("---").count(), 2);
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_format_session_export_empty_session() {
+        let temp_dir = std::env::temp_dir().join("test_session_export_empty");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Call format_session_export on empty session folder
+        let result = format_session_export(temp_dir.to_string_lossy().to_string());
+        assert!(result.is_ok());
+
+        // Read and verify tickets-ready.md exists but is empty
+        let tickets_file = temp_dir.join("tickets-ready.md");
+        assert!(tickets_file.exists());
+
+        let content = std::fs::read_to_string(&tickets_file).unwrap();
+        assert_eq!(content, "");
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_format_session_export_missing_description() {
+        let temp_dir = std::env::temp_dir().join("test_session_export_missing_desc");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create bug folder without description.md
+        let bug1_folder = temp_dir.join("bug_001");
+        std::fs::create_dir_all(&bug1_folder).unwrap();
+
+        // Call format_session_export
+        let result = format_session_export(temp_dir.to_string_lossy().to_string());
+        assert!(result.is_ok());
+
+        // Read and verify tickets-ready.md
+        let tickets_file = temp_dir.join("tickets-ready.md");
+        assert!(tickets_file.exists());
+
+        let content = std::fs::read_to_string(&tickets_file).unwrap();
+
+        // Verify placeholder text is used
+        assert!(content.contains("# Bug 001"));
+        assert!(content.contains("No description available."));
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_format_session_export_nonexistent_folder() {
+        let result = format_session_export("/nonexistent/folder/path".to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Session folder does not exist"));
+    }
+
+    #[test]
+    fn test_format_session_export_bug_numbering_order() {
+        let temp_dir = std::env::temp_dir().join("test_session_export_order");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create bugs out of order
+        let bug3_folder = temp_dir.join("bug_003");
+        std::fs::create_dir_all(&bug3_folder).unwrap();
+        std::fs::write(bug3_folder.join("description.md"), "Bug 3").unwrap();
+
+        let bug1_folder = temp_dir.join("bug_001");
+        std::fs::create_dir_all(&bug1_folder).unwrap();
+        std::fs::write(bug1_folder.join("description.md"), "Bug 1").unwrap();
+
+        let bug2_folder = temp_dir.join("bug_002");
+        std::fs::create_dir_all(&bug2_folder).unwrap();
+        std::fs::write(bug2_folder.join("description.md"), "Bug 2").unwrap();
+
+        // Call format_session_export
+        let result = format_session_export(temp_dir.to_string_lossy().to_string());
+        assert!(result.is_ok());
+
+        // Read tickets-ready.md
+        let tickets_file = temp_dir.join("tickets-ready.md");
+        let content = std::fs::read_to_string(&tickets_file).unwrap();
+
+        // Verify bugs appear in correct order
+        let bug1_pos = content.find("Bug 1").unwrap();
+        let bug2_pos = content.find("Bug 2").unwrap();
+        let bug3_pos = content.find("Bug 3").unwrap();
+
+        assert!(bug1_pos < bug2_pos);
+        assert!(bug2_pos < bug3_pos);
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_format_session_export_mixed_folders() {
+        let temp_dir = std::env::temp_dir().join("test_session_export_mixed");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create bug folders
+        let bug1_folder = temp_dir.join("bug_001");
+        std::fs::create_dir_all(&bug1_folder).unwrap();
+        std::fs::write(bug1_folder.join("description.md"), "Bug 1").unwrap();
+
+        // Create other folders that should be ignored
+        let other_folder = temp_dir.join("session-notes");
+        std::fs::create_dir_all(&other_folder).unwrap();
+        std::fs::write(other_folder.join("notes.md"), "Notes").unwrap();
+
+        let captures_folder = temp_dir.join("_captures");
+        std::fs::create_dir_all(&captures_folder).unwrap();
+
+        // Create a file in session root (should be ignored)
+        std::fs::write(temp_dir.join("session-notes.md"), "Session notes").unwrap();
+
+        // Call format_session_export
+        let result = format_session_export(temp_dir.to_string_lossy().to_string());
+        assert!(result.is_ok());
+
+        // Read tickets-ready.md
+        let tickets_file = temp_dir.join("tickets-ready.md");
+        let content = std::fs::read_to_string(&tickets_file).unwrap();
+
+        // Verify only bug folders are included
+        assert!(content.contains("# Bug 001"));
+        assert!(content.contains("Bug 1"));
+        assert!(!content.contains("Notes"));
+        assert_eq!(content.matches("# Bug").count(), 1);
 
         // Cleanup
         std::fs::remove_dir_all(&temp_dir).ok();

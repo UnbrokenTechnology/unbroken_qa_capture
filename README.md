@@ -20,11 +20,31 @@ A desktop application built with Tauri 2, Vue 3, and Quasar Framework for qualit
 - Rust 1.93.x or higher
 - Cargo 1.93.x or higher
 
-### System Dependencies (Linux)
+### System Dependencies
+
+#### Windows 11
+
+- **Visual Studio 2022/2026 Build Tools** with "Desktop development with C++" workload (required for MSVC linker and Windows SDK)
+- WebView2 (usually pre-installed on Windows 11)
+
+Install via PowerShell:
+```powershell
+# Install Visual Studio Build Tools
+winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+#### Linux (Debian/Ubuntu)
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+#### macOS
+
+```bash
+# Install Xcode Command Line Tools
+xcode-select --install
 ```
 
 ## Project Structure
@@ -88,6 +108,22 @@ The built application will be in `src-tauri/target/release`.
 
 ### Testing
 
+#### Automated Verification (Recommended)
+
+Run the full verification suite (Rust + TypeScript tests + linting):
+
+```bash
+./verify.sh
+```
+
+This script runs:
+- Rust: `cargo clippy` + `cargo test`
+- TypeScript: type checking + ESLint + Vitest
+
+See [PROJECT.md](PROJECT.md) for the complete testing strategy.
+
+#### Frontend Tests (Vitest)
+
 Run unit tests:
 
 ```bash
@@ -98,6 +134,22 @@ Run tests with UI:
 
 ```bash
 npm run test:ui
+```
+
+#### Backend Tests (Rust)
+
+Run Rust unit tests:
+
+```bash
+cd src-tauri
+cargo test
+```
+
+Run with verbose output:
+
+```bash
+cd src-tauri
+cargo test -- --nocapture
 ```
 
 ### Linting
@@ -137,6 +189,23 @@ Pinia stores use the Composition API style for better TypeScript inference and a
 ### Testing
 
 Vitest is configured for unit testing with jsdom environment for Vue component testing. Tests are located in the `__tests__` directory.
+
+## Contributing
+
+### Development Workflow
+
+1. **Branch naming:** Use `ticket-<N>` for feature branches
+2. **Run tests before committing:** `./verify.sh` must pass
+3. **Follow existing patterns:** Check similar code for style conventions
+4. **Keep commits focused:** One logical change per commit
+5. **Write tests:** All new code should include tests (see [PROJECT.md](PROJECT.md))
+
+### Code Standards
+
+- **TypeScript:** Use Composition API with `<script setup lang="ts">`, strict type checking
+- **Rust:** Follow Clippy recommendations, use trait-based abstractions for platform-specific code
+- **State Management:** Pinia stores using Composition API style
+- **Testing:** See PROJECT.md for dual-stack testing strategy (Rust `#[cfg(test)]` + Vitest)
 
 ## Development Guidelines
 
