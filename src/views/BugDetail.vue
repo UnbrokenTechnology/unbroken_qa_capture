@@ -146,7 +146,7 @@
               :name="index"
               class="q-pa-none"
             >
-              <div class="full-width full-height flex flex-center">
+              <div class="full-width full-height flex flex-center screenshot-slide">
                 <q-img
                   :src="capture"
                   :alt="`Screenshot ${index + 1}`"
@@ -177,6 +177,13 @@
                     </div>
                   </template>
                 </q-img>
+                <q-btn
+                  color="primary"
+                  icon="edit"
+                  label="Annotate"
+                  class="annotate-btn"
+                  @click="openAnnotator(capture, index)"
+                />
               </div>
             </q-carousel-slide>
           </q-carousel>
@@ -260,6 +267,13 @@
         </q-card-section>
       </q-card>
     </div>
+
+    <!-- Screenshot Annotator Dialog -->
+    <ScreenshotAnnotator
+      v-model="showAnnotator"
+      :screenshot-path="selectedScreenshot"
+      @saved="handleAnnotationSaved"
+    />
   </q-page>
 </template>
 
@@ -269,6 +283,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useBugStore } from '@/stores/bug'
 import { invoke } from '@tauri-apps/api/core'
 import { useQuasar } from 'quasar'
+import ScreenshotAnnotator from '@/components/ScreenshotAnnotator.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -277,6 +292,9 @@ const $q = useQuasar()
 
 const currentSlide = ref(0)
 const copying = ref(false)
+const showAnnotator = ref(false)
+const selectedScreenshot = ref('')
+const selectedScreenshotIndex = ref(0)
 
 // Get bug ID from route params
 const bugId = computed(() => route.params.id as string)
@@ -317,6 +335,27 @@ async function copyToClipboard() {
   }
 }
 
+// Open screenshot annotator
+function openAnnotator(screenshotPath: string, index: number) {
+  selectedScreenshot.value = screenshotPath
+  selectedScreenshotIndex.value = index
+  showAnnotator.value = true
+}
+
+// Handle annotation saved
+function handleAnnotationSaved(annotatedPath: string) {
+  $q.notify({
+    type: 'positive',
+    message: 'Annotated screenshot saved successfully',
+    position: 'top',
+    timeout: 2000
+  })
+
+  // TODO: Optionally update bug.captures to include the annotated version
+  // For now, we just notify the user
+  console.log('Annotated screenshot saved to:', annotatedPath)
+}
+
 // Load bug data on mount if needed
 onMounted(() => {
   // If bug store is empty, you might want to fetch data here
@@ -342,5 +381,16 @@ onMounted(() => {
 
 .flex-1 {
   flex: 1;
+}
+
+.screenshot-slide {
+  position: relative;
+}
+
+.annotate-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
 }
 </style>
