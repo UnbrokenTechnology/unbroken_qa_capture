@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::database::{Bug, BugStatus, BugType, Session, SessionStatus};
 use crate::database::{BugOps, BugRepository, SessionOps, SessionRepository};
+use crate::session_summary::SessionSummaryGenerator;
 
 /// Trait for emitting Tauri events
 pub trait EventEmitter: Send + Sync {
@@ -29,7 +30,7 @@ impl FileSystem for RealFileSystem {
 
 /// Session Manager handles session lifecycle and bug capture operations
 pub struct SessionManager {
-    db_path: PathBuf,
+    pub db_path: PathBuf,
     storage_root: PathBuf,
     event_emitter: Arc<dyn EventEmitter>,
     filesystem: Arc<dyn FileSystem>,
@@ -121,6 +122,12 @@ impl SessionManager {
 
         repo.update(&session)
             .map_err(|e| format!("Failed to update session: {}", e))?;
+
+        // Generate session summary (don't fail if this fails)
+        let summary_generator = SessionSummaryGenerator::new(self.db_path.clone());
+        if let Err(e) = summary_generator.generate_summary(session_id, true) {
+            eprintln!("Warning: Failed to generate session summary: {}", e);
+        }
 
         // Clear active session if it matches
         let mut active = self.active_session.lock().unwrap();
