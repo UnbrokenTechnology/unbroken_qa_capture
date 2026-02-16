@@ -113,17 +113,69 @@ async fn copy_bug_to_clipboard(
     Ok(())
 }
 
+#[tauri::command]
+async fn open_bug_folder(folder_path: String, app_handle: tauri::AppHandle) -> Result<(), String> {
+    use std::path::Path;
+    use tauri_plugin_opener::OpenerExt;
+
+    // Validate that the path exists and is a directory
+    let path = Path::new(&folder_path);
+    if !path.exists() {
+        return Err(format!("Bug folder does not exist: {}", folder_path));
+    }
+    if !path.is_dir() {
+        return Err(format!("Path is not a directory: {}", folder_path));
+    }
+
+    // Open the folder in the system file manager
+    app_handle
+        .opener()
+        .open_path(&folder_path, None::<&str>)
+        .map_err(|e| format!("Failed to open bug folder: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn open_session_folder(
+    folder_path: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    use std::path::Path;
+    use tauri_plugin_opener::OpenerExt;
+
+    // Validate that the path exists and is a directory
+    let path = Path::new(&folder_path);
+    if !path.exists() {
+        return Err(format!("Session folder does not exist: {}", folder_path));
+    }
+    if !path.is_dir() {
+        return Err(format!("Path is not a directory: {}", folder_path));
+    }
+
+    // Open the folder in the system file manager
+    app_handle
+        .opener()
+        .open_path(&folder_path, None::<&str>)
+        .map_err(|e| format!("Failed to open session folder: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             set_custom_template_path,
             render_bug_template,
             reload_template,
-            copy_bug_to_clipboard
+            copy_bug_to_clipboard,
+            open_bug_folder,
+            open_session_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -228,6 +280,31 @@ mod tests {
         let result = read_and_render_bug(&bug_folder.to_string_lossy());
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Failed to parse metadata.json"));
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_folder_validation_for_open_commands() {
+        use std::path::Path;
+
+        // Test nonexistent folder
+        let nonexistent = "/nonexistent/folder/path";
+        let path = Path::new(nonexistent);
+        assert!(!path.exists());
+
+        // Test valid folder
+        let temp_dir = std::env::temp_dir().join("test_open_folder");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        assert!(temp_dir.exists());
+        assert!(temp_dir.is_dir());
+
+        // Test file (not a directory)
+        let test_file = temp_dir.join("test_file.txt");
+        std::fs::write(&test_file, "test content").unwrap();
+        assert!(test_file.exists());
+        assert!(!test_file.is_dir());
 
         // Cleanup
         std::fs::remove_dir_all(&temp_dir).ok();
