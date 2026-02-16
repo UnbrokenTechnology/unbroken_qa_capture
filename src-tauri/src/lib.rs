@@ -2,6 +2,7 @@ mod template;
 
 use std::sync::Mutex;
 use template::TemplateManager;
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 // Global template manager
 static TEMPLATE_MANAGER: Mutex<Option<TemplateManager>> = Mutex::new(None);
@@ -53,16 +54,182 @@ fn reload_template() -> Result<(), String> {
     }
 }
 
+/// Helper function to read bug data from a folder and render it using the template
+fn read_and_render_bug(folder_path: &str) -> Result<String, String> {
+    use std::path::Path;
+
+    // Read bug data from the folder
+    let folder = Path::new(folder_path);
+    if !folder.exists() || !folder.is_dir() {
+        return Err(format!("Bug folder does not exist: {}", folder_path));
+    }
+
+    // Read metadata.json
+    let metadata_path = folder.join("metadata.json");
+    if !metadata_path.exists() {
+        return Err(format!(
+            "metadata.json not found in folder: {}",
+            folder_path
+        ));
+    }
+
+    let metadata_content = std::fs::read_to_string(&metadata_path)
+        .map_err(|e| format!("Failed to read metadata.json: {}", e))?;
+
+    let bug_data: serde_json::Value = serde_json::from_str(&metadata_content)
+        .map_err(|e| format!("Failed to parse metadata.json: {}", e))?;
+
+    // Get TemplateManager and render the bug
+    let mut manager_guard = TEMPLATE_MANAGER.lock().unwrap();
+
+    if manager_guard.is_none() {
+        *manager_guard = Some(TemplateManager::new());
+    }
+
+    let manager = manager_guard.as_ref().unwrap();
+
+    // Convert JSON to BugData
+    let bug: template::BugData = serde_json::from_value(bug_data)
+        .map_err(|e| format!("Failed to parse bug data: {}", e))?;
+
+    // Render the template
+    manager.render(&bug)
+}
+
+#[tauri::command]
+async fn copy_bug_to_clipboard(
+    folder_path: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    // Read and render the bug data
+    let rendered_markdown = read_and_render_bug(&folder_path)?;
+
+    // Copy to clipboard using Tauri clipboard plugin
+    app_handle
+        .clipboard()
+        .write_text(rendered_markdown)
+        .map_err(|e| format!("Failed to copy to clipboard: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             set_custom_template_path,
             render_bug_template,
-            reload_template
+            reload_template,
+            copy_bug_to_clipboard
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn create_test_bug_folder(temp_dir: &std::path::Path) -> String {
+        let bug_folder = temp_dir.join("test_bug");
+        std::fs::create_dir_all(&bug_folder).unwrap();
+
+        let bug_data = template::BugData {
+            title: "Test Bug".to_string(),
+            bug_type: "UI".to_string(),
+            description_steps: "1. Click button\n2. Observe error".to_string(),
+            description_expected: "Button should work".to_string(),
+            description_actual: "Button crashes app".to_string(),
+            metadata: template::BugMetadata {
+                meeting_id: Some("MTG-123".to_string()),
+                software_version: Some("1.0.0".to_string()),
+                environment: template::Environment {
+                    os: "Windows 11".to_string(),
+                    display_resolution: "1920x1080".to_string(),
+                    dpi_scaling: "100%".to_string(),
+                    ram: "16GB".to_string(),
+                    cpu: "Intel i7".to_string(),
+                    foreground_app: "TestApp".to_string(),
+                },
+                console_captures: vec![],
+                custom_fields: HashMap::new(),
+            },
+            folder_path: bug_folder.to_string_lossy().to_string(),
+            captures: vec!["screenshot1.png".to_string()],
+            console_output: Some("Error: Something went wrong".to_string()),
+        };
+
+        let metadata_path = bug_folder.join("metadata.json");
+        let json = serde_json::to_string_pretty(&bug_data).unwrap();
+        std::fs::write(&metadata_path, json).unwrap();
+
+        bug_folder.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn test_read_and_render_bug_success() {
+        let temp_dir = std::env::temp_dir().join("test_copy_bug");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let bug_folder = create_test_bug_folder(&temp_dir);
+        let result = read_and_render_bug(&bug_folder);
+
+        assert!(result.is_ok());
+        let rendered = result.unwrap();
+
+        // Verify the rendered output contains key information
+        assert!(rendered.contains("Test Bug"));
+        assert!(rendered.contains("UI"));
+        assert!(rendered.contains("Click button"));
+        assert!(rendered.contains("Windows 11"));
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_read_and_render_bug_folder_not_found() {
+        let result = read_and_render_bug("/nonexistent/folder/path");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Bug folder does not exist"));
+    }
+
+    #[test]
+    fn test_read_and_render_bug_missing_metadata() {
+        let temp_dir = std::env::temp_dir().join("test_copy_bug_no_metadata");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let bug_folder = temp_dir.join("test_bug");
+        std::fs::create_dir_all(&bug_folder).unwrap();
+
+        let result = read_and_render_bug(&bug_folder.to_string_lossy());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("metadata.json not found"));
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_read_and_render_bug_invalid_json() {
+        let temp_dir = std::env::temp_dir().join("test_copy_bug_invalid");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let bug_folder = temp_dir.join("test_bug");
+        std::fs::create_dir_all(&bug_folder).unwrap();
+
+        let metadata_path = bug_folder.join("metadata.json");
+        std::fs::write(&metadata_path, "invalid json content").unwrap();
+
+        let result = read_and_render_bug(&bug_folder.to_string_lossy());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to parse metadata.json"));
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
 }
