@@ -4,6 +4,7 @@ pub mod platform;
 mod session_manager;
 mod hotkey;
 mod claude_cli;
+mod ticketing;
 
 #[cfg(test)]
 mod hotkey_tests;
@@ -16,6 +17,7 @@ use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, Emitter, AppHandle};
 use session_manager::{SessionManager, EventEmitter, RealFileSystem};
 use hotkey::{HotkeyManager, HotkeyConfig};
+use ticketing::{LinearIntegration, TicketingIntegration};
 
 // Global template manager
 static TEMPLATE_MANAGER: Mutex<Option<TemplateManager>> = Mutex::new(None);
@@ -25,6 +27,9 @@ static SESSION_MANAGER: Mutex<Option<Arc<SessionManager>>> = Mutex::new(None);
 
 // Global hotkey manager
 static HOTKEY_MANAGER: Mutex<Option<Arc<HotkeyManager>>> = Mutex::new(None);
+
+// Global ticketing integration
+static TICKETING_INTEGRATION: Mutex<Option<Arc<dyn TicketingIntegration>>> = Mutex::new(None);
 
 // Tauri event emitter implementation
 struct TauriEventEmitter {
@@ -412,6 +417,105 @@ fn is_hotkey_registered(shortcut: String) -> Result<bool, String> {
     Ok(manager.is_registered(&shortcut))
 }
 
+// ─── Ticketing Integration Commands ──────────────────────────────────────
+
+#[tauri::command]
+fn ticketing_authenticate(credentials: ticketing::TicketingCredentials) -> Result<(), String> {
+    let integration_guard = TICKETING_INTEGRATION.lock().unwrap();
+    let integration = integration_guard
+        .as_ref()
+        .ok_or("Ticketing integration not initialized")?;
+
+    integration
+        .authenticate(&credentials)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn ticketing_create_ticket(request: ticketing::CreateTicketRequest) -> Result<ticketing::CreateTicketResponse, String> {
+    let integration_guard = TICKETING_INTEGRATION.lock().unwrap();
+    let integration = integration_guard
+        .as_ref()
+        .ok_or("Ticketing integration not initialized")?;
+
+    integration
+        .create_ticket(&request)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn ticketing_check_connection() -> Result<ticketing::ConnectionStatus, String> {
+    let integration_guard = TICKETING_INTEGRATION.lock().unwrap();
+    let integration = integration_guard
+        .as_ref()
+        .ok_or("Ticketing integration not initialized")?;
+
+    integration
+        .check_connection()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn ticketing_get_credentials(app: tauri::AppHandle) -> Result<Option<ticketing::TicketingCredentials>, String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    // Get database path
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    // Open database
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+
+    // Get stored credentials
+    let api_key = repo.get("ticketing.api_key").map_err(|e: rusqlite::Error| e.to_string())?;
+    let team_id = repo.get("ticketing.team_id").map_err(|e: rusqlite::Error| e.to_string())?;
+    let workspace_id = repo.get("ticketing.workspace_id").map_err(|e: rusqlite::Error| e.to_string())?;
+
+    if let Some(key) = api_key {
+        Ok(Some(ticketing::TicketingCredentials {
+            api_key: key,
+            team_id,
+            workspace_id,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+fn ticketing_save_credentials(
+    credentials: ticketing::TicketingCredentials,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    // Get database path
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    // Open database
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+
+    // Save credentials
+    repo.set("ticketing.api_key", &credentials.api_key).map_err(|e: rusqlite::Error| e.to_string())?;
+
+    if let Some(team_id) = &credentials.team_id {
+        repo.set("ticketing.team_id", team_id).map_err(|e: rusqlite::Error| e.to_string())?;
+    }
+
+    if let Some(workspace_id) = &credentials.workspace_id {
+        repo.set("ticketing.workspace_id", workspace_id).map_err(|e: rusqlite::Error| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 // Claude CLI commands
 
 #[tauri::command]
@@ -596,6 +700,10 @@ pub fn run() {
 
             *HOTKEY_MANAGER.lock().unwrap() = Some(hotkey_manager);
 
+            // Initialize ticketing integration (Linear by default)
+            let ticketing_integration: Arc<dyn TicketingIntegration> = Arc::new(LinearIntegration::new());
+            *TICKETING_INTEGRATION.lock().unwrap() = Some(ticketing_integration);
+
             // Build tray menu
             let menu = Menu::new(app)?;
             let toggle_item = MenuItem::new(app, "Start Session", true, None::<&str>)?;
@@ -674,6 +782,11 @@ pub fn run() {
             get_hotkey_config,
             update_hotkey_config,
             is_hotkey_registered,
+            ticketing_authenticate,
+            ticketing_create_ticket,
+            ticketing_check_connection,
+            ticketing_get_credentials,
+            ticketing_save_credentials,
             get_claude_status,
             refresh_claude_status,
             generate_bug_description,

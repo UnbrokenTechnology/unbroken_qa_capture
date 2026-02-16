@@ -37,6 +37,12 @@ impl Database {
         Ok(Database { conn })
     }
 
+    /// Open an existing database connection (alias for new)
+    #[allow(dead_code)]
+    pub fn open<P: AsRef<Path>>(path: P) -> SqlResult<Self> {
+        Self::new(path)
+    }
+
     /// Create an in-memory database (for testing)
     #[allow(dead_code)]
     pub fn in_memory() -> SqlResult<Self> {
