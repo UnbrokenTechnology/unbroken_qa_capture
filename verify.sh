@@ -5,6 +5,11 @@ set -euo pipefail
 # Runs linting and tests for both Rust backend and Vue/TypeScript frontend.
 # Exits 0 if project isn't scaffolded yet.
 
+# Source Rust environment if available
+if [ -f "$HOME/.cargo/env" ]; then
+    source "$HOME/.cargo/env"
+fi
+
 RUST_OK=true
 TS_OK=true
 
