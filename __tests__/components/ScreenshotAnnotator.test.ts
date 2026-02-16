@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import ScreenshotAnnotator from '../../src/components/ScreenshotAnnotator.vue'
 import { Canvas } from 'fabric'
+import { createPinia, setActivePinia } from 'pinia'
 
 // Mock Fabric.js Canvas
 vi.mock('fabric', () => {
@@ -73,6 +74,9 @@ describe('ScreenshotAnnotator.vue', () => {
   let wrapper: VueWrapper
 
   beforeEach(() => {
+    // Set up Pinia for settings store
+    setActivePinia(createPinia())
+
     wrapper = mount(ScreenshotAnnotator, {
       props: {
         modelValue: false,
@@ -745,6 +749,155 @@ describe('ScreenshotAnnotator.vue', () => {
       wrapper.unmount()
 
       expect(removeEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function))
+    })
+  })
+
+  describe('Original Image Dimensions Tracking', () => {
+    it('tracks original image width and height on load', async () => {
+      await wrapper.setProps({ modelValue: true })
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal method for testing
+      await wrapper.vm.loadScreenshot()
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.originalImageWidth).toBe(800)
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.originalImageHeight).toBe(600)
+    })
+
+    it('calculates display scale correctly', async () => {
+      await wrapper.setProps({ modelValue: true })
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal method for testing
+      await wrapper.vm.loadScreenshot()
+      await wrapper.vm.$nextTick()
+
+      // Canvas is 1200x800, image is 800x600
+      // Scale should be min(1200/800, 800/600) = min(1.5, 1.333...) = 1.333...
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.displayScale).toBeCloseTo(1.333, 2)
+    })
+
+    it('resets dimension tracking on close', async () => {
+      await wrapper.setProps({ modelValue: true })
+      await wrapper.vm.$nextTick()
+
+      // @ts-expect-error - Accessing internal method for testing
+      await wrapper.vm.loadScreenshot()
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.originalImageWidth).toBe(800)
+
+      // @ts-expect-error - Accessing internal method for testing
+      wrapper.vm.close()
+
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.originalImageWidth).toBe(0)
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.originalImageHeight).toBe(0)
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.displayScale).toBe(1)
+    })
+  })
+
+  describe('Resolution Preservation on Export', () => {
+    it('exports at original resolution using correct multiplier', async () => {
+      await wrapper.setProps({ modelValue: true })
+      await wrapper.vm.$nextTick()
+
+      const mockCanvas = {
+        toDataURL: vi.fn(() => 'data:image/png;base64,mockdata'),
+        getActiveObject: vi.fn(() => null),
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.displayScale = 0.5 // Simulating 50% scale down
+
+      // @ts-expect-error - Accessing internal method for testing
+      await wrapper.vm.saveAnnotatedScreenshot()
+
+      // Should export with multiplier = 1/0.5 = 2 to restore original resolution
+      expect(mockCanvas.toDataURL).toHaveBeenCalledWith({
+        format: 'png',
+        quality: 1,
+        multiplier: 2,
+      })
+    })
+
+    it('uses multiplier of 1 when displayScale is 1', async () => {
+      await wrapper.setProps({ modelValue: true })
+      await wrapper.vm.$nextTick()
+
+      const mockCanvas = {
+        toDataURL: vi.fn(() => 'data:image/png;base64,mockdata'),
+        getActiveObject: vi.fn(() => null),
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.displayScale = 1
+
+      // @ts-expect-error - Accessing internal method for testing
+      await wrapper.vm.saveAnnotatedScreenshot()
+
+      expect(mockCanvas.toDataURL).toHaveBeenCalledWith({
+        format: 'png',
+        quality: 1,
+        multiplier: 1,
+      })
+    })
+  })
+
+  describe('Save Mode Functionality', () => {
+    it('saves alongside with _annotated suffix in alongside mode', async () => {
+      await wrapper.setProps({ modelValue: true })
+      await wrapper.vm.$nextTick()
+
+      const mockCanvas = {
+        toDataURL: vi.fn(() => 'data:image/png;base64,mockdata'),
+        getActiveObject: vi.fn(() => null),
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+
+      // Set save mode to 'alongside' via settings store
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.settingsStore.setSetting('annotation_save_mode', 'alongside')
+
+      // @ts-expect-error - Accessing internal method for testing
+      await wrapper.vm.saveAnnotatedScreenshot()
+
+      // Should emit save path with _annotated suffix
+      expect(wrapper.emitted('saved')).toBeTruthy()
+      const savedEmissions = wrapper.emitted('saved')
+      expect(savedEmissions?.[0]).toEqual(['/path/to/screenshot_annotated.png'])
+    })
+
+    it('overwrites original file in overwrite mode', async () => {
+      await wrapper.setProps({ modelValue: true })
+      await wrapper.vm.$nextTick()
+
+      const mockCanvas = {
+        toDataURL: vi.fn(() => 'data:image/png;base64,mockdata'),
+        getActiveObject: vi.fn(() => null),
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+
+      // Set save mode to 'overwrite' via settings store
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.settingsStore.setSetting('annotation_save_mode', 'overwrite')
+
+      // @ts-expect-error - Accessing internal method for testing
+      await wrapper.vm.saveAnnotatedScreenshot()
+
+      // Should emit original path without modification
+      expect(wrapper.emitted('saved')).toBeTruthy()
+      const savedEmissions = wrapper.emitted('saved')
+      expect(savedEmissions?.[0]).toEqual(['/path/to/screenshot.png'])
     })
   })
 })

@@ -166,6 +166,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { Canvas, FabricImage, Rect, Circle, IText, PencilBrush } from 'fabric'
+import { useSettingsStore } from '../stores/settings'
 
 interface Props {
   modelValue: boolean
@@ -179,6 +180,8 @@ type Emits = {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+const settingsStore = useSettingsStore()
 
 const isOpen = ref(props.modelValue)
 const canvasElement = ref<HTMLCanvasElement | null>(null)
@@ -217,6 +220,11 @@ let isDrawing = false
 let drawingObject: Rect | Circle | null = null
 let startX = 0
 let startY = 0
+
+// Original image dimensions for resolution preservation
+const originalImageWidth = ref(0)
+const originalImageHeight = ref(0)
+const displayScale = ref(1)
 
 // Watch for model value changes
 watch(() => props.modelValue, (newVal) => {
@@ -276,6 +284,10 @@ async function loadScreenshot() {
   try {
     const img = await FabricImage.fromURL(props.screenshotPath)
 
+    // Store original dimensions
+    originalImageWidth.value = img.width || 1
+    originalImageHeight.value = img.height || 1
+
     // Scale image to fit canvas
     const canvasWidth = canvas.value.width || 1200
     const canvasHeight = canvas.value.height || 800
@@ -284,6 +296,9 @@ async function loadScreenshot() {
       canvasWidth / (img.width || 1),
       canvasHeight / (img.height || 1)
     )
+
+    // Store display scale for export resolution calculation
+    displayScale.value = scale
 
     img.scale(scale)
     img.set({
@@ -526,23 +541,38 @@ async function saveAnnotatedScreenshot() {
   saving.value = true
 
   try {
-    // Export canvas to data URL (we'll use it in the future)
-    // const dataUrl = canvas.value.toDataURL({
-    //   format: 'png',
-    //   quality: 1,
-    //   multiplier: 1,
-    // })
+    // Calculate export multiplier for original resolution
+    // displayScale is how much we scaled down for display
+    // To export at original size, we need to scale up by 1/displayScale
+    const exportMultiplier = displayScale.value > 0 ? 1 / displayScale.value : 1
 
-    // Generate annotated filename
+    // Export canvas to data URL at original resolution
+    // TODO: Use dataUrl for actual file save via Tauri command
+    canvas.value.toDataURL({
+      format: 'png',
+      quality: 1,
+      multiplier: exportMultiplier,
+    })
+
+    // Determine save path based on save mode setting
+    const saveMode = settingsStore.annotationSaveMode
     const originalPath = props.screenshotPath
-    const lastDot = originalPath.lastIndexOf('.')
-    const annotatedPath = lastDot > 0
-      ? `${originalPath.substring(0, lastDot)}_annotated${originalPath.substring(lastDot)}`
-      : `${originalPath}_annotated.png`
+    let savePath: string
 
-    // Emit the annotated path so parent can save it
-    // TODO: Implement actual save via Tauri command
-    emit('saved', annotatedPath)
+    if (saveMode === 'overwrite') {
+      // Overwrite the original file
+      savePath = originalPath
+    } else {
+      // Save alongside with _annotated suffix (default)
+      const lastDot = originalPath.lastIndexOf('.')
+      savePath = lastDot > 0
+        ? `${originalPath.substring(0, lastDot)}_annotated${originalPath.substring(lastDot)}`
+        : `${originalPath}_annotated.png`
+    }
+
+    // Emit the save path so parent can save it
+    // TODO: Implement actual save via Tauri command with dataUrl
+    emit('saved', savePath)
 
     close()
   } catch (error) {
@@ -622,6 +652,10 @@ function deleteSelectedObject() {
 
 function close() {
   isOpen.value = false
+  // Reset dimension tracking
+  originalImageWidth.value = 0
+  originalImageHeight.value = 0
+  displayScale.value = 1
 }
 </script>
 
