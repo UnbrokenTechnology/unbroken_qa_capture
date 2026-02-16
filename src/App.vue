@@ -8,23 +8,44 @@
         <q-toolbar-title>
           Unbroken QA Capture
         </q-toolbar-title>
+
+        <q-btn
+          flat
+          dense
+          :icon="showStatusWidget ? 'visibility_off' : 'visibility'"
+          @click="toggleStatusWidget"
+        >
+          <q-tooltip>{{ showStatusWidget ? 'Hide' : 'Show' }} Status Widget</q-tooltip>
+        </q-btn>
       </q-toolbar>
     </q-header>
 
     <q-page-container>
       <router-view />
     </q-page-container>
+
+    <!-- Session Status Widget -->
+    <SessionStatusWidget
+      :visible="showStatusWidget"
+      @close="showStatusWidget = false"
+    />
   </q-layout>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useTrayStore } from './stores/tray'
+import SessionStatusWidget from './components/SessionStatusWidget.vue'
 
 const trayStore = useTrayStore()
+const showStatusWidget = ref(true)
 
 let unlistenHandlers: UnlistenFn[] = []
+
+function toggleStatusWidget() {
+  showStatusWidget.value = !showStatusWidget.value
+}
 
 onMounted(async () => {
   // Initialize tray to idle state

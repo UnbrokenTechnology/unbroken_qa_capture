@@ -1,16 +1,26 @@
 <template>
   <q-page class="flex flex-center">
-    <div class="q-pa-md" style="max-width: 800px; width: 100%;">
+    <div
+      class="q-pa-md"
+      style="max-width: 800px; width: 100%;"
+    >
       <h1 class="text-h3 q-mb-md text-center">
         Unbroken QA Capture
       </h1>
 
       <q-card class="q-mb-md">
         <q-card-section>
-          <div class="text-h6 q-mb-md">Bug List</div>
+          <div class="text-h6 q-mb-md">
+            Bug List
+          </div>
 
-          <div v-if="bugStore.bugCount === 0" class="text-center q-pa-md">
-            <p class="text-grey-7">No bugs available</p>
+          <div
+            v-if="bugStore.bugCount === 0"
+            class="text-center q-pa-md"
+          >
+            <p class="text-grey-7">
+              No bugs available
+            </p>
             <q-btn
               color="primary"
               label="Load Sample Data"
@@ -18,16 +28,21 @@
             />
           </div>
 
-          <q-list v-else separator>
+          <q-list
+            v-else
+            separator
+          >
             <q-item
               v-for="bug in bugStore.bugs"
               :key="bug.id"
               clickable
-              @click="viewBug(bug.id)"
               class="q-pa-md"
+              @click="viewBug(bug.id)"
             >
               <q-item-section>
-                <q-item-label class="text-h6">{{ bug.title }}</q-item-label>
+                <q-item-label class="text-h6">
+                  {{ bug.title }}
+                </q-item-label>
                 <q-item-label caption>
                   Type: {{ bug.bug_type }} | {{ bug.captures.length }} screenshot(s)
                 </q-item-label>
