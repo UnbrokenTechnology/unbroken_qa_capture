@@ -2,6 +2,7 @@
 
 This file guides autonomous AI agents working on this project.
 Read PROJECT.md for business context and product vision.
+The original PRD is in the repository as `Unbroken_QA_Capture_PRD.md`.
 
 ## Repository
 
