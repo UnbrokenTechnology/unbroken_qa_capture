@@ -20,6 +20,7 @@ use std::sync::{mpsc::Sender, Arc, Mutex};
 use std::collections::HashMap;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::os::windows::process::CommandExt;
 
 use notify::{Watcher, RecursiveMode, RecommendedWatcher, Event, EventKind};
 
