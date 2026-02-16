@@ -17,6 +17,7 @@
   "dependencies": {
     "@quasar/extras": "^1.17.0",
     "@tauri-apps/api": "^2.3.0",
+    "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-shell": "^2.0.2",
     "fabric": "^7.1.0",
     "pinia": "^2.3.1",

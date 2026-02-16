@@ -644,6 +644,68 @@ async fn save_bug_description(
     Ok(())
 }
 
+// ─── Settings Commands ───────────────────────────────────────────────────
+
+#[tauri::command]
+fn get_setting(key: String, app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+
+    repo.get(&key).map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn set_setting(key: String, value: String, app: tauri::AppHandle) -> Result<(), String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+
+    repo.set(&key, &value).map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn get_all_settings(app: tauri::AppHandle) -> Result<Vec<database::Setting>, String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+
+    repo.get_all().map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn delete_setting(key: String, app: tauri::AppHandle) -> Result<(), String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+
+    repo.delete(&key).map_err(|e: rusqlite::Error| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -651,6 +713,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Initialize session manager
             let app_handle = app.handle().clone();
@@ -792,7 +855,11 @@ pub fn run() {
             generate_bug_description,
             parse_console_screenshot,
             refine_bug_description,
-            save_bug_description
+            save_bug_description,
+            get_setting,
+            set_setting,
+            get_all_settings,
+            delete_setting
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

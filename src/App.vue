@@ -35,9 +35,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { useRouter } from 'vue-router'
 import { useTrayStore } from './stores/tray'
 import SessionStatusWidget from './components/SessionStatusWidget.vue'
 
+const router = useRouter()
 const trayStore = useTrayStore()
 const showStatusWidget = ref(true)
 
@@ -63,8 +65,7 @@ onMounted(async () => {
   })
 
   const unlistenSettings = await listen('tray-menu-settings', () => {
-    // Navigate to settings view (when implemented)
-    console.log('Settings requested from tray')
+    router.push({ name: 'settings' })
   })
 
   unlistenHandlers = [unlistenStartSession, unlistenNewBug, unlistenSettings]

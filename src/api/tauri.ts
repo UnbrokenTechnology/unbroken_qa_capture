@@ -168,22 +168,18 @@ export async function getBugCaptures(bugId: string): Promise<Capture[]> {
 
 // Settings operations
 export async function getSetting(key: string): Promise<string | null> {
-  // TODO: Implement when backend command is available
   return await invoke<string | null>('get_setting', { key })
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
-  // TODO: Implement when backend command is available
   await invoke('set_setting', { key, value })
 }
 
 export async function getAllSettings(): Promise<Setting[]> {
-  // TODO: Implement when backend command is available
   return await invoke<Setting[]>('get_all_settings')
 }
 
 export async function deleteSetting(key: string): Promise<void> {
-  // TODO: Implement when backend command is available
   await invoke('delete_setting', { key })
 }
 
