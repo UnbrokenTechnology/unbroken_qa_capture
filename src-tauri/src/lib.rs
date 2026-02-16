@@ -2,6 +2,10 @@ mod template;
 mod database;
 pub mod platform;
 mod session_manager;
+mod hotkey;
+
+#[cfg(test)]
+mod hotkey_tests;
 
 use std::sync::{Arc, Mutex};
 use template::TemplateManager;
@@ -10,12 +14,16 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, Emitter, AppHandle};
 use session_manager::{SessionManager, EventEmitter, RealFileSystem};
+use hotkey::{HotkeyManager, HotkeyConfig};
 
 // Global template manager
 static TEMPLATE_MANAGER: Mutex<Option<TemplateManager>> = Mutex::new(None);
 
 // Global session manager
 static SESSION_MANAGER: Mutex<Option<Arc<SessionManager>>> = Mutex::new(None);
+
+// Global hotkey manager
+static HOTKEY_MANAGER: Mutex<Option<Arc<HotkeyManager>>> = Mutex::new(None);
 
 // Tauri event emitter implementation
 struct TauriEventEmitter {
@@ -362,12 +370,54 @@ fn get_active_bug_id() -> Result<Option<String>, String> {
     Ok(manager.get_active_bug_id())
 }
 
+// ─── Hotkey Manager Commands ─────────────────────────────────────────────
+
+#[tauri::command]
+fn get_hotkey_config() -> Result<HotkeyConfig, String> {
+    let manager_guard = HOTKEY_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Hotkey manager not initialized")?;
+    Ok(manager.get_config())
+}
+
+#[tauri::command]
+fn update_hotkey_config(
+    config: HotkeyConfig,
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    let manager_guard = HOTKEY_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Hotkey manager not initialized")?;
+
+    let results = manager.update_config(&app_handle, config);
+
+    // Collect error messages
+    let errors: Vec<String> = results
+        .into_iter()
+        .filter_map(|r| r.err())
+        .collect();
+
+    Ok(errors)
+}
+
+#[tauri::command]
+fn is_hotkey_registered(shortcut: String) -> Result<bool, String> {
+    let manager_guard = HOTKEY_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Hotkey manager not initialized")?;
+    Ok(manager.is_registered(&shortcut))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // Initialize session manager
             let app_handle = app.handle().clone();
@@ -391,6 +441,31 @@ pub fn run() {
             ));
 
             *SESSION_MANAGER.lock().unwrap() = Some(manager);
+
+            // Initialize hotkey manager
+            let hotkey_manager = Arc::new(HotkeyManager::new());
+            let registration_results = hotkey_manager.register_all(app.handle());
+
+            // Check for registration failures and notify via tray
+            let mut failed_shortcuts = Vec::new();
+            for result in registration_results {
+                if let Err(e) = result {
+                    eprintln!("Hotkey registration error: {}", e);
+                    failed_shortcuts.push(e);
+                }
+            }
+
+            // If any hotkeys failed to register, show a notification via tray tooltip
+            if !failed_shortcuts.is_empty() {
+                let error_count = failed_shortcuts.len();
+                eprintln!(
+                    "Warning: {} hotkey(s) failed to register. Check logs for details.",
+                    error_count
+                );
+                // The tray will be built next, and we'll update its tooltip after it's created
+            }
+
+            *HOTKEY_MANAGER.lock().unwrap() = Some(hotkey_manager);
 
             // Build tray menu
             let menu = Menu::new(app)?;
@@ -466,7 +541,10 @@ pub fn run() {
             start_bug_capture,
             end_bug_capture,
             get_active_session_id,
-            get_active_bug_id
+            get_active_bug_id,
+            get_hotkey_config,
+            update_hotkey_config,
+            is_hotkey_registered
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
