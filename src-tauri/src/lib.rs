@@ -5,6 +5,9 @@ pub mod platform;
 use std::sync::Mutex;
 use template::TemplateManager;
 use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::{Manager, Emitter};
 
 // Global template manager
 static TEMPLATE_MANAGER: Mutex<Option<TemplateManager>> = Mutex::new(None);
@@ -164,12 +167,87 @@ async fn open_session_folder(
     Ok(())
 }
 
+#[tauri::command]
+async fn update_tray_icon(state: String, app_handle: tauri::AppHandle) -> Result<(), String> {
+    // Emit event to update tray icon based on state
+    // States: idle, active, bug, review
+    app_handle
+        .emit("tray-state-changed", state)
+        .map_err(|e| format!("Failed to emit tray state event: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn update_tray_tooltip(tooltip: String, app_handle: tauri::AppHandle) -> Result<(), String> {
+    if let Some(tray) = app_handle.tray_by_id("main-tray") {
+        tray.set_tooltip(Some(tooltip))
+            .map_err(|e| format!("Failed to set tray tooltip: {}", e))?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            // Build tray menu
+            let menu = Menu::new(app)?;
+            let toggle_item = MenuItem::new(app, "Start Session", true, None::<&str>)?;
+            let capture_item = MenuItem::new(app, "New Bug Capture", true, None::<&str>)?;
+            let show_item = MenuItem::new(app, "Open Main Window", true, None::<&str>)?;
+            let settings_item = MenuItem::new(app, "Settings", true, None::<&str>)?;
+            let quit_item = MenuItem::new(app, "Quit", true, None::<&str>)?;
+
+            menu.append(&toggle_item)?;
+            menu.append(&capture_item)?;
+            menu.append(&show_item)?;
+            menu.append(&settings_item)?;
+            menu.append(&quit_item)?;
+
+            // Build tray icon
+            let _tray = TrayIconBuilder::with_id("main-tray")
+                .tooltip("Unbroken QA Capture - Idle")
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .on_menu_event(|app_handle, event| {
+                    match event.id().as_ref() {
+                        "Start Session" => {
+                            app_handle.emit("tray-menu-start-session", ()).ok();
+                        }
+                        "New Bug Capture" => {
+                            app_handle.emit("tray-menu-new-bug", ()).ok();
+                        }
+                        "Open Main Window" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
+                        }
+                        "Settings" => {
+                            app_handle.emit("tray-menu-settings", ()).ok();
+                        }
+                        "Quit" => {
+                            app_handle.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
+                        if let Some(app) = tray.app_handle().get_webview_window("main") {
+                            app.show().ok();
+                            app.set_focus().ok();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             set_custom_template_path,
@@ -177,7 +255,9 @@ pub fn run() {
             reload_template,
             copy_bug_to_clipboard,
             open_bug_folder,
-            open_session_folder
+            open_session_folder,
+            update_tray_icon,
+            update_tray_tooltip
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
