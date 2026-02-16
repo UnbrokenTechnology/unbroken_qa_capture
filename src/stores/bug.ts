@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import type { Bug as BackendBug, BugUpdate, BugStatus } from '../types/backend'
+import * as tauri from '../api/tauri'
 
+// Legacy Bug interface for backward compatibility with existing UI components
+// TODO: Update BugDetail.vue and Home.vue to use the BackendBug type
 export interface Environment {
   os: string
   display_resolution: string
@@ -33,11 +38,27 @@ export interface Bug {
 }
 
 export const useBugStore = defineStore('bug', () => {
+  // ============================================================================
   // State
+  // ============================================================================
+
+  // Legacy bugs for UI compatibility (will be populated from backend bugs)
   const bugs = ref<Bug[]>([])
   const currentBugId = ref<string | null>(null)
 
+  // Backend bugs (source of truth)
+  const backendBugs = ref<BackendBug[]>([])
+  const activeBug = ref<BackendBug | null>(null)
+  const loading = ref(false)
+  const error = ref<string | null>(null)
+
+  // Event listeners cleanup functions
+  const eventUnlisteners = ref<UnlistenFn[]>([])
+
+  // ============================================================================
   // Getters
+  // ============================================================================
+
   const allBugs = computed(() => bugs.value)
 
   const currentBug = computed(() => {
@@ -50,8 +71,148 @@ export const useBugStore = defineStore('bug', () => {
   }
 
   const bugCount = computed(() => bugs.value.length)
+  const hasError = computed(() => error.value !== null)
+  const isCapturing = computed(() => activeBug.value?.status === 'capturing')
 
-  // Actions
+  // ============================================================================
+  // Actions - Backend Bug Operations
+  // ============================================================================
+
+  async function createBug(bugData: Partial<BackendBug>): Promise<BackendBug> {
+    loading.value = true
+    error.value = null
+    try {
+      const bug = await tauri.createBug(bugData)
+      backendBugs.value.push(bug)
+      return bug
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function loadBug(id: string): Promise<BackendBug | null> {
+    loading.value = true
+    error.value = null
+    try {
+      const bug = await tauri.getBug(id)
+      if (bug) {
+        const index = backendBugs.value.findIndex(b => b.id === id)
+        if (index >= 0) {
+          backendBugs.value[index] = bug
+        } else {
+          backendBugs.value.push(bug)
+        }
+      }
+      return bug
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function updateBackendBug(id: string, update: BugUpdate): Promise<void> {
+    loading.value = true
+    error.value = null
+    try {
+      await tauri.updateBug(id, update)
+      const bug = backendBugs.value.find(b => b.id === id)
+      if (bug) {
+        Object.assign(bug, update)
+      }
+      if (activeBug.value?.id === id) {
+        Object.assign(activeBug.value, update)
+      }
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function deleteBug(id: string): Promise<void> {
+    loading.value = true
+    error.value = null
+    try {
+      await tauri.deleteBug(id)
+      backendBugs.value = backendBugs.value.filter(b => b.id !== id)
+      bugs.value = bugs.value.filter(b => b.id !== id)
+      if (activeBug.value?.id === id) {
+        activeBug.value = null
+      }
+      if (currentBugId.value === id) {
+        currentBugId.value = null
+      }
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function loadAllBugs(sessionId?: string): Promise<void> {
+    loading.value = true
+    error.value = null
+    try {
+      backendBugs.value = await tauri.listBugs(sessionId)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function loadBugsBySession(sessionId: string): Promise<void> {
+    loading.value = true
+    error.value = null
+    try {
+      backendBugs.value = await tauri.getBugsBySession(sessionId)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // ============================================================================
+  // Actions - Bug Lifecycle
+  // ============================================================================
+
+  async function startBugCapture(bugData?: Partial<BackendBug>): Promise<BackendBug> {
+    const newBug: Partial<BackendBug> = {
+      ...bugData,
+      status: 'capturing',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    const bug = await createBug(newBug)
+    activeBug.value = bug
+    return bug
+  }
+
+  async function completeBugCapture(id: string): Promise<void> {
+    await updateBackendBug(id, { status: 'captured' })
+    if (activeBug.value?.id === id) {
+      activeBug.value = null
+    }
+  }
+
+  async function updateBugStatus(id: string, status: BugStatus): Promise<void> {
+    await updateBackendBug(id, { status })
+  }
+
+  // ============================================================================
+  // Actions - Legacy Bug Operations (for UI compatibility)
+  // ============================================================================
+
   function addBug(bug: Bug) {
     // Check if bug with same ID already exists
     const existingIndex = bugs.value.findIndex(b => b.id === bug.id)
@@ -87,14 +248,84 @@ export const useBugStore = defineStore('bug', () => {
 
   function clearBugs() {
     bugs.value = []
+    backendBugs.value = []
     currentBugId.value = null
+    activeBug.value = null
+    error.value = null
   }
 
   function loadBugs(bugList: Bug[]) {
     bugs.value = bugList
   }
 
-  // For development/testing: Add sample bug data
+  function clearError(): void {
+    error.value = null
+  }
+
+  // ============================================================================
+  // Event Listeners
+  // ============================================================================
+
+  async function setupEventListeners(): Promise<void> {
+    // Listen for bug created events
+    const unlistenBugCreated = await listen<BackendBug>('bug-created', (event) => {
+      const bug = event.payload
+      const existing = backendBugs.value.find(b => b.id === bug.id)
+      if (!existing) {
+        backendBugs.value.push(bug)
+      }
+    })
+    eventUnlisteners.value.push(unlistenBugCreated)
+
+    // Listen for bug updated events
+    const unlistenBugUpdated = await listen<BackendBug>('bug-updated', (event) => {
+      const bug = event.payload
+      const index = backendBugs.value.findIndex(b => b.id === bug.id)
+      if (index >= 0) {
+        backendBugs.value[index] = bug
+      }
+      if (activeBug.value?.id === bug.id) {
+        activeBug.value = bug
+      }
+    })
+    eventUnlisteners.value.push(unlistenBugUpdated)
+
+    // Listen for bug deleted events
+    const unlistenBugDeleted = await listen<{ id: string }>('bug-deleted', (event) => {
+      const { id } = event.payload
+      backendBugs.value = backendBugs.value.filter(b => b.id !== id)
+      if (activeBug.value?.id === id) {
+        activeBug.value = null
+      }
+    })
+    eventUnlisteners.value.push(unlistenBugDeleted)
+
+    // Listen for bug status changed events
+    const unlistenBugStatus = await listen<{ id: string; status: BugStatus }>(
+      'bug-status-changed',
+      (event) => {
+        const { id, status } = event.payload
+        const bug = backendBugs.value.find(b => b.id === id)
+        if (bug) {
+          bug.status = status
+        }
+        if (activeBug.value?.id === id) {
+          activeBug.value.status = status
+        }
+      }
+    )
+    eventUnlisteners.value.push(unlistenBugStatus)
+  }
+
+  function cleanupEventListeners(): void {
+    eventUnlisteners.value.forEach(unlisten => unlisten())
+    eventUnlisteners.value = []
+  }
+
+  // ============================================================================
+  // Development/Testing: Sample Data
+  // ============================================================================
+
   function loadSampleData() {
     const sampleBugs: Bug[] = [
       {
@@ -162,13 +393,38 @@ export const useBugStore = defineStore('bug', () => {
     loadBugs(sampleBugs)
   }
 
+  // ============================================================================
+  // Store Return
+  // ============================================================================
+
   return {
     // State
     bugs: allBugs,
     currentBug,
     bugCount,
+    backendBugs,
+    activeBug,
+    loading,
+    error,
 
-    // Actions
+    // Getters
+    hasError,
+    isCapturing,
+
+    // Actions - Backend Operations
+    createBug,
+    loadBug,
+    updateBackendBug,
+    deleteBug,
+    loadAllBugs,
+    loadBugsBySession,
+
+    // Actions - Lifecycle
+    startBugCapture,
+    completeBugCapture,
+    updateBugStatus,
+
+    // Actions - Legacy (for UI compatibility)
     addBug,
     removeBug,
     updateBug,
@@ -176,6 +432,11 @@ export const useBugStore = defineStore('bug', () => {
     clearBugs,
     loadBugs,
     getBugById,
-    loadSampleData
+    loadSampleData,
+    clearError,
+
+    // Actions - Events
+    setupEventListeners,
+    cleanupEventListeners,
   }
 })
