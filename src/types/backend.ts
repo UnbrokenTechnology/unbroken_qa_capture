@@ -51,6 +51,7 @@ export interface Bug {
 }
 
 export interface BugUpdate {
+  type?: BugType
   title?: string
   notes?: string
   description?: string

@@ -6,7 +6,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core'
-import type { Bug, BugUpdate, Session, SessionSummary, Setting } from '../types/backend'
+import type { Bug, BugUpdate, Session, SessionSummary, Setting, Capture } from '../types/backend'
 
 // ============================================================================
 // Template Commands
@@ -158,6 +158,12 @@ export async function updateSessionNotes(
   notes: string
 ): Promise<void> {
   await invoke('update_session_notes', { sessionId, folderPath, notes })
+}
+
+// Capture operations
+export async function getBugCaptures(bugId: string): Promise<Capture[]> {
+  // TODO: Implement when backend command is available
+  return await invoke<Capture[]>('get_bug_captures', { bugId })
 }
 
 // Settings operations
