@@ -4,11 +4,123 @@ This file guides autonomous AI agents working on this project.
 Read PROJECT.md for business context and product vision.
 The original PRD is in the repository as `Unbroken_QA_Capture_PRD.md`.
 
+## Tech Stack
+
+- **Framework:** Tauri 2 (Rust backend + WebView frontend)
+- **Frontend:** Vue 3 + Quasar UI + TypeScript
+- **Build tools:** Vite, vue-tsc, vitest
+- **State management:** Pinia
+- **Dev command:** `npm run tauri:dev`
+- **Build command:** `npm run tauri:build`
+- **Tests:** `npm test` (vitest)
+
+## Build Prerequisites (Windows)
+
+- **Node.js** (v20+)
+- **Rust** (via rustup)
+- **Visual Studio 2022/2026 Build Tools** with "Desktop development with C++" workload (required by Tauri for MSVC linker and Windows SDK)
+
+## Known Issues & Gotchas
+
+- **Tauri icons must be 8-bit PNGs.** Tauri's icon decoder does not support 16-bit PNG bit depth. If icons are regenerated, ensure they are saved as 8-bit RGBA. The `.ico` should also be regenerated from 8-bit sources.
+- **Shell scripts must use LF line endings.** All `.sh` files in `.swarm/` run inside Linux containers. Windows CRLF line endings cause `exec: no such file or directory` errors. The `.gitattributes` enforces `eol=lf` for `*.sh`, `*.py`, and `Dockerfile`, but after fixing line endings you may need `git add --renormalize .swarm/` to apply the rule to already-tracked files.
+- **Keep the bare repo's main in sync.** Agents push to `.swarm/repo.git`. If your local main is ahead (e.g. after manual commits), run `git push swarm main` so agents can merge their feature branches cleanly.
+
 ## Repository
 
 - **GitHub:** https://github.com/UnbrokenTechnology/unbroken_qa_capture
 - **Organization:** Unbroken Technology (`UnbrokenTechnology`)
 - **Remotes:** `origin` (GitHub), `swarm` (local agent orchestration)
+
+## Swarm CLI
+
+The `swarm` CLI manages autonomous agent swarms. It must be run via PowerShell on Windows (e.g. `powershell.exe -Command "swarm <command>"`).
+
+### Commands
+
+| Command | Description | Usage |
+|---------|-------------|-------|
+| `swarm init <dir>` | Initialize a project for agent swarms | `swarm init .` |
+| `swarm start` | Spin up agent containers and monitor | `swarm start` |
+| `swarm stop` | Shut down all agents and monitor | `swarm stop` |
+| `swarm status` | Show running agents and queue summary | `swarm status` |
+| `swarm logs <service>` | Tail logs for a specific agent | `swarm logs agent-1` |
+| `swarm scale <count>` | Adjust number of agent containers | `swarm scale 3` |
+| `swarm regenerate` | Regenerate docker-compose.yml and .swarm/ files | `swarm regenerate` |
+| `swarm pull` | Pull latest changes from the swarm bare repo | `swarm pull` |
+| `swarm watch` | Watch for new commits and auto-pull | `swarm watch --interval 5` |
+
+### OAuth / Token Management
+
+`swarm start` automatically extracts OAuth credentials from `~/.claude/.credentials.json` (on Windows) or the macOS Keychain. No `.env` file is needed. The flow:
+
+1. `extract_oauth_credentials()` in `swarm.py` reads `~/.claude/.credentials.json`
+2. Credentials (accessToken, refreshToken, expiresAt) are passed as env vars to docker-compose
+3. `entrypoint.sh` seeds them into `/token/credentials.json` on a shared tmpfs volume
+4. `token-refresh.sh` handles automatic renewal when tokens are within 30 min of expiry
+
+**To refresh tokens:** Run `/login` in Claude Code, then `swarm stop && swarm start`.
+
+Source: `C:\Users\steph\Repositories\claude-swarm\swarm\swarm.py` (the swarm CLI)
+
+### Pulling Agent Work
+
+Agents push to a bare repo at `.swarm/repo.git`. The main branch is **`main`**. Agents work on feature branches named `ticket-<N>`.
+
+```bash
+# Pull merged work from main
+git pull swarm main --ff-only
+
+# See all agent branches
+git --git-dir=.swarm/repo.git branch -v
+
+# Fetch a specific agent branch to inspect it
+git fetch swarm ticket-<N>
+git diff main swarm/ticket-<N> --stat
+```
+
+### Configuration
+
+Config lives in `.swarm/config.json`:
+
+```json
+{
+  "agents": 2,
+  "allowed_tools": "Bash,Read,Write,Edit,Glob,Grep,Task,WebFetch,WebSearch",
+  "max_turns": 50,
+  "monitor_port": 3000,
+  "verify_retries": 2,
+  "mem_limit": "8g"
+}
+```
+
+### Ticket CLI
+
+Agents coordinate work via the `ticket` CLI (`.swarm/ticket/ticket.py`). Database: `.swarm/tickets/tickets.db`.
+
+```bash
+# Create a ticket
+ticket create "Title" [--description TEXT] [--parent ID] [--assign WHO] [--blocked-by ID] [--created-by WHO]
+
+# List / query
+ticket list                             # all non-done tickets
+ticket list --status open               # filter by status
+ticket show 7                           # full detail with comments
+ticket count                            # count of non-done tickets
+
+# Work on tickets
+ticket claim-next --agent agent-1       # atomically claim next available
+ticket comment 7 "message" --author agent-1
+ticket complete 7                       # mark done
+ticket unclaim 7                        # release without completing
+
+# Dependencies
+ticket block 7 --by 12                  # 7 blocked by 12
+ticket unblock 7 --by 12                # remove dependency
+
+# Activity
+ticket log                              # last 20 events
+```
 
 ## Workflow
 
