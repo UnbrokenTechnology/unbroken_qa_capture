@@ -187,6 +187,44 @@ async fn update_tray_tooltip(tooltip: String, app_handle: tauri::AppHandle) -> R
     Ok(())
 }
 
+#[tauri::command]
+async fn get_bug_notes(_bug_id: String, folder_path: String) -> Result<String, String> {
+    use std::path::Path;
+
+    // First try to read from notes.md file
+    let notes_file = Path::new(&folder_path).join("notes.md");
+    if notes_file.exists() {
+        std::fs::read_to_string(&notes_file)
+            .map_err(|e| format!("Failed to read notes.md: {}", e))
+    } else {
+        // Return empty string if file doesn't exist yet
+        Ok(String::new())
+    }
+}
+
+#[tauri::command]
+async fn update_bug_notes(
+    _bug_id: String,
+    folder_path: String,
+    notes: String,
+) -> Result<(), String> {
+    use std::path::Path;
+
+    // Ensure the folder exists
+    let bug_folder = Path::new(&folder_path);
+    if !bug_folder.exists() {
+        std::fs::create_dir_all(bug_folder)
+            .map_err(|e| format!("Failed to create bug folder: {}", e))?;
+    }
+
+    // Write notes to notes.md file
+    let notes_file = bug_folder.join("notes.md");
+    std::fs::write(&notes_file, notes)
+        .map_err(|e| format!("Failed to write notes.md: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -257,7 +295,9 @@ pub fn run() {
             open_bug_folder,
             open_session_folder,
             update_tray_icon,
-            update_tray_tooltip
+            update_tray_tooltip,
+            get_bug_notes,
+            update_bug_notes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -136,6 +136,18 @@ export async function getBugsBySession(sessionId: string): Promise<Bug[]> {
   return await invoke<Bug[]>('get_bugs_by_session', { sessionId })
 }
 
+export async function getBugNotes(bugId: string, folderPath: string): Promise<string> {
+  return await invoke<string>('get_bug_notes', { bugId, folderPath })
+}
+
+export async function updateBugNotes(
+  bugId: string,
+  folderPath: string,
+  notes: string
+): Promise<void> {
+  await invoke('update_bug_notes', { bugId, folderPath, notes })
+}
+
 // Settings operations
 export async function getSetting(key: string): Promise<string | null> {
   // TODO: Implement when backend command is available
