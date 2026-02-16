@@ -14,6 +14,15 @@
         <div class="text-h4 flex-1">
           Session Review
         </div>
+        <q-btn
+          v-if="finalizedBugs.length > 0"
+          color="primary"
+          icon="upload"
+          label="Push to Linear"
+          class="q-mr-md"
+          :loading="isPushing"
+          @click="showPushDialog = true"
+        />
         <div
           v-if="sessionStore.activeSession"
           class="text-caption text-grey-7"
@@ -367,6 +376,130 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Push to Linear Dialog -->
+    <q-dialog
+      v-model="showPushDialog"
+      persistent
+    >
+      <q-card style="min-width: 500px">
+        <q-card-section>
+          <div class="text-h6">
+            Push Bugs to Linear
+          </div>
+        </q-card-section>
+
+        <!-- Credentials Form -->
+        <q-card-section v-if="!hasCredentials && !isPushing">
+          <div class="text-body2 q-mb-md text-grey-7">
+            Enter your Linear API credentials to continue.
+          </div>
+          <q-input
+            v-model="linearCredentials.api_key"
+            label="API Key"
+            type="password"
+            outlined
+            dense
+            class="q-mb-md"
+          />
+          <q-input
+            v-model="linearCredentials.team_id"
+            label="Team ID (optional)"
+            outlined
+            dense
+            class="q-mb-md"
+          />
+        </q-card-section>
+
+        <!-- Progress Display -->
+        <q-card-section v-if="isPushing || pushResults.length > 0">
+          <div class="text-body2 q-mb-md">
+            {{ isPushing ? 'Pushing bugs to Linear...' : 'Push complete!' }}
+          </div>
+
+          <!-- Progress bar -->
+          <q-linear-progress
+            v-if="isPushing"
+            :value="pushProgress"
+            color="primary"
+            class="q-mb-md"
+          />
+
+          <!-- Results list -->
+          <q-list
+            separator
+            class="rounded-borders"
+          >
+            <q-item
+              v-for="result in pushResults"
+              :key="result.bugId"
+            >
+              <q-item-section avatar>
+                <q-icon
+                  :name="result.success ? 'check_circle' : 'error'"
+                  :color="result.success ? 'positive' : 'negative'"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ result.bugTitle }}</q-item-label>
+                <q-item-label
+                  v-if="result.success"
+                  caption
+                >
+                  {{ result.identifier }} - {{ result.url }}
+                </q-item-label>
+                <q-item-label
+                  v-else
+                  caption
+                  class="text-negative"
+                >
+                  {{ result.error }}
+                </q-item-label>
+              </q-item-section>
+              <q-item-section
+                v-if="result.success"
+                side
+              >
+                <q-btn
+                  flat
+                  dense
+                  icon="open_in_new"
+                  size="sm"
+                  @click="openUrl(result.url!)"
+                />
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn
+            v-if="!isPushing"
+            flat
+            label="Cancel"
+            @click="closePushDialog"
+          />
+          <q-btn
+            v-if="!hasCredentials && !isPushing"
+            color="primary"
+            label="Save & Push"
+            @click="saveCredentialsAndPush"
+          />
+          <q-btn
+            v-if="hasCredentials && !isPushing && pushResults.length === 0"
+            color="primary"
+            label="Push"
+            @click="pushToLinear"
+          />
+          <q-btn
+            v-if="!isPushing && pushResults.length > 0"
+            color="primary"
+            label="Close"
+            @click="closePushDialog"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -375,8 +508,9 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBugStore } from '@/stores/bug'
 import { useSessionStore } from '@/stores/session'
-import type { BugType, BugStatus, Capture } from '@/types/backend'
+import type { BugType, BugStatus, Capture, TicketingCredentials } from '@/types/backend'
 import * as tauri from '@/api/tauri'
+import { Notify } from 'quasar'
 
 const router = useRouter()
 const bugStore = useBugStore()
@@ -387,6 +521,28 @@ const selectedBugId = ref<string | null>(null)
 const bugCaptures = ref<Record<string, Capture[]>>({})
 const showScreenshotDialog = ref(false)
 const currentScreenshotIndex = ref(0)
+
+// Linear push state
+const showPushDialog = ref(false)
+const isPushing = ref(false)
+const hasCredentials = ref(false)
+const linearCredentials = ref<TicketingCredentials>({
+  api_key: '',
+  team_id: null,
+  workspace_id: null
+})
+
+interface PushResult {
+  bugId: string
+  bugTitle: string
+  success: boolean
+  identifier?: string
+  url?: string
+  error?: string
+}
+
+const pushResults = ref<PushResult[]>([])
+const pushProgress = ref(0)
 
 // Computed
 const bugs = computed(() => bugStore.backendBugs)
@@ -399,6 +555,11 @@ const selectedBug = computed(() => {
 const selectedBugCaptures = computed(() => {
   if (!selectedBugId.value) return []
   return bugCaptures.value[selectedBugId.value] || []
+})
+
+// Only bugs that are "ready" status can be pushed
+const finalizedBugs = computed(() => {
+  return bugs.value.filter(b => b.status === 'ready' || b.status === 'reviewed')
 })
 
 // Methods
@@ -466,6 +627,145 @@ function formatDate(dateStr: string): string {
   return date.toLocaleString()
 }
 
+// Linear push methods
+async function checkCredentials() {
+  try {
+    const creds = await tauri.ticketingGetCredentials()
+    if (creds && creds.api_key) {
+      hasCredentials.value = true
+      linearCredentials.value = creds
+    } else {
+      hasCredentials.value = false
+    }
+  } catch (err) {
+    console.error('Failed to check credentials:', err)
+    hasCredentials.value = false
+  }
+}
+
+async function saveCredentialsAndPush() {
+  if (!linearCredentials.value.api_key) {
+    Notify.create({
+      type: 'negative',
+      message: 'API Key is required'
+    })
+    return
+  }
+
+  try {
+    // Save credentials
+    await tauri.ticketingSaveCredentials(linearCredentials.value)
+
+    // Authenticate
+    await tauri.ticketingAuthenticate(linearCredentials.value)
+
+    hasCredentials.value = true
+
+    Notify.create({
+      type: 'positive',
+      message: 'Credentials saved successfully'
+    })
+
+    // Start push
+    await pushToLinear()
+  } catch (err) {
+    console.error('Authentication failed:', err)
+    Notify.create({
+      type: 'negative',
+      message: `Authentication failed: ${err}`
+    })
+  }
+}
+
+async function pushToLinear() {
+  isPushing.value = true
+  pushResults.value = []
+  pushProgress.value = 0
+
+  const bugsToProcess = finalizedBugs.value
+  const totalBugs = bugsToProcess.length
+
+  for (let i = 0; i < bugsToProcess.length; i++) {
+    const bug = bugsToProcess[i]
+    if (!bug) continue
+
+    try {
+      // Get bug captures for attachments
+      const captures = bugCaptures.value[bug.id] || []
+      const attachmentPaths = captures
+        .filter(c => c.file_type === 'screenshot')
+        .map(c => c.file_path)
+
+      // Read description from description.md if it exists
+      let description = bug.description || bug.ai_description || bug.notes || 'No description available'
+
+      // Create ticket request
+      const request = {
+        title: bug.title || `Bug ${bug.display_id}`,
+        description,
+        attachments: attachmentPaths,
+        labels: [bug.type]
+      }
+
+      // Push to Linear
+      const response = await tauri.ticketingCreateTicket(request)
+
+      pushResults.value.push({
+        bugId: bug.id,
+        bugTitle: bug.title || `Bug ${bug.display_id}`,
+        success: true,
+        identifier: response.identifier,
+        url: response.url
+      })
+
+      Notify.create({
+        type: 'positive',
+        message: `Pushed ${bug.display_id} to Linear`,
+        timeout: 1000
+      })
+    } catch (err) {
+      console.error(`Failed to push bug ${bug.id}:`, err)
+      pushResults.value.push({
+        bugId: bug.id,
+        bugTitle: bug.title || `Bug ${bug.display_id}`,
+        success: false,
+        error: String(err)
+      })
+    }
+
+    // Update progress
+    pushProgress.value = (i + 1) / totalBugs
+  }
+
+  isPushing.value = false
+
+  // Show summary notification
+  const successCount = pushResults.value.filter(r => r.success).length
+  const failCount = pushResults.value.length - successCount
+
+  if (failCount === 0) {
+    Notify.create({
+      type: 'positive',
+      message: `Successfully pushed ${successCount} bug${successCount > 1 ? 's' : ''} to Linear`
+    })
+  } else {
+    Notify.create({
+      type: 'warning',
+      message: `Pushed ${successCount} bug${successCount > 1 ? 's' : ''}, ${failCount} failed`
+    })
+  }
+}
+
+function closePushDialog() {
+  showPushDialog.value = false
+  pushResults.value = []
+  pushProgress.value = 0
+}
+
+function openUrl(url: string) {
+  window.open(url, '_blank')
+}
+
 // Lifecycle
 onMounted(async () => {
   // Load bugs for the active session
@@ -482,6 +782,9 @@ onMounted(async () => {
       selectBug(bugs.value[0]!.id)
     }
   }
+
+  // Check for stored credentials
+  await checkCredentials()
 })
 </script>
 

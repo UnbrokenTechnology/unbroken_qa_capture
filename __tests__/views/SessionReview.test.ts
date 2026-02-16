@@ -13,7 +13,12 @@ import * as tauri from '@/api/tauri'
 vi.mock('@/api/tauri', () => ({
   getBugCaptures: vi.fn(),
   updateBug: vi.fn(),
-  getBugsBySession: vi.fn()
+  getBugsBySession: vi.fn(),
+  ticketingGetCredentials: vi.fn(),
+  ticketingSaveCredentials: vi.fn(),
+  ticketingAuthenticate: vi.fn(),
+  ticketingCreateTicket: vi.fn(),
+  ticketingCheckConnection: vi.fn()
 }))
 
 // Mock Tauri event listener
@@ -88,6 +93,9 @@ describe('SessionReview', () => {
 
     // Reset mocks
     vi.clearAllMocks()
+
+    // Set default mock implementations
+    vi.mocked(tauri.ticketingGetCredentials).mockResolvedValue(null)
   })
 
   const mountComponent = async () => {

@@ -102,3 +102,30 @@ export interface BugMetadata {
   console_captures: string[]
   custom_fields: Record<string, string>
 }
+
+// Ticketing integration types
+export interface TicketingCredentials {
+  api_key: string
+  workspace_id?: string | null
+  team_id?: string | null
+}
+
+export interface CreateTicketRequest {
+  title: string
+  description: string
+  attachments: string[]
+  priority?: string | null
+  labels: string[]
+}
+
+export interface CreateTicketResponse {
+  id: string
+  url: string
+  identifier: string
+}
+
+export interface ConnectionStatus {
+  connected: boolean
+  message?: string | null
+  integration_name: string
+}

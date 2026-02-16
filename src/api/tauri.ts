@@ -6,7 +6,18 @@
  */
 
 import { invoke } from '@tauri-apps/api/core'
-import type { Bug, BugUpdate, Session, SessionSummary, Setting, Capture } from '../types/backend'
+import type {
+  Bug,
+  BugUpdate,
+  Session,
+  SessionSummary,
+  Setting,
+  Capture,
+  TicketingCredentials,
+  CreateTicketRequest,
+  CreateTicketResponse,
+  ConnectionStatus
+} from '../types/backend'
 
 // ============================================================================
 // Template Commands
@@ -185,4 +196,30 @@ export async function getAllSettings(): Promise<Setting[]> {
 export async function deleteSetting(key: string): Promise<void> {
   // TODO: Implement when backend command is available
   await invoke('delete_setting', { key })
+}
+
+// ============================================================================
+// Ticketing Integration Commands
+// ============================================================================
+
+export async function ticketingAuthenticate(credentials: TicketingCredentials): Promise<void> {
+  await invoke('ticketing_authenticate', { credentials })
+}
+
+export async function ticketingCreateTicket(
+  request: CreateTicketRequest
+): Promise<CreateTicketResponse> {
+  return await invoke<CreateTicketResponse>('ticketing_create_ticket', { request })
+}
+
+export async function ticketingCheckConnection(): Promise<ConnectionStatus> {
+  return await invoke<ConnectionStatus>('ticketing_check_connection')
+}
+
+export async function ticketingGetCredentials(): Promise<TicketingCredentials | null> {
+  return await invoke<TicketingCredentials | null>('ticketing_get_credentials')
+}
+
+export async function ticketingSaveCredentials(credentials: TicketingCredentials): Promise<void> {
+  await invoke('ticketing_save_credentials', { credentials })
 }
