@@ -1052,6 +1052,77 @@ fn update_capture_console_flag(
         .map_err(|e: rusqlite::Error| e.to_string())
 }
 
+// ─── Annotation Window Commands ──────────────────────────────────────
+
+#[tauri::command]
+async fn open_annotation_window(
+    image_path: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use std::path::Path;
+
+    // Validate image path exists
+    let path = Path::new(&image_path);
+    if !path.exists() {
+        return Err(format!("Image file not found: {}", image_path));
+    }
+
+    // Get primary monitor dimensions
+    let monitor = app.primary_monitor()
+        .map_err(|e| format!("Failed to get monitor info: {}", e))?
+        .ok_or("No monitor found")?;
+
+    let monitor_size = monitor.size();
+    let monitor_width = monitor_size.width as f64;
+    let monitor_height = monitor_size.height as f64;
+
+    // Calculate 90% of viewport
+    let max_width = monitor_width * 0.9;
+    let max_height = monitor_height * 0.9;
+
+    // For v1, we'll default to max size and let the component handle image scaling
+    // In a production version, we'd read the image dimensions to calculate exact size
+    let window_width = max_width.min(1200.0);
+    let window_height = max_height.min(800.0);
+
+    // Center the window
+    let window_x = (monitor_width - window_width) / 2.0;
+    let window_y = (monitor_height - window_height) / 2.0;
+
+    // Create window ID based on image path to avoid duplicates
+    let window_label = format!("annotation-{}",
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("window")
+            .replace(".", "-"));
+
+    // Check if window already exists
+    if let Some(existing) = app.get_webview_window(&window_label) {
+        existing.set_focus().map_err(|e| format!("Failed to focus existing window: {}", e))?;
+        return Ok(());
+    }
+
+    // Create annotation window
+    let url = format!("/annotate?image={}", urlencoding::encode(&image_path));
+
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        window_label,
+        tauri::WebviewUrl::App(url.into())
+    )
+    .title("Annotate Screenshot")
+    .inner_size(window_width, window_height)
+    .position(window_x, window_y)
+    .resizable(true)
+    .decorations(true) // Use system decorations for v1, can be minimized for v2
+    .always_on_top(true)
+    .focused(true)
+    .build()
+    .map_err(|e| format!("Failed to create annotation window: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1221,7 +1292,8 @@ pub fn run() {
             update_capture_console_flag,
             get_app_version,
             enable_startup,
-            disable_startup
+            disable_startup,
+            open_annotation_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

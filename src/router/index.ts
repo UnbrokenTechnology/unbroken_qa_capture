@@ -27,6 +27,11 @@ const routes: RouteRecordRaw[] = [
     path: '/settings',
     name: 'settings',
     component: () => import('@/views/Settings.vue')
+  },
+  {
+    path: '/annotate',
+    name: 'annotate',
+    component: () => import('@/views/AnnotateView.vue')
   }
 ]
 

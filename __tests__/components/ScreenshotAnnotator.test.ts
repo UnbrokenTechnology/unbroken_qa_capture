@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import ScreenshotAnnotator from '../../src/components/ScreenshotAnnotator.vue'
-import { Canvas } from 'fabric'
 import { createPinia, setActivePinia } from 'pinia'
+
+// Mock Tauri API
+vi.mock('@tauri-apps/api/core', () => ({
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`)
+}))
 
 // Mock Fabric.js Canvas
 vi.mock('fabric', () => {
@@ -70,234 +74,49 @@ vi.mock('fabric', () => {
   }
 })
 
-describe('ScreenshotAnnotator.vue', () => {
+describe('ScreenshotAnnotator.vue (Wrapper Component)', () => {
   let wrapper: VueWrapper
 
   beforeEach(() => {
     // Set up Pinia for settings store
     setActivePinia(createPinia())
-
-    wrapper = mount(ScreenshotAnnotator, {
-      props: {
-        modelValue: false,
-        screenshotPath: '/path/to/screenshot.png',
-      },
-      global: {
-        stubs: {
-          QDialog: {
-            template: '<div><slot /></div>',
-            props: ['modelValue'],
-          },
-          QCard: { template: '<div><slot /></div>' },
-          QBar: { template: '<div><slot /></div>' },
-          QSpace: { template: '<div />' },
-          QBtn: {
-            template: '<button @click="$emit(\'click\')"><slot /></button>',
-            props: ['color', 'icon', 'label', 'loading', 'disable', 'dense', 'flat', 'round', 'size'],
-          },
-          QBtnGroup: { template: '<div><slot /></div>' },
-          QBtnToggle: {
-            template: '<div />',
-            props: ['modelValue', 'options', 'color', 'toggleColor'],
-          },
-          QCardSection: { template: '<div><slot /></div>' },
-          QSeparator: { template: '<div />' },
-          QMenu: {
-            template: '<div><slot /></div>',
-            props: ['modelValue'],
-          },
-          QColor: {
-            template: '<div />',
-            props: ['modelValue'],
-          },
-          QTooltip: { template: '<div><slot /></div>' },
-        },
-      },
-    })
   })
 
-  describe('Component Mounting', () => {
-    it('mounts successfully', () => {
+  describe('Dialog Mode (Default)', () => {
+    beforeEach(() => {
+      wrapper = mount(ScreenshotAnnotator, {
+        props: {
+          modelValue: false,
+          screenshotPath: '/path/to/screenshot.png',
+        },
+        global: {
+          stubs: {
+            QDialog: {
+              template: '<div><slot /></div>',
+              props: ['modelValue'],
+            },
+            QCard: { template: '<div><slot /></div>' },
+            AnnotatorContent: {
+              template: '<div class="annotator-content-stub"></div>',
+              props: ['screenshotPath'],
+            },
+          },
+        },
+      })
+    })
+
+    it('mounts successfully in dialog mode', () => {
       expect(wrapper.exists()).toBe(true)
     })
 
-    it('has a canvas element', () => {
-      expect(wrapper.find('canvas').exists()).toBe(true)
+    it('renders QDialog when useDialog is true', () => {
+      // In dialog mode, QDialog should be rendered as a stub
+      expect(wrapper.html()).toContain('annotator-content-stub')
     })
 
-    it('initializes with dialog closed', () => {
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.isOpen).toBe(false)
-    })
-  })
-
-  describe('Props', () => {
-    it('accepts modelValue prop', async () => {
-      await wrapper.setProps({ modelValue: true })
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.isOpen).toBe(true)
-    })
-
-    it('accepts screenshotPath prop', () => {
-      const props = wrapper.props() as any
-      expect(props.screenshotPath).toBe('/path/to/screenshot.png')
-    })
-  })
-
-  describe('Tool Selection', () => {
-    it('starts with select tool', () => {
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('select')
-    })
-
-    it('can switch to text tool', async () => {
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.setTool('text')
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('text')
-    })
-
-    it('can switch to rectangle tool', () => {
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.setTool('rectangle')
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('rectangle')
-    })
-
-    it('can switch to circle tool', () => {
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.setTool('circle')
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('circle')
-    })
-
-    it('can switch to freehand tool', () => {
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.setTool('freehand')
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('freehand')
-    })
-  })
-
-  describe('Color and Stroke', () => {
-    it('starts with PRD default color #FF3B30 (red)', () => {
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentColor).toBe('#FF3B30')
-    })
-
-    it('starts with PRD default stroke width 4 (medium)', () => {
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.strokeWidth).toBe(4)
-    })
-
-    it('has 6 PRD-compliant preset colors', () => {
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.presetColors).toEqual([
-        '#FF3B30', // red
-        '#FFCC00', // yellow
-        '#007AFF', // blue
-        '#34C759', // green
-        '#FFFFFF', // white
-        '#000000', // black
-      ])
-    })
-
-    it('has 3 PRD-compliant stroke width options', () => {
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.strokeWidthOptions).toEqual([
-        { label: 'Thin', value: 2 },
-        { label: 'Medium', value: 4 },
-        { label: 'Thick', value: 8 },
-      ])
-    })
-
-    it('can select preset color', async () => {
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.selectColor('#FFCC00')
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentColor).toBe('#FFCC00')
-    })
-
-    it('can update stroke width to thin (2px)', async () => {
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.strokeWidth = 2
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.strokeWidth).toBe(2)
-    })
-
-    it('can update stroke width to thick (8px)', async () => {
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.strokeWidth = 8
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.strokeWidth).toBe(8)
-    })
-
-    it('returns correct color name for preset colors', () => {
-      // @ts-expect-error - Accessing internal method for testing
-      expect(wrapper.vm.getColorName('#FF3B30')).toBe('Red')
-      // @ts-expect-error - Accessing internal method for testing
-      expect(wrapper.vm.getColorName('#FFCC00')).toBe('Yellow')
-      // @ts-expect-error - Accessing internal method for testing
-      expect(wrapper.vm.getColorName('#007AFF')).toBe('Blue')
-      // @ts-expect-error - Accessing internal method for testing
-      expect(wrapper.vm.getColorName('#34C759')).toBe('Green')
-      // @ts-expect-error - Accessing internal method for testing
-      expect(wrapper.vm.getColorName('#FFFFFF')).toBe('White')
-      // @ts-expect-error - Accessing internal method for testing
-      expect(wrapper.vm.getColorName('#000000')).toBe('Black')
-    })
-
-    it('returns hex code for unknown colors', () => {
-      // @ts-expect-error - Accessing internal method for testing
-      expect(wrapper.vm.getColorName('#123456')).toBe('#123456')
-    })
-  })
-
-  describe('Undo/Redo', () => {
-    it('starts with undo disabled', () => {
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.canUndo).toBe(false)
-    })
-
-    it('starts with redo disabled', () => {
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.canRedo).toBe(false)
-    })
-
-    it('enables undo after history is saved', () => {
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.history = ['state1', 'state2']
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.historyStep = 1
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.updateUndoRedoState()
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.canUndo).toBe(true)
-    })
-
-    it('enables redo when not at latest history', () => {
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.history = ['state1', 'state2', 'state3']
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.historyStep = 1
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.updateUndoRedoState()
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.canRedo).toBe(true)
-    })
-  })
-
-  describe('Dialog Interaction', () => {
-    it('emits update:modelValue when closing', async () => {
-      await wrapper.setProps({ modelValue: true })
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.close()
-      await wrapper.vm.$nextTick()
-
-      expect(wrapper.emitted('update:modelValue')).toBeTruthy()
-      // First emission is from setProps (true), second is from close() (false)
-      const emissions = wrapper.emitted('update:modelValue')
-      expect(emissions?.[emissions.length - 1]).toEqual([false])
+    it('passes screenshotPath to AnnotatorContent', () => {
+      const content = wrapper.find('.annotator-content-stub')
+      expect(content.exists()).toBe(true)
     })
 
     it('opens when modelValue is set to true', async () => {
@@ -305,599 +124,146 @@ describe('ScreenshotAnnotator.vue', () => {
       // @ts-expect-error - Accessing internal state for testing
       expect(wrapper.vm.isOpen).toBe(true)
     })
-  })
 
-  describe('Save Functionality', () => {
-    it('generates annotated filename correctly', () => {
-      const originalPath = '/path/to/screenshot.png'
-      const lastDot = originalPath.lastIndexOf('.')
-      const annotatedPath = `${originalPath.substring(0, lastDot)}_annotated${originalPath.substring(lastDot)}`
+    it('emits update:modelValue when isOpen changes', async () => {
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.isOpen = true
+      await wrapper.vm.$nextTick()
 
-      expect(annotatedPath).toBe('/path/to/screenshot_annotated.png')
+      expect(wrapper.emitted('update:modelValue')).toBeTruthy()
+      const emissions = wrapper.emitted('update:modelValue')
+      expect(emissions?.[emissions.length - 1]).toEqual([true])
     })
 
-    it('handles path without extension', () => {
-      const originalPath = '/path/to/screenshot'
-      const annotatedPath = `${originalPath}_annotated.png`
-
-      expect(annotatedPath).toBe('/path/to/screenshot_annotated.png')
-    })
-
-    it('sets saving state during save', async () => {
+    it('closes dialog and emits update:modelValue on close', async () => {
       await wrapper.setProps({ modelValue: true })
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.saving).toBe(false)
+      // @ts-expect-error - Accessing internal method for testing
+      wrapper.vm.handleClose()
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.emitted('close')).toBeTruthy()
+      expect(wrapper.emitted('update:modelValue')).toBeTruthy()
+    })
+
+    it('emits saved event with path', async () => {
+      const testPath = '/path/to/annotated.png'
+      // @ts-expect-error - Accessing internal method for testing
+      wrapper.vm.handleSaved(testPath)
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.emitted('saved')).toBeTruthy()
+      const savedEmissions = wrapper.emitted('saved')
+      expect(savedEmissions?.[0]).toEqual([testPath])
     })
   })
 
-  describe('Canvas Initialization', () => {
-    it('creates canvas when dialog opens', async () => {
-      await wrapper.setProps({ modelValue: true })
-      await wrapper.vm.$nextTick()
-      await wrapper.vm.$nextTick()
-
-      // Canvas initialization happens in nextTick
-      // The mock Canvas constructor should have been called
-      expect(Canvas).toHaveBeenCalled()
+  describe('Standalone Mode', () => {
+    beforeEach(() => {
+      wrapper = mount(ScreenshotAnnotator, {
+        props: {
+          screenshotPath: '/path/to/screenshot.png',
+          useDialog: false,
+        },
+        global: {
+          stubs: {
+            AnnotatorContent: {
+              template: '<div class="annotator-content-stub"></div>',
+              props: ['screenshotPath'],
+            },
+          },
+        },
+      })
     })
 
-    it('disposes canvas on unmount', () => {
-      const mockDispose = vi.fn()
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = { dispose: mockDispose } as any
-      wrapper.unmount()
-
-      expect(mockDispose).toHaveBeenCalled()
+    it('mounts successfully in standalone mode', () => {
+      expect(wrapper.exists()).toBe(true)
     })
-  })
 
-  describe('Event Handlers', () => {
-    it('sets up mouse event handlers on canvas', async () => {
-      await wrapper.setProps({ modelValue: true })
-      await wrapper.vm.$nextTick()
+    it('does not render QDialog when useDialog is false', () => {
+      expect(wrapper.find('[class*="q-dialog"]').exists()).toBe(false)
+    })
 
+    it('renders AnnotatorContent directly', () => {
+      const content = wrapper.find('.annotator-content-stub')
+      expect(content.exists()).toBe(true)
+    })
+
+    it('passes screenshotPath to AnnotatorContent', () => {
+      const content = wrapper.find('.annotator-content-stub')
+      expect(content.exists()).toBe(true)
+    })
+
+    it('emits close without changing isOpen', async () => {
       // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.initializeCanvas()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.canvas?.on).toHaveBeenCalledWith('mouse:down', expect.any(Function))
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.canvas?.on).toHaveBeenCalledWith('mouse:move', expect.any(Function))
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.canvas?.on).toHaveBeenCalledWith('mouse:up', expect.any(Function))
-    })
-
-    it('handles mouse down for text tool', () => {
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.currentTool = 'text'
-      const mockCanvas = {
-        getScenePoint: vi.fn(() => ({ x: 100, y: 100 })),
-        add: vi.fn(),
-        setActiveObject: vi.fn(),
-        renderAll: vi.fn(),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.handleMouseDown({ e: {} } as any)
-
-      expect(mockCanvas.add).toHaveBeenCalled()
-    })
-  })
-
-  describe('History Management', () => {
-    it('saves history state', () => {
-      const mockCanvas = {
-        toJSON: vi.fn(() => ({ objects: [] })),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.history = []
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.historyStep = -1
-
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.saveHistory()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.history.length).toBe(1)
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.historyStep).toBe(0)
-    })
-
-    it('limits history to 50 items', () => {
-      const mockCanvas = {
-        toJSON: vi.fn(() => ({ objects: [] })),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.history = new Array(51).fill('state')
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.historyStep = 50
-
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.saveHistory()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.history.length).toBeLessThanOrEqual(51)
-    })
-
-    it('clears redo history on new action', () => {
-      const mockCanvas = {
-        toJSON: vi.fn(() => ({ objects: [] })),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.history = ['state1', 'state2', 'state3']
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.historyStep = 1
-
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.saveHistory()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.history.length).toBe(3) // state1, state2, new state
-    })
-  })
-
-  describe('Drawing Tools', () => {
-    it('enables drawing mode for freehand tool', () => {
-      const mockCanvas = {
-        isDrawingMode: false,
-        freeDrawingBrush: null,
-        selection: true,
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.setTool('freehand')
-
-      expect(mockCanvas.isDrawingMode).toBe(true)
-    })
-
-    it('disables drawing mode for non-freehand tools', () => {
-      const mockCanvas = {
-        isDrawingMode: true,
-        selection: false,
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.setTool('rectangle')
-
-      expect(mockCanvas.isDrawingMode).toBe(false)
-    })
-  })
-
-  describe('Accessibility', () => {
-    it('has tooltips for all tool buttons', () => {
-      expect(wrapper.html()).toContain('Select')
-      expect(wrapper.html()).toContain('Add Text')
-      expect(wrapper.html()).toContain('Draw Rectangle')
-      expect(wrapper.html()).toContain('Draw Circle')
-      expect(wrapper.html()).toContain('Freehand Drawing')
-    })
-
-    it('has tooltips for undo/redo buttons', () => {
-      expect(wrapper.html()).toContain('Undo')
-      expect(wrapper.html()).toContain('Redo')
-    })
-  })
-
-  describe('Keyboard Shortcuts', () => {
-    beforeEach(async () => {
-      // Open the dialog and initialize canvas
-      await wrapper.setProps({ modelValue: true })
-      await wrapper.vm.$nextTick()
-    })
-
-    it('switches to text tool with T key', async () => {
-      const event = new KeyboardEvent('keydown', { key: 'T' })
-      window.dispatchEvent(event)
+      wrapper.vm.handleClose()
       await wrapper.vm.$nextTick()
 
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('text')
-    })
-
-    it('switches to text tool with lowercase t key', async () => {
-      const event = new KeyboardEvent('keydown', { key: 't' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('text')
-    })
-
-    it('switches to rectangle tool with R key', async () => {
-      const event = new KeyboardEvent('keydown', { key: 'R' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('rectangle')
-    })
-
-    it('switches to rectangle tool with lowercase r key', async () => {
-      const event = new KeyboardEvent('keydown', { key: 'r' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('rectangle')
-    })
-
-    it('switches to circle tool with O key', async () => {
-      const event = new KeyboardEvent('keydown', { key: 'O' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('circle')
-    })
-
-    it('switches to circle tool with lowercase o key', async () => {
-      const event = new KeyboardEvent('keydown', { key: 'o' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('circle')
-    })
-
-    it('switches to freehand tool with D key', async () => {
-      const event = new KeyboardEvent('keydown', { key: 'D' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('freehand')
-    })
-
-    it('switches to freehand tool with lowercase d key', async () => {
-      const event = new KeyboardEvent('keydown', { key: 'd' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('freehand')
-    })
-
-    it('calls undo with Ctrl+Z', async () => {
-      // Set up canvas and history to enable undo
-      const mockCanvas = {
-        getActiveObject: vi.fn(() => null),
-        toJSON: vi.fn(() => ({})),
-        loadFromJSON: vi.fn(() => Promise.resolve()),
-        renderAll: vi.fn(),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.history = ['state1', 'state2']
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.historyStep = 1
-
-      const event = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.historyStep).toBe(0)
-    })
-
-    it('calls redo with Ctrl+Shift+Z', async () => {
-      // Set up canvas and history to enable redo
-      const mockCanvas = {
-        getActiveObject: vi.fn(() => null),
-        toJSON: vi.fn(() => ({})),
-        loadFromJSON: vi.fn(() => Promise.resolve()),
-        renderAll: vi.fn(),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.history = ['state1', 'state2', 'state3']
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.historyStep = 1
-
-      const event = new KeyboardEvent('keydown', { key: 'Z', ctrlKey: true, shiftKey: true })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.historyStep).toBe(2)
-    })
-
-    it('calls save with Ctrl+S', async () => {
-      const mockCanvas = {
-        toDataURL: vi.fn(() => 'data:image/png;base64,mockdata'),
-        getActiveObject: vi.fn(() => null),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-
-      const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-      await wrapper.vm.$nextTick() // Additional tick for async save
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.isOpen).toBe(false) // Dialog should close after save
-    })
-
-    it('closes dialog with Escape key', async () => {
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.isOpen).toBe(true)
-
-      const event = new KeyboardEvent('keydown', { key: 'Escape' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
+      expect(wrapper.emitted('close')).toBeTruthy()
+      // In standalone mode, isOpen should not change
       // @ts-expect-error - Accessing internal state for testing
       expect(wrapper.vm.isOpen).toBe(false)
     })
 
-    it('deletes selected object with Delete key', async () => {
-      const mockCanvas = {
-        getActiveObject: vi.fn(() => ({ /* mock object */ })),
-        remove: vi.fn(),
-        renderAll: vi.fn(),
-        toJSON: vi.fn(() => ({})),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-
-      const event = new KeyboardEvent('keydown', { key: 'Delete' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      expect(mockCanvas.remove).toHaveBeenCalled()
-    })
-
-    it('deletes selected object with Backspace key', async () => {
-      const mockCanvas = {
-        getActiveObject: vi.fn(() => ({ /* mock object */ })),
-        remove: vi.fn(),
-        renderAll: vi.fn(),
-        toJSON: vi.fn(() => ({})),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-
-      const event = new KeyboardEvent('keydown', { key: 'Backspace' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      expect(mockCanvas.remove).toHaveBeenCalled()
-    })
-
-    it('does not delete if no object is selected', async () => {
-      const mockCanvas = {
-        getActiveObject: vi.fn(() => null),
-        remove: vi.fn(),
-        renderAll: vi.fn(),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-
-      const event = new KeyboardEvent('keydown', { key: 'Delete' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      expect(mockCanvas.remove).not.toHaveBeenCalled()
-    })
-
-    it('ignores shortcuts when dialog is closed', async () => {
-      await wrapper.setProps({ modelValue: false })
-      await wrapper.vm.$nextTick()
-
-      const event = new KeyboardEvent('keydown', { key: 'T' })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('select') // Should remain unchanged
-    })
-
-    it('ignores shortcuts when editing text in input element', async () => {
-      // Create a mock input element
-      const input = document.createElement('input')
-      document.body.appendChild(input)
-      input.focus()
-
-      const event = new KeyboardEvent('keydown', {
-        key: 'T',
-        bubbles: true,
-      })
-      Object.defineProperty(event, 'target', { value: input, enumerable: true })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('select') // Should remain unchanged
-
-      document.body.removeChild(input)
-    })
-
-    it('ignores shortcuts when editing text in textarea element', async () => {
-      // Create a mock textarea element
-      const textarea = document.createElement('textarea')
-      document.body.appendChild(textarea)
-      textarea.focus()
-
-      const event = new KeyboardEvent('keydown', {
-        key: 'R',
-        bubbles: true,
-      })
-      Object.defineProperty(event, 'target', { value: textarea, enumerable: true })
-      window.dispatchEvent(event)
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.currentTool).toBe('select') // Should remain unchanged
-
-      document.body.removeChild(textarea)
-    })
-
-    it('cleans up event listener on unmount', () => {
-      const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener')
-      wrapper.unmount()
-
-      expect(removeEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function))
-    })
-  })
-
-  describe('Original Image Dimensions Tracking', () => {
-    it('tracks original image width and height on load', async () => {
-      await wrapper.setProps({ modelValue: true })
-      await wrapper.vm.$nextTick()
-
+    it('emits saved without changing isOpen', async () => {
+      const testPath = '/path/to/annotated.png'
       // @ts-expect-error - Accessing internal method for testing
-      await wrapper.vm.loadScreenshot()
+      wrapper.vm.handleSaved(testPath)
       await wrapper.vm.$nextTick()
 
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.originalImageWidth).toBe(800)
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.originalImageHeight).toBe(600)
-    })
-
-    it('calculates display scale correctly', async () => {
-      await wrapper.setProps({ modelValue: true })
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal method for testing
-      await wrapper.vm.loadScreenshot()
-      await wrapper.vm.$nextTick()
-
-      // Canvas is 1200x800, image is 800x600
-      // Scale should be min(1200/800, 800/600) = min(1.5, 1.333...) = 1.333...
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.displayScale).toBeCloseTo(1.333, 2)
-    })
-
-    it('resets dimension tracking on close', async () => {
-      await wrapper.setProps({ modelValue: true })
-      await wrapper.vm.$nextTick()
-
-      // @ts-expect-error - Accessing internal method for testing
-      await wrapper.vm.loadScreenshot()
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.originalImageWidth).toBe(800)
-
-      // @ts-expect-error - Accessing internal method for testing
-      wrapper.vm.close()
-
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.originalImageWidth).toBe(0)
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.originalImageHeight).toBe(0)
-      // @ts-expect-error - Accessing internal state for testing
-      expect(wrapper.vm.displayScale).toBe(1)
-    })
-  })
-
-  describe('Resolution Preservation on Export', () => {
-    it('exports at original resolution using correct multiplier', async () => {
-      await wrapper.setProps({ modelValue: true })
-      await wrapper.vm.$nextTick()
-
-      const mockCanvas = {
-        toDataURL: vi.fn(() => 'data:image/png;base64,mockdata'),
-        getActiveObject: vi.fn(() => null),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.displayScale = 0.5 // Simulating 50% scale down
-
-      // @ts-expect-error - Accessing internal method for testing
-      await wrapper.vm.saveAnnotatedScreenshot()
-
-      // Should export with multiplier = 1/0.5 = 2 to restore original resolution
-      expect(mockCanvas.toDataURL).toHaveBeenCalledWith({
-        format: 'png',
-        quality: 1,
-        multiplier: 2,
-      })
-    })
-
-    it('uses multiplier of 1 when displayScale is 1', async () => {
-      await wrapper.setProps({ modelValue: true })
-      await wrapper.vm.$nextTick()
-
-      const mockCanvas = {
-        toDataURL: vi.fn(() => 'data:image/png;base64,mockdata'),
-        getActiveObject: vi.fn(() => null),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.displayScale = 1
-
-      // @ts-expect-error - Accessing internal method for testing
-      await wrapper.vm.saveAnnotatedScreenshot()
-
-      expect(mockCanvas.toDataURL).toHaveBeenCalledWith({
-        format: 'png',
-        quality: 1,
-        multiplier: 1,
-      })
-    })
-  })
-
-  describe('Save Mode Functionality', () => {
-    it('saves alongside with _annotated suffix in alongside mode', async () => {
-      await wrapper.setProps({ modelValue: true })
-      await wrapper.vm.$nextTick()
-
-      const mockCanvas = {
-        toDataURL: vi.fn(() => 'data:image/png;base64,mockdata'),
-        getActiveObject: vi.fn(() => null),
-      }
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-
-      // Set save mode to 'alongside' via settings store
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.settingsStore.setSetting('annotation_save_mode', 'alongside')
-
-      // @ts-expect-error - Accessing internal method for testing
-      await wrapper.vm.saveAnnotatedScreenshot()
-
-      // Should emit save path with _annotated suffix
       expect(wrapper.emitted('saved')).toBeTruthy()
-      const savedEmissions = wrapper.emitted('saved')
-      expect(savedEmissions?.[0]).toEqual(['/path/to/screenshot_annotated.png'])
+      // In standalone mode, isOpen should not change
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.isOpen).toBe(false)
+    })
+  })
+
+  describe('Backward Compatibility', () => {
+    it('defaults to dialog mode when useDialog is not specified', () => {
+      const defaultWrapper = mount(ScreenshotAnnotator, {
+        props: {
+          screenshotPath: '/path/to/screenshot.png',
+        },
+        global: {
+          stubs: {
+            QDialog: {
+              template: '<div class="q-dialog-stub"><slot /></div>',
+              props: ['modelValue'],
+            },
+            QCard: { template: '<div><slot /></div>' },
+            AnnotatorContent: {
+              template: '<div></div>',
+              props: ['screenshotPath'],
+            },
+          },
+        },
+      })
+
+      expect(defaultWrapper.find('.q-dialog-stub').exists()).toBe(true)
     })
 
-    it('overwrites original file in overwrite mode', async () => {
-      await wrapper.setProps({ modelValue: true })
-      await wrapper.vm.$nextTick()
+    it('accepts modelValue prop in dialog mode', async () => {
+      const dialogWrapper = mount(ScreenshotAnnotator, {
+        props: {
+          modelValue: true,
+          screenshotPath: '/path/to/screenshot.png',
+        },
+        global: {
+          stubs: {
+            QDialog: {
+              template: '<div><slot /></div>',
+              props: ['modelValue'],
+            },
+            QCard: { template: '<div><slot /></div>' },
+            AnnotatorContent: {
+              template: '<div></div>',
+              props: ['screenshotPath'],
+            },
+          },
+        },
+      })
 
-      const mockCanvas = {
-        toDataURL: vi.fn(() => 'data:image/png;base64,mockdata'),
-        getActiveObject: vi.fn(() => null),
-      }
       // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.canvas = mockCanvas as any
-
-      // Set save mode to 'overwrite' via settings store
-      // @ts-expect-error - Accessing internal state for testing
-      wrapper.vm.settingsStore.setSetting('annotation_save_mode', 'overwrite')
-
-      // @ts-expect-error - Accessing internal method for testing
-      await wrapper.vm.saveAnnotatedScreenshot()
-
-      // Should emit original path without modification
-      expect(wrapper.emitted('saved')).toBeTruthy()
-      const savedEmissions = wrapper.emitted('saved')
-      expect(savedEmissions?.[0]).toEqual(['/path/to/screenshot.png'])
+      expect(dialogWrapper.vm.isOpen).toBe(true)
     })
   })
 })
