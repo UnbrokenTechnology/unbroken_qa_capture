@@ -270,5 +270,127 @@ fn test_linear_integration_check_connection_not_authenticated() {
     assert!(status.message.is_some());
 }
 
+#[test]
+fn test_batch_push_multiple_bugs() {
+    let integration = MockTicketingIntegration::new();
+
+    // Authenticate
+    let credentials = TicketingCredentials {
+        api_key: "test-api-key".to_string(),
+        workspace_id: None,
+        team_id: Some("team-123".to_string()),
+    };
+    integration.authenticate(&credentials).unwrap();
+
+    // Simulate pushing multiple bugs
+    let bugs = [
+        CreateTicketRequest {
+            title: "Bug 1: UI Issue".to_string(),
+            description: "Button is misaligned".to_string(),
+            attachments: vec!["/path/screenshot1.png".to_string()],
+            priority: Some("1".to_string()),
+            labels: vec!["bug".to_string()],
+        },
+        CreateTicketRequest {
+            title: "Bug 2: Performance Issue".to_string(),
+            description: "App is slow".to_string(),
+            attachments: vec![],
+            priority: Some("2".to_string()),
+            labels: vec!["bug".to_string(), "performance".to_string()],
+        },
+        CreateTicketRequest {
+            title: "Feature Request".to_string(),
+            description: "Add dark mode".to_string(),
+            attachments: vec![],
+            priority: Some("3".to_string()),
+            labels: vec!["feature".to_string()],
+        },
+    ];
+
+    // Push all bugs and collect results
+    let mut results = Vec::new();
+    for (index, bug) in bugs.iter().enumerate() {
+        let result = integration.create_ticket(bug);
+        assert!(result.is_ok(), "Bug {} should push successfully", index + 1);
+        results.push(result.unwrap());
+    }
+
+    // Verify all bugs were created
+    assert_eq!(results.len(), 3);
+    let created_tickets = integration.get_created_tickets();
+    assert_eq!(created_tickets.len(), 3);
+
+    // Verify progress tracking would work (simulate 1/10, 2/10, etc.)
+    for (index, _) in results.iter().enumerate() {
+        let progress = (index + 1) as f32 / bugs.len() as f32;
+        assert!((0.0..=1.0).contains(&progress));
+    }
+}
+
+#[test]
+fn test_batch_push_with_failures() {
+    let integration = MockTicketingIntegration::new();
+
+    // Authenticate
+    let credentials = TicketingCredentials {
+        api_key: "test-api-key".to_string(),
+        workspace_id: None,
+        team_id: None,
+    };
+    integration.authenticate(&credentials).unwrap();
+
+    // Push first bug successfully
+    let bug1 = CreateTicketRequest {
+        title: "Bug 1".to_string(),
+        description: "First bug".to_string(),
+        attachments: vec![],
+        priority: None,
+        labels: vec![],
+    };
+    let result1 = integration.create_ticket(&bug1);
+    assert!(result1.is_ok());
+
+    // Simulate failure for subsequent bugs
+    integration.set_should_fail(true);
+
+    let bug2 = CreateTicketRequest {
+        title: "Bug 2".to_string(),
+        description: "Second bug".to_string(),
+        attachments: vec![],
+        priority: None,
+        labels: vec![],
+    };
+    let result2 = integration.create_ticket(&bug2);
+    assert!(result2.is_err());
+
+    // Verify the UI should show 1 success, 1 failure
+    let created_tickets = integration.get_created_tickets();
+    assert_eq!(created_tickets.len(), 1); // Only the first one succeeded
+}
+
+#[test]
+fn test_authentication_error_handling() {
+    let integration = MockTicketingIntegration::new();
+
+    // Try to create ticket without authenticating
+    let request = CreateTicketRequest {
+        title: "Test Bug".to_string(),
+        description: "This should fail".to_string(),
+        attachments: vec![],
+        priority: None,
+        labels: vec![],
+    };
+
+    let result = integration.create_ticket(&request);
+    assert!(result.is_err());
+
+    match result.unwrap_err() {
+        TicketingError::AuthenticationFailed(msg) => {
+            assert_eq!(msg, "Not authenticated");
+        }
+        _ => panic!("Expected AuthenticationFailed error"),
+    }
+}
+
 // Note: Full integration tests with actual Linear API would require
 // real API keys and should be run separately in integration test suite

@@ -28,6 +28,11 @@ vi.mock('@/api/tauri', () => ({
   getBugCaptures: vi.fn(),
   updateBug: vi.fn(),
   getBugsBySession: vi.fn(),
+  ticketingGetCredentials: vi.fn(),
+  ticketingSaveCredentials: vi.fn(),
+  ticketingAuthenticate: vi.fn(),
+  ticketingCreateTicket: vi.fn(),
+  ticketingCheckConnection: vi.fn(),
   getClaudeStatus: vi.fn(),
   generateBugDescription: vi.fn(),
   refineBugDescription: vi.fn(),
@@ -107,7 +112,8 @@ describe('SessionReview', () => {
     // Reset mocks
     vi.clearAllMocks()
 
-    // Setup default Claude status mock
+    // Set default mock implementations
+    vi.mocked(tauri.ticketingGetCredentials).mockResolvedValue(null)
     vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
       NotInstalled: { message: 'Claude CLI not installed' }
     })

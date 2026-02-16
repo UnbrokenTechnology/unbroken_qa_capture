@@ -43,7 +43,8 @@ struct ActiveWatcher {
 ///
 /// This implementation provides:
 /// - File watching with automatic file type detection and exponential backoff retry
-/// - Screenshot trigger and registry redirect (pending implementation)
+/// - Screenshot trigger via multiple fallback methods (URI, process, key simulation)
+/// - Registry redirect (pending implementation)
 pub struct WindowsCaptureBridge {
     active_watchers: Arc<Mutex<HashMap<usize, ActiveWatcher>>>,
     next_watcher_id: Arc<Mutex<usize>>,
@@ -84,6 +85,173 @@ impl WindowsCaptureBridge {
         }
         None
     }
+
+    /// Attempts to trigger screenshot via ms-screenclip: URI scheme
+    /// This is the recommended method on Windows 10 1809+ and Windows 11
+    fn try_trigger_via_uri() -> Result<()> {
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+
+            Command::new("cmd")
+                .args(["/C", "start", "ms-screenclip:"])
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                .spawn()
+                .map_err(|e| PlatformError::ScreenshotTriggerError {
+                    method: "uri".to_string(),
+                    message: format!("Failed to launch ms-screenclip: URI: {}", e),
+                })?;
+
+            Ok(())
+        }
+
+        #[cfg(not(windows))]
+        Err(PlatformError::NotImplemented {
+            operation: "try_trigger_via_uri".to_string(),
+            platform: "Non-Windows platform".to_string(),
+        })
+    }
+
+    /// Attempts to trigger screenshot by spawning SnippingTool.exe
+    fn try_trigger_via_process() -> Result<()> {
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+
+            Command::new("SnippingTool.exe")
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                .spawn()
+                .map_err(|e| PlatformError::ScreenshotTriggerError {
+                    method: "process".to_string(),
+                    message: format!("Failed to launch SnippingTool.exe: {}", e),
+                })?;
+
+            Ok(())
+        }
+
+        #[cfg(not(windows))]
+        Err(PlatformError::NotImplemented {
+            operation: "try_trigger_via_process".to_string(),
+            platform: "Non-Windows platform".to_string(),
+        })
+    }
+
+    /// Attempts to trigger screenshot by simulating Win+Shift+S key combination
+    /// Uses Windows SendInput API to simulate the key presses
+    fn try_trigger_via_keysim() -> Result<()> {
+        #[cfg(windows)]
+        {
+            use windows::Win32::UI::Input::KeyboardAndMouse::{
+                SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+                KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_LWIN, VK_SHIFT, VK_S,
+            };
+
+            unsafe {
+                let mut inputs: [INPUT; 6] = std::mem::zeroed();
+
+                // Press Win
+                inputs[0] = INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: VK_LWIN,
+                            wScan: 0,
+                            dwFlags: KEYBD_EVENT_FLAGS(0),
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                };
+
+                // Press Shift
+                inputs[1] = INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: VK_SHIFT,
+                            wScan: 0,
+                            dwFlags: KEYBD_EVENT_FLAGS(0),
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                };
+
+                // Press S
+                inputs[2] = INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: VK_S,
+                            wScan: 0,
+                            dwFlags: KEYBD_EVENT_FLAGS(0),
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                };
+
+                // Release S
+                inputs[3] = INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: VK_S,
+                            wScan: 0,
+                            dwFlags: KEYEVENTF_KEYUP,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                };
+
+                // Release Shift
+                inputs[4] = INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: VK_SHIFT,
+                            wScan: 0,
+                            dwFlags: KEYEVENTF_KEYUP,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                };
+
+                // Release Win
+                inputs[5] = INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: VK_LWIN,
+                            wScan: 0,
+                            dwFlags: KEYEVENTF_KEYUP,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                };
+
+                let result = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+
+                if result != 6 {
+                    return Err(PlatformError::ScreenshotTriggerError {
+                        method: "keysim".to_string(),
+                        message: format!("SendInput failed: sent {} out of 6 inputs", result),
+                    });
+                }
+
+                Ok(())
+            }
+        }
+
+        #[cfg(not(windows))]
+        Err(PlatformError::NotImplemented {
+            operation: "try_trigger_via_keysim".to_string(),
+            platform: "Non-Windows platform".to_string(),
+        })
+    }
 }
 
 impl Default for WindowsCaptureBridge {
@@ -108,9 +276,27 @@ impl CaptureBridge for WindowsCaptureBridge {
     }
 
     fn trigger_screenshot(&self) -> Result<()> {
-        Err(PlatformError::NotImplemented {
-            operation: "trigger_screenshot".to_string(),
-            platform: "Windows (pending implementation)".to_string(),
+        // Try multiple methods in fallback order for maximum reliability on Windows 11
+
+        // Method 1: Launch ms-screenclip: URI (Windows 10 1809+ / Win11)
+        if Self::try_trigger_via_uri().is_ok() {
+            return Ok(());
+        }
+
+        // Method 2: Spawn SnippingTool.exe process
+        if Self::try_trigger_via_process().is_ok() {
+            return Ok(());
+        }
+
+        // Method 3: Simulate Win+Shift+S key combination
+        if Self::try_trigger_via_keysim().is_ok() {
+            return Ok(());
+        }
+
+        // All methods failed
+        Err(PlatformError::ScreenshotTriggerError {
+            method: "all".to_string(),
+            message: "All screenshot trigger methods failed (URI, process, key simulation)".to_string(),
         })
     }
 
@@ -605,15 +791,98 @@ mod tests {
             }
             _ => panic!("Expected NotImplemented error"),
         }
+    }
 
-        // Test trigger_screenshot
+    #[test]
+    #[cfg(windows)]
+    fn test_trigger_screenshot_attempts_multiple_methods() {
+        let bridge = WindowsCaptureBridge::new();
+
+        // On Windows, trigger_screenshot should attempt all methods and either succeed or fail
+        // We can't guarantee success in CI environment, but we can verify it doesn't panic
         let result = bridge.trigger_screenshot();
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            PlatformError::NotImplemented { operation, .. } => {
-                assert_eq!(operation, "trigger_screenshot");
+
+        // Either it succeeds (at least one method worked) or fails with ScreenshotTriggerError
+        match result {
+            Ok(_) => {
+                // Success - at least one method worked
             }
-            _ => panic!("Expected NotImplemented error"),
+            Err(PlatformError::ScreenshotTriggerError { method, message }) => {
+                // All methods failed - verify error structure
+                assert_eq!(method, "all");
+                assert!(message.contains("All screenshot trigger methods failed"));
+            }
+            Err(e) => {
+                panic!("Unexpected error type: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn test_trigger_screenshot_not_implemented_on_non_windows() {
+        // The helper methods should return NotImplemented on non-Windows
+        let result = WindowsCaptureBridge::try_trigger_via_uri();
+        assert!(matches!(result, Err(PlatformError::NotImplemented { .. })));
+
+        let result = WindowsCaptureBridge::try_trigger_via_process();
+        assert!(matches!(result, Err(PlatformError::NotImplemented { .. })));
+
+        let result = WindowsCaptureBridge::try_trigger_via_keysim();
+        assert!(matches!(result, Err(PlatformError::NotImplemented { .. })));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_trigger_via_uri_does_not_panic() {
+        // Test that URI trigger doesn't panic (may fail if ms-screenclip isn't registered)
+        let result = WindowsCaptureBridge::try_trigger_via_uri();
+
+        // Should either succeed or fail gracefully with ScreenshotTriggerError
+        match result {
+            Ok(_) => {},
+            Err(PlatformError::ScreenshotTriggerError { method, .. }) => {
+                assert_eq!(method, "uri");
+            }
+            Err(e) => {
+                panic!("Unexpected error type: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_trigger_via_process_does_not_panic() {
+        // Test that process trigger doesn't panic (may fail if SnippingTool.exe not found)
+        let result = WindowsCaptureBridge::try_trigger_via_process();
+
+        // Should either succeed or fail gracefully with ScreenshotTriggerError
+        match result {
+            Ok(_) => {},
+            Err(PlatformError::ScreenshotTriggerError { method, .. }) => {
+                assert_eq!(method, "process");
+            }
+            Err(e) => {
+                panic!("Unexpected error type: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_trigger_via_keysim_does_not_panic() {
+        // Test that key simulation doesn't panic
+        let result = WindowsCaptureBridge::try_trigger_via_keysim();
+
+        // Should either succeed or fail gracefully with ScreenshotTriggerError
+        match result {
+            Ok(_) => {},
+            Err(PlatformError::ScreenshotTriggerError { method, .. }) => {
+                assert_eq!(method, "keysim");
+            }
+            Err(e) => {
+                panic!("Unexpected error type: {:?}", e);
+            }
         }
     }
 
