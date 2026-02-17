@@ -420,10 +420,13 @@ async fn update_tray_menu(state: String, bug_id: Option<String>, app_handle: tau
             let settings = MenuItemBuilder::new("Settings")
                 .id("settings").enabled(true).build(&app_handle)
                 .map_err(|e| format!("Menu item error: {}", e))?;
+            let help = MenuItemBuilder::new("Help / User Guide")
+                .id("help").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
             let quit = MenuItemBuilder::new("Quit")
                 .id("quit").enabled(true).build(&app_handle)
                 .map_err(|e| format!("Menu item error: {}", e))?;
-            menu.append_items(&[&start, &open, &settings, &quit])
+            menu.append_items(&[&start, &open, &settings, &help, &quit])
                 .map_err(|e| format!("Failed to append menu items: {}", e))?;
         }
         "active" => {
@@ -433,10 +436,13 @@ async fn update_tray_menu(state: String, bug_id: Option<String>, app_handle: tau
             let open = MenuItemBuilder::new("Open App")
                 .id("open-main-window").enabled(true).build(&app_handle)
                 .map_err(|e| format!("Menu item error: {}", e))?;
+            let help = MenuItemBuilder::new("Help / User Guide")
+                .id("help").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
             let quit = MenuItemBuilder::new("Quit")
                 .id("quit").enabled(true).build(&app_handle)
                 .map_err(|e| format!("Menu item error: {}", e))?;
-            menu.append_items(&[&end, &open, &quit])
+            menu.append_items(&[&end, &open, &help, &quit])
                 .map_err(|e| format!("Failed to append menu items: {}", e))?;
         }
         "bug" => {
@@ -454,17 +460,23 @@ async fn update_tray_menu(state: String, bug_id: Option<String>, app_handle: tau
             let open = MenuItemBuilder::new("Open App")
                 .id("open-main-window").enabled(true).build(&app_handle)
                 .map_err(|e| format!("Menu item error: {}", e))?;
-            menu.append_items(&[&end_bug, &end_session, &open])
+            let help = MenuItemBuilder::new("Help / User Guide")
+                .id("help").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            menu.append_items(&[&end_bug, &end_session, &open, &help])
                 .map_err(|e| format!("Failed to append menu items: {}", e))?;
         }
         "review" => {
             let open_review = MenuItemBuilder::new("Open Review")
                 .id("open-review").enabled(true).build(&app_handle)
                 .map_err(|e| format!("Menu item error: {}", e))?;
+            let help = MenuItemBuilder::new("Help / User Guide")
+                .id("help").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
             let quit = MenuItemBuilder::new("Quit")
                 .id("quit").enabled(true).build(&app_handle)
                 .map_err(|e| format!("Menu item error: {}", e))?;
-            menu.append_items(&[&open_review, &quit])
+            menu.append_items(&[&open_review, &help, &quit])
                 .map_err(|e| format!("Failed to append menu items: {}", e))?;
         }
         _ => {
@@ -472,10 +484,13 @@ async fn update_tray_menu(state: String, bug_id: Option<String>, app_handle: tau
             let open = MenuItemBuilder::new("Open App")
                 .id("open-main-window").enabled(true).build(&app_handle)
                 .map_err(|e| format!("Menu item error: {}", e))?;
+            let help = MenuItemBuilder::new("Help / User Guide")
+                .id("help").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
             let quit = MenuItemBuilder::new("Quit")
                 .id("quit").enabled(true).build(&app_handle)
                 .map_err(|e| format!("Menu item error: {}", e))?;
-            menu.append_items(&[&open, &quit])
+            menu.append_items(&[&open, &help, &quit])
                 .map_err(|e| format!("Failed to append menu items: {}", e))?;
         }
     }
@@ -2079,6 +2094,10 @@ pub fn run() {
                 .id("settings")
                 .enabled(true)
                 .build(app)?;
+            let help_item = MenuItemBuilder::new("Help / User Guide")
+                .id("help")
+                .enabled(true)
+                .build(app)?;
             let quit_item = MenuItemBuilder::new("Quit")
                 .id("quit")
                 .enabled(true)
@@ -2088,6 +2107,7 @@ pub fn run() {
             menu.append(&capture_item)?;
             menu.append(&show_item)?;
             menu.append(&settings_item)?;
+            menu.append(&help_item)?;
             menu.append(&quit_item)?;
 
             // Build tray icon and store in static to prevent it from being dropped
@@ -2145,6 +2165,13 @@ pub fn run() {
                                 window.set_focus().ok();
                             }
                             app_handle.emit("tray-menu-open-review", ()).ok();
+                        }
+                        "help" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
+                            app_handle.emit("tray-menu-help", ()).ok();
                         }
                         "quit" => {
                             app_handle.exit(0);

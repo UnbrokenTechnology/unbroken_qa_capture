@@ -285,6 +285,11 @@ onMounted(async () => {
     router.push({ name: 'session-review' })
   })
 
+  // Tray "Help / User Guide" menu item (always visible)
+  const unlistenTrayHelp = await listen('tray-menu-help', () => {
+    router.push({ name: 'help' })
+  })
+
   // When the window is restored from tray (icon click or "Open Main Window"),
   // navigate back to the correct screen — but preserve the user's current view
   // if they are already on a valid sub-view for the current session state.
@@ -399,6 +404,7 @@ onMounted(async () => {
     unlistenTrayEndSession,
     unlistenTrayEndBugCapture,
     unlistenTrayOpenReview,
+    unlistenTrayHelp,
     unlistenWindowShown,
     unlistenHotkeyToggleSession,
     unlistenHotkeyStartBugCapture,
