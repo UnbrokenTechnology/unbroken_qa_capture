@@ -92,6 +92,7 @@ import SessionToolbar from './components/SessionToolbar.vue'
 import FirstRunWizard from './components/FirstRunWizard.vue'
 import QuickNotepad from './components/QuickNotepad.vue'
 import * as tauri from './api/tauri'
+import { useCaptureEventHandler } from './composables/useCaptureEventHandler'
 
 const router = useRouter()
 const $q = useQuasar()
@@ -207,6 +208,10 @@ onMounted(async () => {
 
   // Setup session event listeners
   await sessionStore.setupEventListeners()
+
+  // Wire up screenshot capture event handler (in composable to avoid circular store deps)
+  const { setup: setupCaptureHandler } = useCaptureEventHandler()
+  const unlistenScreenshotCaptured = await setupCaptureHandler()
 
   // Listen for tray menu events
   const unlistenStartSession = await listen('tray-menu-start-session', async () => {
@@ -420,6 +425,7 @@ onMounted(async () => {
   })
 
   unlistenHandlers = [
+    unlistenScreenshotCaptured,
     unlistenStartSession,
     unlistenNewBug,
     unlistenSettings,
