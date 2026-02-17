@@ -4,9 +4,19 @@
       class="settings-container"
       style="max-width: 900px; margin: 0 auto;"
     >
-      <h1 class="text-h4 q-mb-md">
-        Settings
-      </h1>
+      <div class="row items-center q-mb-md">
+        <q-btn
+          flat
+          round
+          dense
+          icon="arrow_back"
+          class="q-mr-md"
+          @click="goBack"
+        />
+        <h1 class="text-h4 q-my-none">
+          Settings
+        </h1>
+      </div>
 
       <!-- Loading state -->
       <q-linear-progress
@@ -641,9 +651,11 @@ import { useQuasar } from 'quasar'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { open as openUrl } from '@tauri-apps/plugin-shell'
+import { useRouter } from 'vue-router'
 
 const settingsStore = useSettingsStore()
 const $q = useQuasar()
+const router = useRouter()
 
 // Local settings state (for editing before save)
 const localSettings = ref({
@@ -1114,6 +1126,11 @@ async function cancelChanges(): Promise<void> {
     type: 'info',
     message: 'Changes cancelled',
   })
+}
+
+// Navigate back
+function goBack(): void {
+  router.back()
 }
 
 // Reset to defaults
