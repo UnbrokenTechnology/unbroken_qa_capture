@@ -924,28 +924,32 @@ fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
 }
 
 #[tauri::command]
-fn end_session(session_id: String) -> Result<(), String> {
-    let manager_guard = SESSION_MANAGER.lock().unwrap();
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Session manager not initialized")?;
-    let result = manager.end_session(&session_id);
-    drop(manager_guard); // Release lock before acquiring CAPTURE_BRIDGE lock
+async fn end_session(session_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let manager_guard = SESSION_MANAGER.lock().unwrap();
+        let manager = manager_guard
+            .as_ref()
+            .ok_or("Session manager not initialized")?;
+        let result = manager.end_session(&session_id);
+        drop(manager_guard); // Release lock before acquiring CAPTURE_BRIDGE lock
 
-    // Stop the active file watcher when the session ends
-    {
-        let bridge_guard = CAPTURE_BRIDGE.lock().unwrap();
-        if let Some(bridge) = bridge_guard.as_ref() {
-            let mut active = ACTIVE_WATCHER.lock().unwrap();
-            if let Some(handle) = active.take() {
-                if let Err(e) = bridge.stop_file_watcher(handle) {
-                    eprintln!("Warning: Failed to stop file watcher: {}", e);
+        // Stop the active file watcher when the session ends
+        {
+            let bridge_guard = CAPTURE_BRIDGE.lock().unwrap();
+            if let Some(bridge) = bridge_guard.as_ref() {
+                let mut active = ACTIVE_WATCHER.lock().unwrap();
+                if let Some(handle) = active.take() {
+                    if let Err(e) = bridge.stop_file_watcher(handle) {
+                        eprintln!("Warning: Failed to stop file watcher: {}", e);
+                    }
                 }
             }
         }
-    }
 
-    result
+        result
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[tauri::command]

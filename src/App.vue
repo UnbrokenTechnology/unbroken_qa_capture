@@ -241,9 +241,11 @@ onMounted(async () => {
   // Tray "End Session" menu item (shown during active/bug states)
   const unlistenTrayEndSession = await listen('tray-menu-end-session', async () => {
     if (sessionStore.isSessionActive && sessionStore.activeSessionId) {
+      $q.loading.show({ message: 'Ending session...' })
       try {
         await sessionStore.endSession(sessionStore.activeSessionId)
         await trayStore.setIdle()
+        router.push({ name: 'home' })
       } catch (err) {
         console.error('Failed to end session from tray:', err)
         $q.notify({
@@ -253,6 +255,8 @@ onMounted(async () => {
           position: 'bottom-right',
           timeout: 5000,
         })
+      } finally {
+        $q.loading.hide()
       }
     }
   })
