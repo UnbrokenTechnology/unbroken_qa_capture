@@ -161,9 +161,11 @@ import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { Canvas, FabricImage, Rect, Circle, IText, PencilBrush } from 'fabric'
 import { useSettingsStore } from '../stores/settings'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { saveAnnotatedImage } from '../api/tauri'
 
 interface Props {
   screenshotPath: string
+  captureId?: string
 }
 
 type Emits = {
@@ -530,32 +532,23 @@ async function saveAnnotatedScreenshot() {
     const exportMultiplier = displayScale.value > 0 ? 1 / displayScale.value : 1
 
     // Export canvas to data URL at original resolution
-    // TODO: Use dataUrl for actual file save via Tauri command
-    canvas.value.toDataURL({
+    const dataUrl = canvas.value.toDataURL({
       format: 'png',
       quality: 1,
       multiplier: exportMultiplier,
     })
 
-    // Determine save path based on save mode setting
-    const saveMode = settingsStore.annotationSaveMode
-    const originalPath = props.screenshotPath
-    let savePath: string
+    const saveMode = settingsStore.annotationSaveMode as 'alongside' | 'overwrite'
 
-    if (saveMode === 'overwrite') {
-      // Overwrite the original file
-      savePath = originalPath
-    } else {
-      // Save alongside with _annotated suffix (default)
-      const lastDot = originalPath.lastIndexOf('.')
-      savePath = lastDot > 0
-        ? `${originalPath.substring(0, lastDot)}_annotated${originalPath.substring(lastDot)}`
-        : `${originalPath}_annotated.png`
-    }
+    // Save via Tauri command — writes the file to disk and updates the DB record
+    const savedPath = await saveAnnotatedImage(
+      props.screenshotPath,
+      dataUrl,
+      saveMode,
+      props.captureId,
+    )
 
-    // Emit the save path so parent can save it
-    // TODO: Implement actual save via Tauri command with dataUrl
-    emit('saved', savePath)
+    emit('saved', savedPath)
 
     close()
   } catch (error) {

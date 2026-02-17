@@ -3,6 +3,7 @@
     <ScreenshotAnnotator
       v-if="imagePath"
       :screenshot-path="imagePath"
+      :capture-id="captureId"
       @saved="handleSaved"
       @close="handleClose"
     />
@@ -39,18 +40,22 @@ import ScreenshotAnnotator from '../components/ScreenshotAnnotator.vue'
 
 const route = useRoute()
 const imagePath = ref<string>('')
+const captureId = ref<string | undefined>(undefined)
 
 onMounted(() => {
-  // Extract image path from query parameter
+  // Extract image path and optional capture ID from query parameters
   const imageParam = route.query.image
   if (typeof imageParam === 'string') {
     imagePath.value = decodeURIComponent(imageParam)
   }
+  const captureIdParam = route.query.captureId
+  if (typeof captureIdParam === 'string') {
+    captureId.value = decodeURIComponent(captureIdParam)
+  }
 })
 
 async function handleSaved(annotatedPath: string) {
-  console.log('Annotation saved:', annotatedPath)
-  // Close the window after save
+  console.log('Annotation saved to:', annotatedPath)
   await handleClose()
 }
 

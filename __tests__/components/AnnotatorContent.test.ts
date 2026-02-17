@@ -6,7 +6,13 @@ import { createPinia, setActivePinia } from 'pinia'
 
 // Mock Tauri API
 vi.mock('@tauri-apps/api/core', () => ({
-  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`)
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
+  invoke: vi.fn((command: string) => {
+    if (command === 'save_annotated_image') {
+      return Promise.resolve('/path/to/screenshot_annotated.png')
+    }
+    return Promise.resolve()
+  }),
 }))
 
 // Mock Fabric.js Canvas

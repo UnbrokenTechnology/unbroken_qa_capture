@@ -315,6 +315,20 @@ export async function stopFileWatcher(): Promise<void> {
 // Annotation Commands
 // ============================================================================
 
-export async function openAnnotationWindow(imagePath: string): Promise<void> {
-  await invoke('open_annotation_window', { imagePath })
+export async function openAnnotationWindow(imagePath: string, captureId?: string): Promise<void> {
+  await invoke('open_annotation_window', { imagePath, captureId: captureId ?? null })
+}
+
+export async function saveAnnotatedImage(
+  imagePath: string,
+  dataUrl: string,
+  saveMode: 'alongside' | 'overwrite',
+  captureId?: string
+): Promise<string> {
+  return await invoke<string>('save_annotated_image', {
+    imagePath,
+    dataUrl,
+    saveMode,
+    captureId: captureId ?? null,
+  })
 }
