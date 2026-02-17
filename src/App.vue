@@ -439,9 +439,8 @@ watch(
   border-radius: 12px;
 }
 
-/* Smooth font rendering with Segoe UI Variable */
+/* Smooth font rendering — font-family is set by $typography-font-family in quasar-variables.sass */
 :deep(*) {
-  font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 </style>

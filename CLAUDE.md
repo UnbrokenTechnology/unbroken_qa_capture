@@ -30,6 +30,7 @@ The original PRD is in the repository as `Unbroken_QA_Capture_PRD.md`.
 - **Local commits can diverge from swarm.** If you commit locally while agents are also merging to the swarm's main, `git pull swarm main --ff-only` will fail. Rebase with `git rebase swarm/main`, then force-push to origin with `git push origin main --force-with-lease`.
 - **Hotkey double-registration bug.** On startup you'll see "HotKey already registered" errors. This is caused by `hotkey.rs:register_hotkey()` calling both `on_shortcut()` (which implicitly registers) and then `register()` (redundant). The hotkeys still work because `on_shortcut()` succeeds first, but the redundant `.register()` call should be removed.
 - **PowerShell execution policy.** Windows may block `.ps1` scripts by default. Always invoke with `powershell -ExecutionPolicy Bypass -File <script>`.
+- **NEVER set `font-family` on wildcard selectors (`*`, `:deep(*)`, etc.).** This clobbers `font-family: 'Material Icons'` on icon elements, causing all Quasar icons to render as plain text (e.g. "bug_report" instead of the bug icon). The app's typography font is configured via `$typography-font-family` in `src/quasar-variables.sass` — Quasar applies it properly without overriding icon fonts. If you need to set a font on a specific element, use a scoped class selector, never a wildcard.
 
 ## Repository
 
