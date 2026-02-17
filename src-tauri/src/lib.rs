@@ -43,9 +43,6 @@ static CAPTURE_BRIDGE: Mutex<Option<Box<dyn platform::CaptureBridge>>> = Mutex::
 // Active file watcher handle (None when no session is active)
 static ACTIVE_WATCHER: Mutex<Option<platform::WatcherHandle>> = Mutex::new(None);
 
-// Original Snipping Tool screenshot folder before redirect (for restoration on session end)
-static ORIGINAL_SCREENSHOT_FOLDER: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
-
 // Tauri event emitter implementation
 struct TauriEventEmitter {
     app_handle: Arc<Mutex<Option<AppHandle>>>,
@@ -831,6 +828,44 @@ fn route_to_bug(
     }));
 }
 
+/// Returns the folder to watch for new screenshots.
+///
+/// Reads the `screenshot_watch_folder` setting from the database. If not set, falls back to
+/// `%USERPROFILE%\Pictures\Screenshots` on Windows (the Snipping Tool default).
+fn get_screenshot_watch_folder(app: &tauri::AppHandle) -> std::path::PathBuf {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    // Try to read from settings DB
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap_or_default().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+    if let Ok(db) = Database::open(&db_path) {
+        let repo = SettingsRepository::new(db.connection());
+        if let Ok(Some(value)) = repo.get("screenshot_watch_folder") {
+            let path = std::path::PathBuf::from(&value);
+            if path.is_dir() {
+                return path;
+            }
+        }
+    }
+
+    // Fall back to %USERPROFILE%\Pictures\Screenshots (Windows Snipping Tool default)
+    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        let default_path = std::path::PathBuf::from(userprofile)
+            .join("Pictures")
+            .join("Screenshots");
+        if default_path.is_dir() {
+            return default_path;
+        }
+        // Return the path even if it doesn't exist yet; watcher will fail gracefully
+        return default_path;
+    }
+
+    // Last resort: use temp dir
+    std::env::temp_dir()
+}
+
 #[tauri::command]
 fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
     use std::sync::mpsc;
@@ -840,15 +875,13 @@ fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
         .as_ref()
         .ok_or("Session manager not initialized")?;
     let session = manager.start_session()?;
-
-    // Watch _captures/ subdirectory — the PRD-specified temporary landing zone
-    // where Snipping Tool saves files before they are sorted into bug subfolders.
     let folder_path = session.folder_path.clone();
-    let captures_watch_path = std::path::Path::new(&folder_path)
-        .join("_captures")
-        .to_string_lossy()
-        .to_string();
     drop(manager_guard); // Release lock before acquiring CAPTURE_BRIDGE lock
+
+    // Determine which folder to watch for new screenshots.
+    // We watch the system screenshot folder (Watch+Copy model) — no registry modification needed.
+    // When a new image appears it is copied into the active bug's screenshots/ folder or _unsorted/.
+    let watch_folder = get_screenshot_watch_folder(&app);
 
     let (tx, rx) = mpsc::channel();
     {
@@ -862,23 +895,12 @@ fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
                 }
             }
 
-            match bridge.start_file_watcher(std::path::Path::new(&captures_watch_path), tx) {
+            match bridge.start_file_watcher(&watch_folder, tx) {
                 Ok(handle) => {
                     *ACTIVE_WATCHER.lock().unwrap() = Some(handle);
 
-                    // Redirect Snipping Tool output to _captures/ so screenshots land there automatically.
-                    // Best-effort: log warnings on failure but don't abort session start.
-                    match bridge.redirect_screenshot_output(std::path::Path::new(&captures_watch_path)) {
-                        Ok(original) => {
-                            *ORIGINAL_SCREENSHOT_FOLDER.lock().unwrap() = Some(original);
-                        }
-                        Err(e) => {
-                            eprintln!("Warning: Could not redirect Snipping Tool output folder: {}", e);
-                        }
-                    }
-
-                    // Spawn background thread to sort capture events from _captures/
-                    // into bug subfolders or _unsorted/, with PRD-compliant naming.
+                    // Spawn background thread to copy new screenshots/videos from the system
+                    // screenshot folder into the active bug folder or _unsorted/.
                     let app_handle = app.clone();
                     let session_folder = folder_path.clone();
                     std::thread::spawn(move || {
@@ -943,7 +965,7 @@ fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
                     });
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to start file watcher for _captures/ folder '{}': {}", captures_watch_path, e);
+                    eprintln!("Warning: Failed to start file watcher for screenshot folder '{}': {}", watch_folder.display(), e);
                 }
             }
         }
@@ -970,14 +992,6 @@ async fn end_session(session_id: String) -> Result<(), String> {
                 if let Some(handle) = active.take() {
                     if let Err(e) = bridge.stop_file_watcher(handle) {
                         eprintln!("Warning: Failed to stop file watcher: {}", e);
-                    }
-                }
-
-                // Restore the original Snipping Tool screenshot folder
-                let original = ORIGINAL_SCREENSHOT_FOLDER.lock().unwrap().take();
-                if let Some(original_path) = original {
-                    if let Err(e) = bridge.restore_screenshot_output(&original_path) {
-                        eprintln!("Warning: Failed to restore Snipping Tool output folder: {}", e);
                     }
                 }
             }

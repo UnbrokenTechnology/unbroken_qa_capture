@@ -83,6 +83,39 @@
               </template>
             </q-input>
 
+            <q-input
+              v-model="localSettings.screenshot_watch_folder"
+              label="Screenshot Watch Folder"
+              hint="Folder where Snipping Tool saves screenshots (default: %USERPROFILE%\Pictures\Screenshots)"
+              outlined
+              readonly
+            >
+              <template #prepend>
+                <q-icon name="screenshot_monitor" />
+              </template>
+              <template #append>
+                <q-btn
+                  round
+                  dense
+                  flat
+                  icon="folder_open"
+                  @click="selectScreenshotWatchFolder"
+                >
+                  <q-tooltip>Browse</q-tooltip>
+                </q-btn>
+                <q-btn
+                  v-if="localSettings.screenshot_watch_folder"
+                  round
+                  dense
+                  flat
+                  icon="clear"
+                  @click="localSettings.screenshot_watch_folder = ''"
+                >
+                  <q-tooltip>Reset to default</q-tooltip>
+                </q-btn>
+              </template>
+            </q-input>
+
             <q-toggle
               v-model="localSettings.launch_on_startup"
               label="Launch on Windows startup"
@@ -661,6 +694,7 @@ const router = useRouter()
 const localSettings = ref({
   // General
   default_save_path: '',
+  screenshot_watch_folder: '',
   launch_on_startup: false,
   minimize_to_tray: true,
 
@@ -781,6 +815,25 @@ async function selectSessionsRoot(): Promise<void> {
     }
   } catch (err) {
     console.error('Failed to select sessions root:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to select folder',
+    })
+  }
+}
+
+async function selectScreenshotWatchFolder(): Promise<void> {
+  try {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: 'Select Screenshot Watch Folder',
+    })
+    if (selected) {
+      localSettings.value.screenshot_watch_folder = selected as string
+    }
+  } catch (err) {
+    console.error('Failed to select screenshot watch folder:', err)
     $q.notify({
       type: 'negative',
       message: 'Failed to select folder',
@@ -993,6 +1046,7 @@ async function loadSettings(): Promise<void> {
   localSettings.value = {
     // General
     default_save_path: settingsStore.getSetting('default_save_path', ''),
+    screenshot_watch_folder: settingsStore.getSetting('screenshot_watch_folder', ''),
     launch_on_startup: settingsStore.getSetting('launch_on_startup', 'false') === 'true',
     minimize_to_tray: settingsStore.getSetting('minimize_to_tray', 'true') === 'true',
 
@@ -1049,6 +1103,7 @@ async function saveSettings(): Promise<void> {
     const settingsToSave: Record<string, string> = {
       // General
       default_save_path: localSettings.value.default_save_path,
+      screenshot_watch_folder: localSettings.value.screenshot_watch_folder,
       launch_on_startup: localSettings.value.launch_on_startup.toString(),
       minimize_to_tray: localSettings.value.minimize_to_tray.toString(),
 

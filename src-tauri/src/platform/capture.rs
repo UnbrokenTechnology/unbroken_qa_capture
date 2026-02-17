@@ -1,7 +1,7 @@
 //! Platform abstraction for screenshot capture and file watching.
 //!
 //! The `CaptureBridge` trait defines the interface for platform-specific
-//! screenshot capture operations, file watching, and OS integration.
+//! screenshot capture operations and file watching.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
@@ -59,14 +59,14 @@ impl WatcherHandle {
 /// Platform abstraction trait for screenshot capture and file watching.
 ///
 /// This trait provides OS-specific operations for:
-/// - Redirecting screenshot output to custom folders (Windows registry, macOS CLI args)
 /// - Triggering the OS screenshot tool programmatically
 /// - Watching folders for new capture files
 ///
 /// # Platform Implementations
 ///
-/// - **Windows**: Uses registry modification for Snipping Tool redirection,
-///   multiple trigger methods (URI, process launch, key simulation)
+/// - **Windows**: Multiple trigger methods (URI, process launch, key simulation).
+///   The app watches the system default screenshot folder (%USERPROFILE%\Pictures\Screenshots)
+///   and copies new files into the session or bug folder — no registry modification required.
 /// - **macOS**: Uses `screencapture` CLI with output path arguments (v2)
 ///
 /// # Thread Safety
@@ -82,83 +82,17 @@ impl WatcherHandle {
 /// use std::sync::mpsc::channel;
 ///
 /// let bridge = get_capture_bridge();
-/// let target = Path::new("/path/to/captures");
-///
-/// // Redirect screenshot output
-/// let original = bridge.redirect_screenshot_output(target)?;
+/// let watch_folder = Path::new("/path/to/screenshots");
 ///
 /// // Start watching for new files
 /// let (tx, rx) = channel();
-/// let handle = bridge.start_file_watcher(target, tx)?;
+/// let handle = bridge.start_file_watcher(watch_folder, tx)?;
 ///
 /// // Trigger a screenshot
 /// bridge.trigger_screenshot()?;
-///
-/// // Later: restore original output path
-/// bridge.restore_screenshot_output(&original)?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub trait CaptureBridge: Send + Sync {
-    /// Redirects OS screenshot tool output to the specified target folder.
-    ///
-    /// # Platform Behavior
-    ///
-    /// - **Windows**: Modifies the registry key
-    ///   `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders\{B7BEDE81-DF94-4682-A7D8-57A52620B86F}`
-    ///   to redirect Snipping Tool output. The original value is returned for later restoration.
-    ///
-    /// - **macOS**: No-op on registry modification (returns dummy path). The `screencapture`
-    ///   command accepts output path as a CLI argument, so redirection happens per-invocation
-    ///   rather than globally.
-    ///
-    /// # Arguments
-    ///
-    /// * `target_folder` - Absolute path to the folder where screenshots should be saved.
-    ///   Must exist and be writable.
-    ///
-    /// # Returns
-    ///
-    /// The original screenshot output path before redirection. This should be passed to
-    /// `restore_screenshot_output()` when the session ends.
-    ///
-    /// # Errors
-    ///
-    /// - `PlatformError::InvalidArgument`: Target folder does not exist or is not writable
-    /// - `PlatformError::RegistryError`: Registry modification failed (Windows)
-    /// - `PlatformError::NotImplemented`: Platform does not support this operation (macOS v1)
-    ///
-    /// # Crash Safety
-    ///
-    /// On Windows, implementations should cache the original value in persistent storage
-    /// (SQLite) to enable restoration on next app launch if the app crashes before
-    /// `restore_screenshot_output()` is called.
-    fn redirect_screenshot_output(&self, target_folder: &Path) -> Result<PathBuf>;
-
-    /// Restores OS screenshot tool output to the original path.
-    ///
-    /// # Platform Behavior
-    ///
-    /// - **Windows**: Restores the registry key to its original value. Should be called
-    ///   on session end, and also implemented in a `Drop` guard for crash recovery.
-    ///
-    /// - **macOS**: No-op (returns `Ok(())`).
-    ///
-    /// # Arguments
-    ///
-    /// * `original_path` - The path returned by `redirect_screenshot_output()`.
-    ///
-    /// # Errors
-    ///
-    /// - `PlatformError::RegistryError`: Registry restoration failed (Windows)
-    /// - `PlatformError::NotImplemented`: Platform does not support this operation (macOS v1)
-    ///
-    /// # Implementation Note
-    ///
-    /// Windows implementations should use Rust's `Drop` trait to ensure this is called
-    /// even if the process is terminated abnormally. Additionally, the app should check
-    /// for stale redirects on startup and restore them.
-    fn restore_screenshot_output(&self, original_path: &Path) -> Result<()>;
-
     /// Programmatically triggers the OS screenshot tool.
     ///
     /// # Platform Behavior

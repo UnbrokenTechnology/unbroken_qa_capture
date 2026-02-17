@@ -4,16 +4,20 @@
 //!
 //! # Implementation Status
 //!
-//! - **CaptureBridge**: Partial implementation (file watcher complete, screenshot trigger/redirect pending)
+//! - **CaptureBridge**: Full implementation (file watcher + screenshot trigger)
 //! - **RegistryBridge**: Full implementation with crash recovery via SQLite cache
 //!
-//! # Registry Implementation
+//! # Capture Model
 //!
-//! The WindowsRegistryBridge provides:
+//! Uses the Watch+Copy model: the app watches the system screenshot folder
+//! (%USERPROFILE%\Pictures\Screenshots by default, configurable via settings) and
+//! copies new files into the active bug or _unsorted/ folder. No registry modification required.
+//!
+//! # Registry (startup/other uses)
+//!
+//! The WindowsRegistryBridge is still used for launch-on-startup. It provides:
 //! - Read/write access to HKCU registry keys (no admin required)
 //! - Persistent caching of original values in SQLite for crash recovery
-//! - Drop trait implementation for automatic restoration on object destruction
-//! - Startup recovery for stale redirects from crashed sessions
 
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc::Sender, Arc, Mutex};
@@ -28,6 +32,10 @@ use super::capture::{CaptureBridge, CaptureEvent, WatcherHandle};
 use super::registry::RegistryBridge;
 use super::registry_cache::RegistryCache;
 use super::error::{PlatformError, Result};
+
+// DESIGN NOTE: The registry redirect approach (modifying Snipping Tool's default save folder)
+// was removed in favor of the Watch+Copy model. The app now watches the system screenshot folder
+// directly and copies new files into the session/bug folder. See lib.rs::start_session.
 
 #[cfg(windows)]
 use winreg::enums::*;
@@ -45,11 +53,12 @@ struct ActiveWatcher {
 /// This implementation provides:
 /// - File watching with automatic file type detection and exponential backoff retry
 /// - Screenshot trigger via multiple fallback methods (URI, process, key simulation)
-/// - Registry redirect for Snipping Tool output folder via `WindowsRegistryBridge`
+///
+/// Screenshots are detected by watching the system screenshot folder directly (Watch+Copy model).
+/// The folder to watch is configured via the `screenshot_watch_folder` setting in the app.
 pub struct WindowsCaptureBridge {
     active_watchers: Arc<Mutex<HashMap<usize, ActiveWatcher>>>,
     next_watcher_id: Arc<Mutex<usize>>,
-    registry_bridge: WindowsRegistryBridge,
 }
 
 impl WindowsCaptureBridge {
@@ -58,7 +67,6 @@ impl WindowsCaptureBridge {
         Self {
             active_watchers: Arc::new(Mutex::new(HashMap::new())),
             next_watcher_id: Arc::new(Mutex::new(1)),
-            registry_bridge: WindowsRegistryBridge::new(),
         }
     }
 
@@ -264,18 +272,6 @@ impl Default for WindowsCaptureBridge {
 }
 
 impl CaptureBridge for WindowsCaptureBridge {
-    fn redirect_screenshot_output(&self, target_folder: &Path) -> Result<PathBuf> {
-        // Read the current (original) screenshot folder before redirecting
-        let original = self.registry_bridge.read_screenshot_folder()?;
-        // Write the new target folder to the registry
-        self.registry_bridge.write_screenshot_folder(target_folder)?;
-        Ok(original)
-    }
-
-    fn restore_screenshot_output(&self, original_path: &Path) -> Result<()> {
-        self.registry_bridge.restore_screenshot_folder(original_path)
-    }
-
     fn trigger_screenshot(&self) -> Result<()> {
         // Try multiple methods in fallback order for maximum reliability on Windows 11
 
@@ -766,21 +762,6 @@ mod tests {
     use super::*;
     use std::sync::mpsc::channel;
     use std::fs;
-
-    #[test]
-    #[cfg(not(windows))]
-    fn test_screenshot_redirect_fails_on_non_windows() {
-        let bridge = WindowsCaptureBridge::new();
-        let temp_path = PathBuf::from("/tmp/test");
-
-        // On non-Windows, redirect_screenshot_output fails because the registry is unavailable
-        let result = bridge.redirect_screenshot_output(&temp_path);
-        assert!(result.is_err(), "redirect_screenshot_output should fail on non-Windows");
-
-        // On non-Windows, restore_screenshot_output also fails (no registry)
-        let result = bridge.restore_screenshot_output(&temp_path);
-        assert!(result.is_err(), "restore_screenshot_output should fail on non-Windows");
-    }
 
     #[test]
     #[cfg(windows)]

@@ -45,20 +45,6 @@ impl Default for MacCaptureBridge {
 }
 
 impl CaptureBridge for MacCaptureBridge {
-    fn redirect_screenshot_output(&self, _target_folder: &Path) -> Result<PathBuf> {
-        Err(PlatformError::NotImplemented {
-            operation: "redirect_screenshot_output".to_string(),
-            platform: "macOS".to_string(),
-        })
-    }
-
-    fn restore_screenshot_output(&self, _original_path: &Path) -> Result<()> {
-        Err(PlatformError::NotImplemented {
-            operation: "restore_screenshot_output".to_string(),
-            platform: "macOS".to_string(),
-        })
-    }
-
     fn trigger_screenshot(&self) -> Result<()> {
         Err(PlatformError::NotImplemented {
             operation: "trigger_screenshot".to_string(),
@@ -162,28 +148,6 @@ mod tests {
     fn test_macos_capture_bridge_returns_not_implemented() {
         let bridge = MacCaptureBridge::new();
         let temp_path = PathBuf::from("/tmp/test");
-
-        // Test redirect_screenshot_output
-        let result = bridge.redirect_screenshot_output(&temp_path);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            PlatformError::NotImplemented { operation, platform } => {
-                assert_eq!(operation, "redirect_screenshot_output");
-                assert_eq!(platform, "macOS");
-            }
-            _ => panic!("Expected NotImplemented error"),
-        }
-
-        // Test restore_screenshot_output
-        let result = bridge.restore_screenshot_output(&temp_path);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            PlatformError::NotImplemented { operation, platform } => {
-                assert_eq!(operation, "restore_screenshot_output");
-                assert_eq!(platform, "macOS");
-            }
-            _ => panic!("Expected NotImplemented error"),
-        }
 
         // Test trigger_screenshot
         let result = bridge.trigger_screenshot();
