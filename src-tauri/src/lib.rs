@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use template::TemplateManager;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri::menu::{Menu, MenuItemBuilder};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, Emitter, AppHandle};
 use session_manager::{SessionManager, EventEmitter, RealFileSystem};
 use hotkey::{HotkeyManager, HotkeyConfig};
@@ -28,6 +28,9 @@ static SESSION_MANAGER: Mutex<Option<Arc<SessionManager>>> = Mutex::new(None);
 
 // Global hotkey manager
 static HOTKEY_MANAGER: Mutex<Option<Arc<HotkeyManager>>> = Mutex::new(None);
+
+// Global tray icon (must persist for app lifetime or it gets dropped/destroyed)
+static TRAY_ICON: Mutex<Option<TrayIcon>> = Mutex::new(None);
 
 // Global ticketing integration
 static TICKETING_INTEGRATION: Mutex<Option<Arc<dyn TicketingIntegration>>> = Mutex::new(None);
@@ -1203,10 +1206,9 @@ pub fn run() {
                 }
             });
 
-            // Update the manager's config with loaded settings
-            let _ = hotkey_manager.update_config(app.handle(), loaded_config);
-
-            let registration_results = hotkey_manager.register_all(app.handle());
+            // Update the manager's config with loaded settings and register hotkeys
+            // update_config() already calls register_all() internally, so no separate call needed
+            let registration_results = hotkey_manager.update_config(app.handle(), loaded_config);
 
             // Check for registration failures and notify via tray
             let mut failed_shortcuts = Vec::new();
@@ -1262,8 +1264,8 @@ pub fn run() {
             menu.append(&settings_item)?;
             menu.append(&quit_item)?;
 
-            // Build tray icon
-            let _tray = TrayIconBuilder::with_id("main-tray")
+            // Build tray icon and store in static to prevent it from being dropped
+            let tray = TrayIconBuilder::with_id("main-tray")
                 .tooltip("Unbroken QA Capture - Idle")
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
@@ -1299,6 +1301,8 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            *TRAY_ICON.lock().unwrap() = Some(tray);
 
             Ok(())
         })
