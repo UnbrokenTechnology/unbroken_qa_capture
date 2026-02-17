@@ -32,6 +32,11 @@ const routes: RouteRecordRaw[] = [
     path: '/annotate',
     name: 'annotate',
     component: () => import('@/views/AnnotateView.vue')
+  },
+  {
+    path: '/session-notes',
+    name: 'session-notes',
+    component: () => import('@/views/SessionNotesView.vue')
   }
 ]
 

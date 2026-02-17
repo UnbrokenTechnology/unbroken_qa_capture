@@ -581,6 +581,35 @@ async fn update_session_notes(
     Ok(())
 }
 
+#[tauri::command]
+async fn open_session_notes_window(app: tauri::AppHandle) -> Result<(), String> {
+    let window_label = "session-notes";
+
+    // If already open, focus it instead of creating a new one
+    if let Some(existing) = app.get_webview_window(window_label) {
+        existing.show().map_err(|e| format!("Failed to show session notes window: {}", e))?;
+        existing.set_focus().map_err(|e| format!("Failed to focus session notes window: {}", e))?;
+        return Ok(());
+    }
+
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        window_label,
+        tauri::WebviewUrl::App("/session-notes".into()),
+    )
+    .title("Session Notes")
+    .inner_size(450.0, 380.0)
+    .min_inner_size(300.0, 250.0)
+    .resizable(true)
+    .decorations(true)
+    .always_on_top(true)
+    .focused(true)
+    .build()
+    .map_err(|e| format!("Failed to create session notes window: {}", e))?;
+
+    Ok(())
+}
+
 // ─── Session Manager Commands ────────────────────────────────────────────
 
 /// Determine capture type and generate PRD-compliant file name.
@@ -2155,6 +2184,7 @@ pub fn run() {
             update_bug_notes,
             get_session_notes,
             update_session_notes,
+            open_session_notes_window,
             start_session,
             end_session,
             resume_session,
@@ -2207,6 +2237,11 @@ pub fn run() {
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Only intercept the main window — other windows (session notes, annotation)
+                // should close normally.
+                if window.label() != "main" {
+                    return;
+                }
                 // Instead of closing the app, hide the window to system tray
                 window.hide().unwrap();
                 api.prevent_close();

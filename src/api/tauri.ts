@@ -187,6 +187,10 @@ export async function updateSessionNotes(
   await invoke('update_session_notes', { sessionId, folderPath, notes })
 }
 
+export async function openSessionNotesWindow(): Promise<void> {
+  await invoke('open_session_notes_window')
+}
+
 // Capture operations
 export async function getBugCaptures(bugId: string): Promise<Capture[]> {
   return await invoke<Capture[]>('get_bug_captures', { bugId })
