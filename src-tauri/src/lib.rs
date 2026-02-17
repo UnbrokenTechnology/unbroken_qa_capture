@@ -1,7 +1,7 @@
 mod template;
-mod database;
+pub mod database;
 pub mod platform;
-mod session_manager;
+pub mod session_manager;
 mod session_summary;
 mod hotkey;
 mod claude_cli;
