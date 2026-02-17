@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, provide } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useRouter } from 'vue-router'
 import { useTrayStore } from './stores/tray'
@@ -57,6 +57,7 @@ const trayStore = useTrayStore()
 const sessionStore = useSessionStore()
 const showStatusWidget = ref(true)
 const showFirstRunWizard = ref(false)
+provide('showFirstRunWizard', showFirstRunWizard)
 
 let unlistenHandlers: UnlistenFn[] = []
 

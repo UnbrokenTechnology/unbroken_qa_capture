@@ -1,8 +1,9 @@
 <template>
   <q-page class="active-session-view q-pa-md">
     <div class="content-wrapper">
-      <!-- Session Status Bar -->
+      <!-- Session Status Bar (hidden when first-run wizard is active) -->
       <q-card
+        v-if="!showFirstRunWizard"
         flat
         bordered
         class="status-bar q-mb-md"
@@ -190,7 +191,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, inject, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
 import { useBugStore } from '@/stores/bug'
@@ -200,6 +201,8 @@ import type { Bug as BackendBug } from '@/types/backend'
 const router = useRouter()
 const sessionStore = useSessionStore()
 const bugStore = useBugStore()
+
+const showFirstRunWizard = inject<Ref<boolean>>('showFirstRunWizard', ref(false))
 
 // Local state
 const notepadExpanded = ref(false)
