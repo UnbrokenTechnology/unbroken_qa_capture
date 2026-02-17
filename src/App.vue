@@ -1,5 +1,12 @@
 <template>
-  <q-layout view="lHh Lpr lFf">
+  <!-- Secondary windows (e.g. session-notes) render only the route view without the app shell -->
+  <router-view v-if="isSecondaryWindow" />
+
+  <!-- Main window: full app shell with header, status widget, notepads, etc. -->
+  <q-layout
+    v-else
+    view="lHh Lpr lFf"
+  >
     <q-header
       elevated
       class="bg-primary text-white"
@@ -58,17 +65,13 @@
       @close="showQuickNotepad = false"
     />
 
-    <!-- Session Notepad (hotkey: Ctrl+Shift+M) -->
-    <SessionNotepad
-      :visible="showSessionNotepad"
-      @close="showSessionNotepad = false"
-    />
   </q-layout>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, provide } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useTrayStore } from './stores/tray'
@@ -79,7 +82,6 @@ import SessionStatusWidget from './components/SessionStatusWidget.vue'
 import SessionToolbar from './components/SessionToolbar.vue'
 import FirstRunWizard from './components/FirstRunWizard.vue'
 import QuickNotepad from './components/QuickNotepad.vue'
-import SessionNotepad from './components/SessionNotepad.vue'
 import * as tauri from './api/tauri'
 
 const router = useRouter()
@@ -88,10 +90,13 @@ const trayStore = useTrayStore()
 const sessionStore = useSessionStore()
 const bugStore = useBugStore()
 const settingsStore = useSettingsStore()
+// Secondary windows (e.g. session-notes) skip the full app shell.
+// Treat undefined label (e.g. in test environments) as the main window.
+const windowLabel = getCurrentWindow().label
+const isSecondaryWindow = windowLabel !== undefined && windowLabel !== 'main'
 const showStatusWidget = ref(true)
 const showFirstRunWizard = ref(false)
 const showQuickNotepad = ref(false)
-const showSessionNotepad = ref(false)
 // True until we've finished checking for an active session on startup
 const appInitializing = ref(true)
 provide('showFirstRunWizard', showFirstRunWizard)
@@ -110,6 +115,9 @@ async function onSetupComplete() {
 }
 
 onMounted(async () => {
+  // Secondary windows (session-notes, annotation, etc.) don't need the main-window setup
+  if (isSecondaryWindow) return
+
   // Check if first-run setup is needed
   try {
     const setupComplete = await tauri.hasCompletedSetup()
@@ -362,8 +370,12 @@ onMounted(async () => {
     showQuickNotepad.value = !showQuickNotepad.value
   })
 
-  const unlistenHotkeyOpenSessionNotepad = await listen('hotkey-open-session-notepad', () => {
-    showSessionNotepad.value = !showSessionNotepad.value
+  const unlistenHotkeyOpenSessionNotepad = await listen('hotkey-open-session-notepad', async () => {
+    try {
+      await tauri.openSessionNotesWindow()
+    } catch (err) {
+      console.error('Failed to open session notes window:', err)
+    }
   })
 
   unlistenHandlers = [
@@ -392,6 +404,8 @@ onUnmounted(() => {
 watch(
   () => sessionStore.activeSession,
   (newSession, oldSession) => {
+    // Secondary windows manage their own view; don't navigate them
+    if (isSecondaryWindow) return
     // Don't navigate during initial load — handled above in onMounted
     if (appInitializing.value) return
 

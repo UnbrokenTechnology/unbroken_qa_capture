@@ -56,6 +56,8 @@ vi.mock('@/api/tauri', () => ({
   updateTrayTooltip: vi.fn(),
   // Recovery commands
   resumeSession: vi.fn(),
+  // Session notes window
+  openSessionNotesWindow: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/api/window', () => ({
@@ -373,23 +375,15 @@ describe('Hotkey event listeners (App.vue)', () => {
   })
 
   describe('hotkey-open-session-notepad', () => {
-    it('toggles the SessionNotepad panel on each hotkey press', async () => {
+    it('opens the session notes window via tauri command on hotkey press', async () => {
       vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
+      vi.mocked(tauri.openSessionNotesWindow).mockResolvedValue(undefined)
 
-      const wrapper = await mountApp(pinia, router)
+      await mountApp(pinia, router)
 
-      // Initially hidden
-      expect(wrapper.html()).not.toContain('Session Notes')
-
-      // First press: show
       await fireHotkey('hotkey-open-session-notepad')
-      await wrapper.vm.$nextTick()
-      expect(wrapper.html()).toContain('Session Notes')
 
-      // Second press: hide
-      await fireHotkey('hotkey-open-session-notepad')
-      await wrapper.vm.$nextTick()
-      expect(wrapper.html()).not.toContain('Session Notes')
+      expect(tauri.openSessionNotesWindow).toHaveBeenCalled()
     })
   })
 })
