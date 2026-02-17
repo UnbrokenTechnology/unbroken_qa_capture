@@ -393,10 +393,57 @@
               </template>
             </q-select>
 
+            <!-- Linear API Configuration -->
+            <div v-if="localSettings.ticketing_provider === 'linear'">
+              <q-separator class="q-my-md" />
+              <div class="text-subtitle2 q-mb-sm">
+                Linear Configuration
+              </div>
+
+              <q-input
+                v-model="localSettings.linear_api_key"
+                label="Linear API Key"
+                hint="Get your API key from https://linear.app/settings/api"
+                type="password"
+                outlined
+                dense
+                class="q-mb-md"
+              >
+                <template #prepend>
+                  <q-icon name="vpn_key" />
+                </template>
+              </q-input>
+
+              <q-input
+                v-model="localSettings.linear_team_id"
+                label="Team ID"
+                hint="Linear team ID (e.g., 44c86ac8-cb80-4302-9d81-a0a350b2c352)"
+                outlined
+                dense
+                class="q-mb-md"
+              >
+                <template #prepend>
+                  <q-icon name="group" />
+                </template>
+              </q-input>
+
+              <q-btn
+                outline
+                color="primary"
+                label="Test Connection"
+                icon="check_circle"
+                :loading="testingLinearConnection"
+                :disable="!localSettings.linear_api_key"
+                @click="testLinearConnection"
+              />
+            </div>
+
+            <q-separator class="q-my-md" />
+
             <q-input
               v-model="localSettings.linear_config_path"
-              label="Linear Project Configuration"
-              hint="Path to Linear configuration file (optional)"
+              label="Linear Project Configuration (Optional)"
+              hint="Path to Linear configuration file (advanced users only)"
               outlined
               readonly
             >
@@ -624,6 +671,8 @@ const localSettings = ref({
   // Ticketing
   ticketing_provider: 'linear',
   default_bug_type: 'bug',
+  linear_api_key: '',
+  linear_team_id: '',
   linear_config_path: '',
 })
 
@@ -631,6 +680,7 @@ const localSettings = ref({
 const hotkeyConflict = ref<string | null>(null)
 const claudeStatus = ref<'available' | 'not_found' | 'not_authenticated' | 'checking'>('checking')
 const testingClaude = ref(false)
+const testingLinearConnection = ref(false)
 const appVersion = ref('1.0.0')
 const templateSource = ref<string>('Default')
 const templatePreview = ref<string>('')
@@ -870,6 +920,43 @@ async function testClaudeConnection(): Promise<void> {
   }
 }
 
+// Linear connection test
+async function testLinearConnection(): Promise<void> {
+  if (!localSettings.value.linear_api_key) {
+    $q.notify({
+      type: 'warning',
+      message: 'Please enter a Linear API key first',
+    })
+    return
+  }
+
+  testingLinearConnection.value = true
+  try {
+    // Test authentication with the provided credentials
+    await invoke('ticketing_authenticate', {
+      credentials: {
+        api_key: localSettings.value.linear_api_key,
+        team_id: localSettings.value.linear_team_id || null,
+        workspace_id: null,
+      },
+    })
+
+    $q.notify({
+      type: 'positive',
+      message: 'Linear connection successful! Credentials are valid.',
+    })
+  } catch (err) {
+    console.error('Linear connection test failed:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Linear connection failed',
+      caption: err instanceof Error ? err.message : String(err),
+    })
+  } finally {
+    testingLinearConnection.value = false
+  }
+}
+
 // About section functions
 function openLink(url: string): void {
   openUrl(url).catch((err) => {
@@ -908,6 +995,8 @@ function loadSettings(): void {
     // Ticketing
     ticketing_provider: settingsStore.getSetting('ticketing_provider', 'linear'),
     default_bug_type: settingsStore.getSetting('default_bug_type', 'bug'),
+    linear_api_key: settingsStore.getSetting('linear_api_key', ''),
+    linear_team_id: settingsStore.getSetting('linear_team_id', ''),
     linear_config_path: settingsStore.getSetting('linear_config_path', ''),
   }
 }
@@ -941,12 +1030,29 @@ async function saveSettings(): Promise<void> {
       // Ticketing
       ticketing_provider: localSettings.value.ticketing_provider,
       default_bug_type: localSettings.value.default_bug_type,
+      linear_api_key: localSettings.value.linear_api_key,
+      linear_team_id: localSettings.value.linear_team_id,
       linear_config_path: localSettings.value.linear_config_path,
     }
 
     // Save each setting
     for (const [key, value] of Object.entries(settingsToSave)) {
       await settingsStore.saveSetting(key, value)
+    }
+
+    // Save Linear credentials to ticketing table if API key is provided
+    if (localSettings.value.linear_api_key && localSettings.value.ticketing_provider === 'linear') {
+      try {
+        await invoke('ticketing_save_credentials', {
+          credentials: {
+            api_key: localSettings.value.linear_api_key,
+            team_id: localSettings.value.linear_team_id || null,
+            workspace_id: null,
+          },
+        })
+      } catch (err) {
+        console.warn('Failed to save Linear credentials:', err)
+      }
     }
 
     // If launch_on_startup changed, update Windows registry
@@ -1011,6 +1117,17 @@ onMounted(async () => {
   loadSettings()
   await checkClaudeStatus()
   await loadTemplateInfo()
+
+  // Load Linear credentials from ticketing table
+  try {
+    const creds = await invoke<any>('ticketing_get_credentials')
+    if (creds && creds.api_key) {
+      localSettings.value.linear_api_key = creds.api_key
+      localSettings.value.linear_team_id = creds.team_id || ''
+    }
+  } catch (err) {
+    console.warn('Failed to load Linear credentials:', err)
+  }
 
   // Get app version
   try {

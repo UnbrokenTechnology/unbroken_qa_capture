@@ -630,25 +630,57 @@
         </q-card-section>
 
         <!-- Credentials Form -->
-        <q-card-section v-if="!hasCredentials && !isPushing">
+        <q-card-section v-if="!hasCredentials && !isPushing && !showPreview">
           <div class="text-body2 q-mb-md text-grey-7">
-            Enter your Linear API credentials to continue.
+            Linear API credentials not found. Please configure them in Settings.
           </div>
-          <q-input
-            v-model="linearCredentials.api_key"
-            label="API Key"
-            type="password"
-            outlined
-            dense
-            class="q-mb-md"
+          <q-btn
+            outline
+            color="primary"
+            label="Open Settings"
+            icon="settings"
+            @click="$router.push('/settings')"
           />
-          <q-input
-            v-model="linearCredentials.team_id"
-            label="Team ID (optional)"
-            outlined
-            dense
-            class="q-mb-md"
-          />
+        </q-card-section>
+
+        <!-- Preview Mode -->
+        <q-card-section v-if="showPreview && !isPushing">
+          <div class="text-body2 q-mb-md">
+            Preview of {{ ticketPreviews.length }} ticket{{ ticketPreviews.length > 1 ? 's' : '' }} to be created:
+          </div>
+
+          <q-scroll-area style="max-height: 400px">
+            <q-list separator>
+              <q-item
+                v-for="preview in ticketPreviews"
+                :key="preview.bugId"
+                class="q-pa-md"
+              >
+                <q-item-section>
+                  <q-item-label class="text-weight-bold">
+                    {{ preview.title }}
+                  </q-item-label>
+                  <q-item-label caption>
+                    <div class="q-mt-sm">
+                      <strong>Labels:</strong> {{ preview.labels.join(', ') }}
+                    </div>
+                    <div class="q-mt-xs">
+                      <strong>Attachments:</strong> {{ preview.attachmentCount }} screenshot{{ preview.attachmentCount !== 1 ? 's' : '' }}
+                    </div>
+                    <div class="q-mt-sm">
+                      <strong>Description:</strong>
+                    </div>
+                    <div
+                      class="q-mt-xs text-grey-8"
+                      style="white-space: pre-wrap; max-height: 100px; overflow-y: auto; font-size: 12px;"
+                    >
+                      {{ preview.description.substring(0, 300) }}{{ preview.description.length > 300 ? '...' : '' }}
+                    </div>
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-scroll-area>
         </q-card-section>
 
         <!-- Progress Display -->
@@ -720,15 +752,37 @@
             @click="closePushDialog"
           />
           <q-btn
-            v-if="!hasCredentials && !isPushing"
+            v-if="!hasCredentials && !isPushing && !showPreview"
             color="primary"
             label="Save & Push"
             @click="saveCredentialsAndPush"
           />
           <q-btn
-            v-if="hasCredentials && !isPushing && pushResults.length === 0"
+            v-if="hasCredentials && !isPushing && !showPreview && pushResults.length === 0"
+            outline
+            color="secondary"
+            label="Preview"
+            icon="preview"
+            @click="generatePreview"
+          />
+          <q-btn
+            v-if="hasCredentials && !isPushing && !showPreview && pushResults.length === 0"
             color="primary"
-            label="Push"
+            label="Push Now"
+            icon="upload"
+            @click="pushToLinear"
+          />
+          <q-btn
+            v-if="showPreview && !isPushing"
+            flat
+            label="Back"
+            @click="showPreview = false"
+          />
+          <q-btn
+            v-if="showPreview && !isPushing"
+            color="primary"
+            label="Confirm & Push"
+            icon="upload"
             @click="pushToLinear"
           />
           <q-btn
@@ -768,6 +822,7 @@ const currentScreenshotIndex = ref(0)
 const showPushDialog = ref(false)
 const isPushing = ref(false)
 const hasCredentials = ref(false)
+const showPreview = ref(false)
 const linearCredentials = ref<TicketingCredentials>({
   api_key: '',
   team_id: null,
@@ -783,8 +838,18 @@ interface PushResult {
   error?: string
 }
 
+interface TicketPreview {
+  bugId: string
+  bugTitle: string
+  title: string
+  description: string
+  labels: string[]
+  attachmentCount: number
+}
+
 const pushResults = ref<PushResult[]>([])
 const pushProgress = ref(0)
+const ticketPreviews = ref<TicketPreview[]>([])
 
 // AI Description Generation State
 const aiDescription = ref<string>('')
@@ -976,10 +1041,38 @@ async function saveCredentialsAndPush() {
   }
 }
 
+async function generatePreview() {
+  showPreview.value = true
+  ticketPreviews.value = []
+
+  const bugsToProcess = finalizedBugs.value
+
+  for (const bug of bugsToProcess) {
+    // Get bug captures for attachments
+    const captures = bugCaptures.value[bug.id] || []
+    const attachmentPaths = captures
+      .filter(c => c.file_type === 'screenshot')
+      .map(c => c.file_path)
+
+    // Read description from description.md if it exists
+    const description = bug.description || bug.ai_description || bug.notes || 'No description available'
+
+    ticketPreviews.value.push({
+      bugId: bug.id,
+      bugTitle: bug.title || `Bug ${bug.display_id}`,
+      title: bug.title || `Bug ${bug.display_id}`,
+      description,
+      labels: [bug.type],
+      attachmentCount: attachmentPaths.length
+    })
+  }
+}
+
 async function pushToLinear() {
   isPushing.value = true
   pushResults.value = []
   pushProgress.value = 0
+  showPreview.value = false
 
   const bugsToProcess = finalizedBugs.value
   const totalBugs = bugsToProcess.length
@@ -1057,7 +1150,9 @@ async function pushToLinear() {
 
 function closePushDialog() {
   showPushDialog.value = false
+  showPreview.value = false
   pushResults.value = []
+  ticketPreviews.value = []
   pushProgress.value = 0
 }
 
