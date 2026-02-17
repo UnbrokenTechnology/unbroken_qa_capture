@@ -1,7 +1,17 @@
 <template>
   <q-page padding>
     <div
-      v-if="!bug"
+      v-if="loading"
+      class="flex flex-center q-pa-xl"
+    >
+      <q-spinner
+        color="primary"
+        size="50px"
+      />
+    </div>
+
+    <div
+      v-else-if="!bug"
       class="flex flex-center q-pa-xl"
     >
       <div class="text-h6 text-grey">
@@ -24,7 +34,7 @@
           @click="goBack"
         />
         <div class="text-h4 flex-1">
-          {{ bug.title }}
+          {{ bug.title || bug.display_id }}
         </div>
         <q-btn
           color="secondary"
@@ -56,7 +66,7 @@
                 Type
               </div>
               <div class="text-body1">
-                {{ bug.bug_type }}
+                {{ bug.type }}
               </div>
             </div>
             <div class="col-12 col-md-6">
@@ -68,41 +78,41 @@
               </div>
             </div>
             <div
-              v-if="bug.metadata.software_version"
+              v-if="bug.software_version"
               class="col-12 col-md-6"
             >
               <div class="text-caption text-grey-7">
                 Software Version
               </div>
               <div class="text-body1">
-                {{ bug.metadata.software_version }}
+                {{ bug.software_version }}
               </div>
             </div>
             <div
-              v-if="bug.metadata.meeting_id"
+              v-if="bug.meeting_id"
               class="col-12 col-md-6"
             >
               <div class="text-caption text-grey-7">
                 Meeting ID
               </div>
               <div
-                v-if="isMeetingUrl(bug.metadata.meeting_id)"
+                v-if="isMeetingUrl(bug.meeting_id)"
                 class="text-body1"
               >
                 <a
                   href="#"
                   class="text-primary"
                   style="text-decoration: none;"
-                  @click.prevent="openMeetingUrl(bug.metadata.meeting_id!)"
+                  @click.prevent="openMeetingUrl(bug.meeting_id!)"
                 >
-                  <q-icon name="open_in_new" size="xs" class="q-mr-xs" />{{ bug.metadata.meeting_id }}
+                  <q-icon name="open_in_new" size="xs" class="q-mr-xs" />{{ bug.meeting_id }}
                 </a>
               </div>
               <div
                 v-else
                 class="text-body1"
               >
-                {{ bug.metadata.meeting_id }}
+                {{ bug.meeting_id }}
               </div>
             </div>
           </div>
@@ -116,31 +126,42 @@
             Description
           </div>
 
-          <div class="q-mb-md">
+          <div
+            v-if="bug.description"
+            class="text-body2 whitespace-pre-wrap"
+          >
+            {{ bug.description }}
+          </div>
+
+          <div
+            v-if="bug.notes"
+            class="q-mt-md"
+          >
+            <div class="text-subtitle2 text-grey-7 q-mb-sm">
+              Notes
+            </div>
+            <div class="text-body2 whitespace-pre-wrap">
+              {{ bug.notes }}
+            </div>
+          </div>
+
+          <div
+            v-if="bug.ai_description"
+            class="q-mt-md"
+          >
             <div class="text-subtitle2 text-primary q-mb-sm">
-              Steps to Reproduce
+              AI Summary
             </div>
             <div class="text-body2 whitespace-pre-wrap">
-              {{ bug.description_steps }}
+              {{ bug.ai_description }}
             </div>
           </div>
 
-          <div class="q-mb-md">
-            <div class="text-subtitle2 text-positive q-mb-sm">
-              Expected Result
-            </div>
-            <div class="text-body2 whitespace-pre-wrap">
-              {{ bug.description_expected }}
-            </div>
-          </div>
-
-          <div>
-            <div class="text-subtitle2 text-negative q-mb-sm">
-              Actual Result
-            </div>
-            <div class="text-body2 whitespace-pre-wrap">
-              {{ bug.description_actual }}
-            </div>
+          <div
+            v-if="!bug.description && !bug.notes && !bug.ai_description"
+            class="text-body2 text-grey"
+          >
+            No description provided.
           </div>
         </q-card-section>
       </q-card>
@@ -238,24 +259,6 @@
         </q-card-section>
       </q-card>
 
-      <!-- Console Output Card -->
-      <q-card
-        v-if="bug.console_output"
-        class="q-mb-md"
-      >
-        <q-card-section>
-          <div class="text-h6 q-mb-md">
-            Console Output
-          </div>
-          <q-scroll-area
-            style="height: 300px"
-            class="bg-grey-10 text-white rounded-borders q-pa-md"
-          >
-            <pre class="text-body2 q-ma-none">{{ bug.console_output }}</pre>
-          </q-scroll-area>
-        </q-card-section>
-      </q-card>
-
       <!-- Parsed Console Output Card -->
       <q-card
         v-if="consoleParsed"
@@ -323,7 +326,10 @@
       </q-card>
 
       <!-- Environment Information Card -->
-      <q-card class="q-mb-md">
+      <q-card
+        v-if="environment"
+        class="q-mb-md"
+      >
         <q-card-section>
           <div class="text-h6 q-mb-md">
             Environment
@@ -334,7 +340,7 @@
                 Operating System
               </div>
               <div class="text-body1">
-                {{ bug.metadata.environment.os }}
+                {{ environment.os }}
               </div>
             </div>
             <div class="col-12 col-md-6">
@@ -342,7 +348,7 @@
                 Display Resolution
               </div>
               <div class="text-body1">
-                {{ bug.metadata.environment.display_resolution }}
+                {{ environment.display_resolution }}
               </div>
             </div>
             <div class="col-12 col-md-6">
@@ -350,7 +356,7 @@
                 DPI Scaling
               </div>
               <div class="text-body1">
-                {{ bug.metadata.environment.dpi_scaling }}
+                {{ environment.dpi_scaling }}
               </div>
             </div>
             <div class="col-12 col-md-6">
@@ -358,7 +364,7 @@
                 RAM
               </div>
               <div class="text-body1">
-                {{ bug.metadata.environment.ram }}
+                {{ environment.ram }}
               </div>
             </div>
             <div class="col-12 col-md-6">
@@ -366,7 +372,7 @@
                 CPU
               </div>
               <div class="text-body1">
-                {{ bug.metadata.environment.cpu }}
+                {{ environment.cpu }}
               </div>
             </div>
             <div class="col-12 col-md-6">
@@ -374,7 +380,7 @@
                 Foreground App
               </div>
               <div class="text-body1">
-                {{ bug.metadata.environment.foreground_app }}
+                {{ environment.foreground_app }}
               </div>
             </div>
           </div>
@@ -400,6 +406,8 @@ import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import { useQuasar } from 'quasar'
 import ScreenshotAnnotator from '@/components/ScreenshotAnnotator.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
+import * as tauri from '@/api/tauri'
+import type { Capture, Environment } from '@/types/backend'
 
 interface ConsoleParsed {
   errors: string[]
@@ -424,34 +432,44 @@ const copying = ref(false)
 const showAnnotator = ref(false)
 const selectedScreenshot = ref('')
 const selectedScreenshotIndex = ref(0)
+const loading = ref(false)
+const captures = ref<Capture[]>([])
 
 // Get bug ID from route params
 const bugId = computed(() => route.params.id as string)
 
-// Get the bug data from the store
-const bug = computed(() => bugStore.getBugById(bugId.value))
-
-// Get the corresponding backend bug (has console_parse_json)
-const backendBug = computed(() =>
-  bugStore.backendBugs.find(b => b.id === bugId.value) || null
+// Look up bug in backendBugs (the live store populated by ActiveSessionView)
+const bug = computed(() =>
+  bugStore.backendBugs.find(b => b.id === bugId.value) ?? null
 )
 
-// Parse the console_parse_json from the backend bug
+// Parse the console_parse_json from the bug
 const consoleParsed = computed((): ConsoleParsed | null => {
-  if (!backendBug.value?.console_parse_json) return null
+  if (!bug.value?.console_parse_json) return null
   try {
-    return JSON.parse(backendBug.value.console_parse_json) as ConsoleParsed
+    return JSON.parse(bug.value.console_parse_json) as ConsoleParsed
+  } catch {
+    return null
+  }
+})
+
+// Parse environment from metadata_json
+const environment = computed((): Environment | null => {
+  if (!bug.value?.metadata_json) return null
+  try {
+    const meta = JSON.parse(bug.value.metadata_json) as { environment?: Environment }
+    return meta.environment ?? null
   } catch {
     return null
   }
 })
 
 const screenshotCaptures = computed(() =>
-  bug.value ? bug.value.captures.filter(c => !isVideoPath(c)) : []
+  captures.value.filter(c => !isVideoPath(c.file_path)).map(c => c.file_path)
 )
 
 const videoCaptures = computed(() =>
-  bug.value ? bug.value.captures.filter(c => isVideoPath(c)) : []
+  captures.value.filter(c => isVideoPath(c.file_path)).map(c => c.file_path)
 )
 
 // Navigate back to bug list
@@ -539,15 +557,32 @@ function handleAnnotationSaved(annotatedPath: string) {
     timeout: 2000
   })
 
-  // TODO: Optionally update bug.captures to include the annotated version
-  // For now, we just notify the user
   console.log('Annotated screenshot saved to:', annotatedPath)
 }
 
-// Load bug data on mount if needed
-onMounted(() => {
-  // If bug store is empty, you might want to fetch data here
-  // For now, we assume the store is populated elsewhere
+// Load bug data on mount — handles direct navigation/page reload
+onMounted(async () => {
+  const id = bugId.value
+  if (!id) return
+
+  // If bug isn't in the store yet, fetch it from the backend
+  if (!bug.value) {
+    loading.value = true
+    try {
+      await bugStore.loadBug(id)
+    } catch (err) {
+      console.error('Failed to load bug:', err)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // Load captures for this bug
+  try {
+    captures.value = await tauri.getBugCaptures(id)
+  } catch (err) {
+    console.error('Failed to load captures:', err)
+  }
 })
 </script>
 

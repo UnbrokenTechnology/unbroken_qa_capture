@@ -4,11 +4,18 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { Quasar, Notify } from 'quasar'
 import BugDetail from '@/views/BugDetail.vue'
-import { useBugStore, type Bug } from '@/stores/bug'
+import { useBugStore } from '@/stores/bug'
+import type { Bug as BackendBug, Capture } from '@/types/backend'
 
 // Mock Tauri invoke
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn()
+}))
+
+// Mock the tauri API module (used for getBugCaptures)
+vi.mock('@/api/tauri', () => ({
+  getBugCaptures: vi.fn().mockResolvedValue([]),
+  getBug: vi.fn().mockResolvedValue(null),
 }))
 
 // Create a mock notify function
@@ -25,16 +32,21 @@ vi.mock('quasar', async () => {
   }
 })
 
-const createMockBug = (id: string): Bug => ({
+const createMockBackendBug = (id: string): BackendBug => ({
   id,
+  session_id: 'session-1',
+  bug_number: 1,
+  display_id: 'BUG-001',
+  type: 'bug',
   title: 'Test Bug Title',
-  bug_type: 'UI',
-  description_steps: 'Step 1\nStep 2\nStep 3',
-  description_expected: 'Expected behavior',
-  description_actual: 'Actual behavior',
-  metadata: {
-    meeting_id: 'MTG-123',
-    software_version: '1.0.0',
+  notes: null,
+  description: null,
+  ai_description: null,
+  status: 'captured',
+  meeting_id: 'MTG-123',
+  software_version: '1.0.0',
+  console_parse_json: null,
+  metadata_json: JSON.stringify({
     environment: {
       os: 'Windows 11',
       display_resolution: '1920x1080',
@@ -42,26 +54,41 @@ const createMockBug = (id: string): Bug => ({
       ram: '16GB',
       cpu: 'Intel i7',
       foreground_app: 'TestApp'
-    },
-    console_captures: [],
-    custom_fields: {}
-  },
+    }
+  }),
   folder_path: '/test/path',
-  captures: ['image1.png', 'image2.png'],
-  console_output: 'Error: Test error message',
-  created_at: '2024-01-15T10:30:00Z'
+  created_at: '2024-01-15T10:30:00Z',
+  updated_at: '2024-01-15T10:30:00Z',
+})
+
+const createMockCapture = (filePath: string, bugId: string): Capture => ({
+  id: `capture-${filePath}`,
+  bug_id: bugId,
+  session_id: 'session-1',
+  file_name: filePath.split('/').pop() ?? filePath,
+  file_path: filePath,
+  file_type: 'screenshot',
+  annotated_path: null,
+  file_size_bytes: null,
+  is_console_capture: false,
+  parsed_content: null,
+  created_at: '2024-01-15T10:30:00Z',
 })
 
 describe('BugDetail', () => {
   let router: ReturnType<typeof createRouter>
   let pinia: ReturnType<typeof createPinia>
 
-  beforeEach(() => {
+  beforeEach(async () => {
     pinia = createPinia()
     setActivePinia(pinia)
 
     // Clear mock notify between tests
     mockNotify.mockClear()
+
+    // Reset tauri API mocks
+    const tauriApi = await import('@/api/tauri')
+    vi.mocked(tauriApi.getBugCaptures).mockResolvedValue([])
 
     router = createRouter({
       history: createMemoryHistory(),
@@ -94,7 +121,10 @@ describe('BugDetail', () => {
           QCarousel: { template: '<div><slot /></div>' },
           QCarouselSlide: { template: '<div><slot /></div>' },
           QImg: { template: '<img />' },
-          QScrollArea: { template: '<div><slot /></div>' }
+          QScrollArea: { template: '<div><slot /></div>' },
+          QSpinner: { template: '<div class="spinner" />' },
+          ScreenshotAnnotator: { template: '<div />' },
+          VideoPlayer: { template: '<div />' },
         }
       }
     })
@@ -102,42 +132,44 @@ describe('BugDetail', () => {
 
   it('should display bug not found when bug does not exist', async () => {
     const wrapper = await mountComponent('999')
+    await flushPromises()
 
     expect(wrapper.text()).toContain('Bug not found')
   })
 
-  it('should display bug details when bug exists', async () => {
+  it('should display bug details when bug exists in backendBugs', async () => {
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
 
     expect(wrapper.text()).toContain('Test Bug Title')
-    expect(wrapper.text()).toContain('UI')
-    expect(wrapper.text()).toContain('Step 1')
-    expect(wrapper.text()).toContain('Expected behavior')
-    expect(wrapper.text()).toContain('Actual behavior')
+    expect(wrapper.text()).toContain('bug')
+    expect(wrapper.text()).toContain('/test/path')
   })
 
   it('should display metadata information', async () => {
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
 
     expect(wrapper.text()).toContain('1.0.0')
     expect(wrapper.text()).toContain('MTG-123')
     expect(wrapper.text()).toContain('/test/path')
   })
 
-  it('should display environment information', async () => {
+  it('should display environment information from metadata_json', async () => {
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
 
     expect(wrapper.text()).toContain('Windows 11')
     expect(wrapper.text()).toContain('1920x1080')
@@ -147,55 +179,41 @@ describe('BugDetail', () => {
     expect(wrapper.text()).toContain('TestApp')
   })
 
-  it('should display console output when available', async () => {
+  it('should display screenshot count from fetched captures', async () => {
+    const tauriApi = await import('@/api/tauri')
+    vi.mocked(tauriApi.getBugCaptures).mockResolvedValue([
+      createMockCapture('image1.png', '1'),
+      createMockCapture('image2.png', '1'),
+    ])
+
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
-
-    expect(wrapper.text()).toContain('Console Output')
-    expect(wrapper.text()).toContain('Error: Test error message')
-  })
-
-  it('should not display console output card when not available', async () => {
-    const store = useBugStore()
-    const bug = createMockBug('1')
-    bug.console_output = undefined
-    store.addBug(bug)
-
-    const wrapper = await mountComponent('1')
-
-    expect(wrapper.text()).not.toContain('Console Output')
-  })
-
-  it('should display screenshot count', async () => {
-    const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
-
-    const wrapper = await mountComponent('1')
+    await flushPromises()
 
     expect(wrapper.text()).toContain('Screenshots (2)')
   })
 
   it('should not display screenshots section when no captures', async () => {
     const store = useBugStore()
-    const bug = createMockBug('1')
-    bug.captures = []
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
 
     expect(wrapper.text()).not.toContain('Screenshots')
   })
 
   it('should navigate back when back button is clicked', async () => {
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
     const backSpy = vi.spyOn(router, 'back')
 
     const backButton = wrapper.find('button')
@@ -206,12 +224,13 @@ describe('BugDetail', () => {
 
   it('should not display optional metadata fields when not provided', async () => {
     const store = useBugStore()
-    const bug = createMockBug('1')
-    bug.metadata.meeting_id = undefined
-    bug.metadata.software_version = undefined
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    bug.meeting_id = null
+    bug.software_version = null
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
 
     expect(wrapper.text()).not.toContain('Meeting ID')
     expect(wrapper.text()).not.toContain('Software Version')
@@ -219,20 +238,22 @@ describe('BugDetail', () => {
 
   it('should display copy to clipboard button', async () => {
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
 
     expect(wrapper.text()).toContain('Copy to Clipboard')
   })
 
   it('should display open folder button', async () => {
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
 
     expect(wrapper.text()).toContain('Open Folder')
   })
@@ -240,10 +261,11 @@ describe('BugDetail', () => {
   it('should call open_bug_folder command when open folder button clicked', async () => {
     const { invoke } = await import('@tauri-apps/api/core')
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
     const buttons = wrapper.findAll('button')
     const openFolderButton = buttons.at(1)! // Second button is the open folder button
 
@@ -259,10 +281,11 @@ describe('BugDetail', () => {
     vi.mocked(invoke).mockResolvedValueOnce(undefined)
 
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
     const buttons = wrapper.findAll('button')
     const openFolderButton = buttons.at(1)!
 
@@ -282,10 +305,11 @@ describe('BugDetail', () => {
     vi.mocked(invoke).mockRejectedValueOnce('Folder not found')
 
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
     const buttons = wrapper.findAll('button')
     const openFolderButton = buttons.at(1)!
 
@@ -303,10 +327,11 @@ describe('BugDetail', () => {
   it('should call copy_bug_to_clipboard command with correct folder path', async () => {
     const { invoke } = await import('@tauri-apps/api/core')
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
     const buttons = wrapper.findAll('button')
     const copyButton = buttons.at(2)! // Third button is the copy button (back, open folder, copy)
 
@@ -322,10 +347,11 @@ describe('BugDetail', () => {
     vi.mocked(invoke).mockResolvedValueOnce(undefined)
 
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
     const buttons = wrapper.findAll('button')
     const copyButton = buttons.at(2)! // Third button is copy
 
@@ -345,10 +371,11 @@ describe('BugDetail', () => {
     vi.mocked(invoke).mockRejectedValueOnce('Failed to read bug data')
 
     const store = useBugStore()
-    const bug = createMockBug('1')
-    store.addBug(bug)
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
 
     const wrapper = await mountComponent('1')
+    await flushPromises()
     const buttons = wrapper.findAll('button')
     const copyButton = buttons.at(2)! // Third button is copy
 
@@ -361,5 +388,17 @@ describe('BugDetail', () => {
       position: 'top',
       timeout: 3000
     })
+  })
+
+  it('should fetch bug from backend when not in store', async () => {
+    const tauriApi = await import('@/api/tauri')
+    const mockBug = createMockBackendBug('42')
+    vi.mocked(tauriApi.getBug).mockResolvedValue(mockBug)
+
+    const wrapper = await mountComponent('42')
+    await flushPromises()
+
+    expect(tauriApi.getBug).toHaveBeenCalledWith('42')
+    expect(wrapper.text()).toContain('Test Bug Title')
   })
 })
