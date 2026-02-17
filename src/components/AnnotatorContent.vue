@@ -99,6 +99,23 @@
           inset
         />
 
+        <!-- Font Size (text tool only) -->
+        <div class="row items-center q-gutter-xs">
+          <span class="text-caption">Size:</span>
+          <q-btn-toggle
+            v-model="fontSize"
+            :options="fontSizeOptions"
+            color="primary"
+            toggle-color="primary"
+            @update:model-value="updateFontSize"
+          />
+        </div>
+
+        <q-separator
+          vertical
+          inset
+        />
+
         <!-- Stroke Width -->
         <div class="row items-center q-gutter-xs">
           <span class="text-caption">Width:</span>
@@ -183,6 +200,7 @@ const canvas = ref<Canvas | null>(null)
 const currentTool = ref<'select' | 'text' | 'rectangle' | 'circle' | 'freehand'>('select')
 const currentColor = ref('#FF3B30')
 const strokeWidth = ref(4)
+const fontSize = ref(20)
 const showColorPicker = ref(false)
 const saving = ref(false)
 
@@ -201,6 +219,13 @@ const strokeWidthOptions = ref([
   { label: 'Thin', value: 2 },
   { label: 'Medium', value: 4 },
   { label: 'Thick', value: 8 },
+])
+
+// PRD-compliant font size presets for text labels
+const fontSizeOptions = ref([
+  { label: 'S', value: 14 },
+  { label: 'M', value: 20 },
+  { label: 'L', value: 28 },
 ])
 
 // Undo/Redo state
@@ -322,7 +347,7 @@ function handleMouseDown(event: any) {
       left: startX,
       top: startY,
       fill: currentColor.value,
-      fontSize: 20,
+      fontSize: fontSize.value,
     })
     canvas.value.add(text)
     canvas.value.setActiveObject(text)
@@ -460,6 +485,16 @@ function updateStrokeWidth() {
   const activeObject = canvas.value.getActiveObject()
   if (activeObject && !(activeObject instanceof IText)) {
     activeObject.set({ strokeWidth: strokeWidth.value })
+    canvas.value.renderAll()
+  }
+}
+
+function updateFontSize() {
+  if (!canvas.value) return
+
+  const activeObject = canvas.value.getActiveObject()
+  if (activeObject instanceof IText) {
+    activeObject.set({ fontSize: fontSize.value })
     canvas.value.renderAll()
   }
 }

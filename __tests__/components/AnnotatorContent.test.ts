@@ -252,6 +252,69 @@ describe('AnnotatorContent.vue (Standalone Window Mode)', () => {
     })
   })
 
+  describe('Font Size Presets', () => {
+    it('starts with medium font size (20px)', () => {
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.fontSize).toBe(20)
+    })
+
+    it('has PRD-compliant font size options (S=14, M=20, L=28)', () => {
+      // @ts-expect-error - Accessing internal state for testing
+      expect(wrapper.vm.fontSizeOptions).toEqual([
+        { label: 'S', value: 14 },
+        { label: 'M', value: 20 },
+        { label: 'L', value: 28 },
+      ])
+    })
+
+    it('applies selected font size when creating text', async () => {
+      const { IText } = await import('fabric')
+      ;(IText as any).mockClear()
+
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.fontSize = 28
+
+      const mockCanvas = {
+        add: vi.fn(),
+        setActiveObject: vi.fn(),
+        renderAll: vi.fn(),
+        getScenePoint: vi.fn(() => ({ x: 50, y: 50 })),
+        selection: true,
+        isDrawingMode: false,
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.currentTool = 'text'
+
+      // @ts-expect-error - Accessing internal method for testing
+      wrapper.vm.handleMouseDown({ e: new MouseEvent('mousedown') })
+
+      expect(IText).toHaveBeenCalledWith('Text', expect.objectContaining({ fontSize: 28 }))
+    })
+
+    it('does not error when no active object is selected during font size change', () => {
+      const mockCanvas = {
+        getActiveObject: vi.fn(() => null),
+        renderAll: vi.fn(),
+        isDrawingMode: false,
+      }
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.canvas = mockCanvas as any
+      // @ts-expect-error - Accessing internal state for testing
+      wrapper.vm.fontSize = 14
+
+      // Should not throw
+      expect(() => {
+        // @ts-expect-error - Accessing internal method for testing
+        wrapper.vm.updateFontSize()
+      }).not.toThrow()
+
+      // renderAll should not be called when nothing is selected
+      expect(mockCanvas.renderAll).not.toHaveBeenCalled()
+    })
+  })
+
   describe('Resolution Preservation', () => {
     it('tracks original image dimensions', async () => {
       // @ts-expect-error - Accessing internal method for testing
