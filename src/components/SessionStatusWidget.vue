@@ -36,6 +36,23 @@
           </q-chip>
         </div>
 
+        <!-- Console Tag Mode Indicator -->
+        <div
+          v-if="bugStore.tagNextScreenshotAsConsole"
+          class="col-auto"
+        >
+          <q-chip
+            color="orange"
+            text-color="white"
+            icon="terminal"
+            size="sm"
+            dense
+          >
+            Console Tag
+            <q-tooltip>Next screenshot will be tagged as a console capture</q-tooltip>
+          </q-chip>
+        </div>
+
         <!-- Close button -->
         <div class="col-auto">
           <q-btn
