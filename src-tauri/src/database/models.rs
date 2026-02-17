@@ -37,6 +37,7 @@ impl SessionStatus {
     }
 
     #[allow(dead_code)]
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "active" => Ok(SessionStatus::Active),
@@ -91,6 +92,7 @@ impl BugType {
     }
 
     #[allow(dead_code)]
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "bug" => Ok(BugType::Bug),
@@ -123,6 +125,7 @@ impl BugStatus {
     }
 
     #[allow(dead_code)]
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "capturing" => Ok(BugStatus::Capturing),
@@ -172,6 +175,7 @@ impl CaptureType {
     }
 
     #[allow(dead_code)]
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "screenshot" => Ok(CaptureType::Screenshot),
