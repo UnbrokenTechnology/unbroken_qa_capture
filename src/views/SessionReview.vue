@@ -873,6 +873,21 @@
                 >
                   {{ result.error }}
                 </q-item-label>
+                <!-- Attachment upload results -->
+                <template v-if="result.success && result.attachmentResults && result.attachmentResults.length > 0">
+                  <q-item-label
+                    v-for="(att, idx) in result.attachmentResults"
+                    :key="idx"
+                    caption
+                    :class="att.success ? 'text-positive' : 'text-warning'"
+                  >
+                    <q-icon
+                      :name="att.success ? 'attach_file' : 'warning'"
+                      size="xs"
+                    />
+                    {{ att.success ? `Screenshot ${idx + 1} uploaded` : `Screenshot ${idx + 1} failed: ${att.message}` }}
+                  </q-item-label>
+                </template>
               </q-item-section>
               <q-item-section
                 v-if="result.success"
@@ -983,6 +998,7 @@ interface PushResult {
   identifier?: string
   url?: string
   error?: string
+  attachmentResults?: Array<{ file_path: string; success: boolean; message: string }>
 }
 
 interface TicketPreview {
@@ -1341,7 +1357,8 @@ async function pushToLinear() {
         bugTitle: bug.title || `Bug ${bug.display_id}`,
         success: true,
         identifier: response.identifier,
-        url: response.url
+        url: response.url,
+        attachmentResults: response.attachment_results
       })
 
       Notify.create({

@@ -58,6 +58,17 @@ pub struct CreateTicketRequest {
     pub labels: Vec<String>,
 }
 
+/// Result of uploading a single attachment
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttachmentUploadResult {
+    /// Original file path that was uploaded
+    pub file_path: String,
+    /// Whether the upload succeeded
+    pub success: bool,
+    /// Asset URL on success, error message on failure
+    pub message: String,
+}
+
 /// Response from creating a ticket
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateTicketResponse {
@@ -67,6 +78,8 @@ pub struct CreateTicketResponse {
     pub url: String,
     /// Display identifier (e.g., "PROJ-123")
     pub identifier: String,
+    /// Results of attachment uploads (one entry per attachment in the request)
+    pub attachment_results: Vec<AttachmentUploadResult>,
 }
 
 /// Connection status for a ticketing integration

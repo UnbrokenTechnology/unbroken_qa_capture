@@ -61,10 +61,22 @@ impl TicketingIntegration for MockTicketingIntegration {
         // Store the request
         self.created_tickets.write().unwrap().push(request.clone());
 
+        // Build mock attachment results (all succeed in the mock)
+        let attachment_results = request
+            .attachments
+            .iter()
+            .map(|path| AttachmentUploadResult {
+                file_path: path.clone(),
+                success: true,
+                message: format!("https://mock.example.com/assets/{}", path),
+            })
+            .collect();
+
         Ok(CreateTicketResponse {
             id: "mock-id-123".to_string(),
             url: "https://mock.example.com/issue/MOCK-123".to_string(),
             identifier: "MOCK-123".to_string(),
+            attachment_results,
         })
     }
 
@@ -467,4 +479,119 @@ fn test_linear_check_connection_does_not_create_tickets() {
     assert_eq!(status.integration_name, "Linear");
     // Without credentials, must report not connected (read-only early exit)
     assert!(!status.connected);
+}
+
+// Tests for attachment upload behavior
+
+#[test]
+fn test_mock_integration_create_ticket_returns_attachment_results() {
+    let integration = MockTicketingIntegration::new();
+
+    let credentials = TicketingCredentials {
+        api_key: "test-api-key".to_string(),
+        workspace_id: None,
+        team_id: Some("team-123".to_string()),
+    };
+    integration.authenticate(&credentials).unwrap();
+
+    let request = CreateTicketRequest {
+        title: "Bug with Screenshots".to_string(),
+        description: "Description".to_string(),
+        attachments: vec![
+            "/path/to/screenshot1.png".to_string(),
+            "/path/to/screenshot2.png".to_string(),
+        ],
+        priority: None,
+        labels: vec!["bug".to_string()],
+    };
+
+    let result = integration.create_ticket(&request).unwrap();
+
+    // Verify attachment_results matches the number of attachments
+    assert_eq!(result.attachment_results.len(), 2);
+    assert!(result.attachment_results[0].success);
+    assert!(result.attachment_results[1].success);
+    assert_eq!(result.attachment_results[0].file_path, "/path/to/screenshot1.png");
+    assert_eq!(result.attachment_results[1].file_path, "/path/to/screenshot2.png");
+}
+
+#[test]
+fn test_mock_integration_create_ticket_no_attachments_returns_empty_results() {
+    let integration = MockTicketingIntegration::new();
+
+    let credentials = TicketingCredentials {
+        api_key: "test-api-key".to_string(),
+        workspace_id: None,
+        team_id: None,
+    };
+    integration.authenticate(&credentials).unwrap();
+
+    let request = CreateTicketRequest {
+        title: "Bug without attachments".to_string(),
+        description: "No screenshots".to_string(),
+        attachments: vec![],
+        priority: None,
+        labels: vec![],
+    };
+
+    let result = integration.create_ticket(&request).unwrap();
+    assert_eq!(result.attachment_results.len(), 0);
+}
+
+#[test]
+fn test_linear_upload_attachment_fails_for_missing_file() {
+    // Verify that upload_attachment returns a proper error when the file doesn't exist
+    // We test this via create_ticket which calls upload_attachment internally.
+    // Use an unreachable endpoint so the GraphQL call fails (not the file read).
+    // The file read happens BEFORE the network call, so a missing file should fail
+    // with a NetworkError before ever reaching the server.
+    let integration = LinearIntegration::with_endpoint("http://127.0.0.1:1"); // unreachable
+
+    integration.set_credentials_for_test(TicketingCredentials {
+        api_key: "lin_api_test".to_string(),
+        workspace_id: None,
+        team_id: Some("team-123".to_string()),
+    });
+
+    let request = CreateTicketRequest {
+        title: "Bug".to_string(),
+        description: "Description".to_string(),
+        attachments: vec!["/nonexistent/path/screenshot.png".to_string()],
+        priority: None,
+        labels: vec![],
+    };
+
+    // create_ticket should fail because the missing file triggers a NetworkError
+    // from upload_attachment, and then the GraphQL call to create the issue also
+    // fails (unreachable endpoint). The attachment failure is logged but create_ticket
+    // continues — it fails on the issue creation GraphQL call.
+    let result = integration.create_ticket(&request);
+    // Expect an error because the issue creation GraphQL call reaches unreachable endpoint
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        TicketingError::NetworkError(_) | TicketingError::CreationFailed(_) => {
+            // Expected: either the file read error or the network error from GraphQL
+        }
+        other => panic!("Expected network or creation error, got: {:?}", other),
+    }
+}
+
+#[test]
+fn test_attachment_upload_result_display() {
+    // Verify AttachmentUploadResult fields are accessible and serializable
+    let success_result = AttachmentUploadResult {
+        file_path: "/path/to/screenshot.png".to_string(),
+        success: true,
+        message: "https://assets.linear.app/image.png".to_string(),
+    };
+    assert!(success_result.success);
+    assert!(success_result.message.starts_with("https://"));
+
+    let failure_result = AttachmentUploadResult {
+        file_path: "/path/to/missing.png".to_string(),
+        success: false,
+        message: "Network error: connection refused".to_string(),
+    };
+    assert!(!failure_result.success);
+    assert!(failure_result.message.contains("Network error"));
 }

@@ -100,9 +100,18 @@ The Linear integration uses GraphQL mutations and queries:
 - **Ticket Creation**: Uses `IssueCreate` mutation with title, description, team, priority, and labels
 - **Connection Check**: Verifies API key is still valid
 
+### Attachment Upload
+
+Screenshots are uploaded to Linear using a three-step process:
+
+1. **Request upload URL** — `fileUpload` GraphQL mutation returns a pre-signed S3 upload URL, a permanent asset URL, and required auth headers.
+2. **Upload file bytes** — PUT the raw file bytes to the S3 URL with `Content-Type`, `Cache-Control`, and any Linear-provided auth headers.
+3. **Embed in description** — The permanent asset URL is embedded as a markdown image (`![Screenshot N](assetUrl)`) in the issue description under a `## Screenshots` heading.
+
+Upload failures are graceful: the issue is still created with a note listing which screenshots could not be uploaded. Each `CreateTicketResponse` includes `attachment_results` with per-file success/failure details for the frontend to display.
+
 ### Limitations
 
-- Attachments are not fully implemented (Linear requires a multi-step upload process)
 - Requires team ID to be configured
 - Priority must be a number (0-4, where 0=No priority, 1=Urgent, 2=High, 3=Normal, 4=Low)
 
@@ -196,11 +205,10 @@ All errors implement `Display` and `Error` traits and can be serialized to JSON 
 
 ## Future Enhancements
 
-1. **Full attachment support**: Implement Linear's multi-step upload process
-2. **Batch operations**: Support creating multiple tickets at once
-3. **Ticket updates**: Add methods to update existing tickets
-4. **Comments**: Add ability to post comments on tickets
-5. **Webhook support**: Allow Linear to notify the app of ticket updates
-6. **Integration selection UI**: Let users choose between Linear/Jira/GitHub at runtime
-7. **Credential encryption**: Encrypt API keys in the database
-8. **Offline queue**: Queue ticket creation when offline and sync when connected
+1. **Batch operations**: Support creating multiple tickets at once
+2. **Ticket updates**: Add methods to update existing tickets
+3. **Comments**: Add ability to post comments on tickets
+4. **Webhook support**: Allow Linear to notify the app of ticket updates
+5. **Integration selection UI**: Let users choose between Linear/Jira/GitHub at runtime
+6. **Credential encryption**: Encrypt API keys in the database
+7. **Offline queue**: Queue ticket creation when offline and sync when connected

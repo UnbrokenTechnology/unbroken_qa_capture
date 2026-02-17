@@ -118,10 +118,17 @@ export interface CreateTicketRequest {
   labels: string[]
 }
 
+export interface AttachmentUploadResult {
+  file_path: string
+  success: boolean
+  message: string
+}
+
 export interface CreateTicketResponse {
   id: string
   url: string
   identifier: string
+  attachment_results: AttachmentUploadResult[]
 }
 
 export interface ConnectionStatus {
