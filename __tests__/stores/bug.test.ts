@@ -485,4 +485,65 @@ describe('Bug Store', () => {
       expect(store.isCapturing).toBe(true)
     })
   })
+
+  describe('Meeting ID pre-population', () => {
+    it('initializes lastSessionMeetingId as null', () => {
+      const store = useBugStore()
+      expect(store.lastSessionMeetingId).toBeNull()
+    })
+
+    it('sets and clears lastSessionMeetingId', () => {
+      const store = useBugStore()
+      store.setLastSessionMeetingId('meeting-123')
+      expect(store.lastSessionMeetingId).toBe('meeting-123')
+
+      store.setLastSessionMeetingId(null)
+      expect(store.lastSessionMeetingId).toBeNull()
+    })
+
+    it('clears lastSessionMeetingId when clearBugs is called', () => {
+      const store = useBugStore()
+      store.setLastSessionMeetingId('meeting-123')
+      store.clearBugs()
+      expect(store.lastSessionMeetingId).toBeNull()
+    })
+  })
+
+  describe('Console tag toggle', () => {
+    it('initializes tagNextScreenshotAsConsole as false', () => {
+      const store = useBugStore()
+      expect(store.tagNextScreenshotAsConsole).toBe(false)
+    })
+
+    it('sets tagNextScreenshotAsConsole', () => {
+      const store = useBugStore()
+      store.setTagNextScreenshotAsConsole(true)
+      expect(store.tagNextScreenshotAsConsole).toBe(true)
+
+      store.setTagNextScreenshotAsConsole(false)
+      expect(store.tagNextScreenshotAsConsole).toBe(false)
+    })
+
+    it('consumeConsoleTag returns true and clears the flag', () => {
+      const store = useBugStore()
+      store.setTagNextScreenshotAsConsole(true)
+
+      const result = store.consumeConsoleTag()
+      expect(result).toBe(true)
+      expect(store.tagNextScreenshotAsConsole).toBe(false)
+    })
+
+    it('consumeConsoleTag returns false when flag is not set', () => {
+      const store = useBugStore()
+      const result = store.consumeConsoleTag()
+      expect(result).toBe(false)
+    })
+
+    it('clears tagNextScreenshotAsConsole when clearBugs is called', () => {
+      const store = useBugStore()
+      store.setTagNextScreenshotAsConsole(true)
+      store.clearBugs()
+      expect(store.tagNextScreenshotAsConsole).toBe(false)
+    })
+  })
 })

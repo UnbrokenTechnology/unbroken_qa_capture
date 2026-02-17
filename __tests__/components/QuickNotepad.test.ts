@@ -35,6 +35,8 @@ vi.mock('@/api/tauri', () => {
     getBugsBySession: vi.fn(),
     getBugNotes: vi.fn(),
     updateBugNotes: vi.fn(),
+    updateTrayIcon: vi.fn(),
+    updateTrayTooltip: vi.fn(),
   }
 })
 
@@ -487,5 +489,184 @@ describe('QuickNotepad.vue', () => {
 
     // Notes should be cleared
     expect(textarea.element.value).toBe('')
+  })
+
+  describe('draggable behavior', () => {
+    it('moves the notepad when dragged via the header', async () => {
+      const wrapper = mountComponent({ initialX: 100, initialY: 100 })
+      await flushPromises()
+
+      const card = wrapper.find('.quick-notepad')
+
+      // Simulate mousedown on card (header area)
+      await card.trigger('mousedown', { clientX: 150, clientY: 150 })
+
+      // Simulate mousemove on document
+      const mousemoveEvent = new MouseEvent('mousemove', { clientX: 200, clientY: 180 })
+      document.dispatchEvent(mousemoveEvent)
+      await wrapper.vm.$nextTick()
+
+      // Card should have moved by (50, 30)
+      const style = card.attributes('style') ?? ''
+      expect(style).toContain('left: 150px')
+      expect(style).toContain('top: 130px')
+
+      // Simulate mouseup to stop dragging
+      document.dispatchEvent(new MouseEvent('mouseup'))
+    })
+
+    it('stops moving after mouseup', async () => {
+      const wrapper = mountComponent({ initialX: 100, initialY: 100 })
+      await flushPromises()
+
+      const card = wrapper.find('.quick-notepad')
+
+      await card.trigger('mousedown', { clientX: 150, clientY: 150 })
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 200, clientY: 200 }))
+      await wrapper.vm.$nextTick()
+      document.dispatchEvent(new MouseEvent('mouseup'))
+
+      // Now move again — should not affect position
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 300, clientY: 300 }))
+      await wrapper.vm.$nextTick()
+
+      const style = card.attributes('style') ?? ''
+      expect(style).toContain('left: 150px')
+      expect(style).toContain('top: 150px')
+    })
+  })
+
+  describe('console tag toggle', () => {
+    it('renders the console tag toggle', async () => {
+      const bugStore = useBugStore()
+      bugStore.activeBug = mockActiveBug
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Tag next screenshot as console')
+    })
+
+    it('toggle is disabled when no active bug', async () => {
+      const bugStore = useBugStore()
+      bugStore.activeBug = null
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const toggle = wrapper.findComponent({ name: 'QToggle' })
+      expect(toggle.props('disable')).toBe(true)
+    })
+
+    it('toggle is enabled when active bug exists', async () => {
+      const bugStore = useBugStore()
+      bugStore.activeBug = mockActiveBug
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const toggle = wrapper.findComponent({ name: 'QToggle' })
+      expect(toggle.props('disable')).toBe(false)
+    })
+
+    it('updates bug store tagNextScreenshotAsConsole when toggled', async () => {
+      const bugStore = useBugStore()
+      bugStore.activeBug = mockActiveBug
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      expect(bugStore.tagNextScreenshotAsConsole).toBe(false)
+
+      const toggle = wrapper.findComponent({ name: 'QToggle' })
+      await toggle.trigger('click')
+      await wrapper.vm.$nextTick()
+
+      // Toggle state is reflected in store
+      expect(bugStore.tagNextScreenshotAsConsole).toBe(true)
+    })
+
+    it('resets console tag toggle when bug changes', async () => {
+      const bugStore = useBugStore()
+      bugStore.activeBug = mockActiveBug
+      bugStore.setTagNextScreenshotAsConsole(true)
+
+      mountComponent()
+      await flushPromises()
+
+      // Change bug
+      const newBug: BackendBug = { ...mockActiveBug, id: 'bug-2', display_id: 'BUG-002', folder_path: '/test/bugs/bug2' }
+      bugStore.activeBug = newBug
+      await flushPromises()
+
+      // Console tag should be reset
+      expect(bugStore.tagNextScreenshotAsConsole).toBe(false)
+    })
+  })
+
+  describe('meeting ID pre-population', () => {
+    it('pre-populates meeting ID from lastSessionMeetingId when new bug has no meeting_id', async () => {
+      const bugStore = useBugStore()
+      bugStore.setLastSessionMeetingId('previous-meeting-123')
+
+      const newBug: BackendBug = { ...mockActiveBug, meeting_id: null }
+      bugStore.activeBug = newBug
+
+      vi.mocked(tauri.getBugNotes).mockResolvedValue('')
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      // The meeting ID input should show the last session's meeting ID
+      const inputs = wrapper.findAllComponents({ name: 'QInput' })
+      const meetingInput = inputs.find(i => i.props('label') === 'Meeting ID / URL')
+      expect(meetingInput).toBeDefined()
+      expect((meetingInput!.element as HTMLElement).querySelector('input')?.value).toBe('previous-meeting-123')
+    })
+
+    it('uses the bug own meeting_id over lastSessionMeetingId when set', async () => {
+      const bugStore = useBugStore()
+      bugStore.setLastSessionMeetingId('previous-meeting-123')
+
+      const bugWithMeeting: BackendBug = { ...mockActiveBug, meeting_id: 'current-meeting-456' }
+      bugStore.activeBug = bugWithMeeting
+
+      vi.mocked(tauri.getBugNotes).mockResolvedValue('')
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const inputs = wrapper.findAllComponents({ name: 'QInput' })
+      const meetingInput = inputs.find(i => i.props('label') === 'Meeting ID / URL')
+      expect((meetingInput!.element as HTMLElement).querySelector('input')?.value).toBe('current-meeting-456')
+    })
+  })
+
+  describe('always-on-top management', () => {
+    it('sets always-on-top to false when visible becomes false', async () => {
+      const wrapper = mountComponent({ visible: true })
+      await flushPromises()
+
+      // Clear initial call
+      mockSetAlwaysOnTop.mockClear()
+
+      // Hide the notepad
+      await wrapper.setProps({ visible: false })
+      await flushPromises()
+
+      expect(mockSetAlwaysOnTop).toHaveBeenCalledWith(false)
+    })
+
+    it('sets always-on-top to true when visible becomes true', async () => {
+      const wrapper = mountComponent({ visible: false })
+      await flushPromises()
+
+      mockSetAlwaysOnTop.mockClear()
+
+      await wrapper.setProps({ visible: true })
+      await flushPromises()
+
+      expect(mockSetAlwaysOnTop).toHaveBeenCalledWith(true)
+    })
   })
 })

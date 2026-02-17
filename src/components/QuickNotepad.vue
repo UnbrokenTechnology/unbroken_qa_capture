@@ -3,9 +3,10 @@
     v-if="visible"
     class="quick-notepad"
     :style="widgetStyle"
+    @mousedown="onCardMousedown"
   >
     <q-card-section class="q-pa-sm">
-      <div class="row items-center q-mb-sm">
+      <div class="row items-center q-mb-sm drag-handle">
         <div class="col">
           <span class="text-subtitle2">Quick Notes</span>
           <span
@@ -46,6 +47,7 @@
             placeholder="e.g., Zoom meeting ID or URL"
             :disable="!activeBug"
             @update:model-value="onMeetingIdChanged"
+            @mousedown.stop
           >
             <template #prepend>
               <q-icon name="videocam" />
@@ -61,6 +63,7 @@
             placeholder="e.g., 2.4.1"
             :disable="!activeBug"
             @update:model-value="onSoftwareVersionChanged"
+            @mousedown.stop
           >
             <template #prepend>
               <q-icon name="info" />
@@ -80,7 +83,21 @@
         :rows="6"
         :disable="!activeBug"
         @update:model-value="onNotesChanged"
+        @mousedown.stop
       />
+
+      <!-- Console Tag Toggle -->
+      <div class="row items-center q-mt-sm">
+        <q-toggle
+          :model-value="bugStore.tagNextScreenshotAsConsole"
+          :disable="!activeBug"
+          label="Tag next screenshot as console"
+          dense
+          size="sm"
+          color="primary"
+          @update:model-value="bugStore.setTagNextScreenshotAsConsole($event)"
+        />
+      </div>
 
       <div
         v-if="!activeBug"
@@ -129,13 +146,18 @@ const saveError = ref<string | null>(null)
 let saveDebounceTimeout: number | null = null
 let savedStatusTimeout: number | null = null
 
+// Drag state
+let isDragging = false
+let dragStartX = 0
+let dragStartY = 0
+let positionAtDragStart = { x: 0, y: 0 }
+
 // Computed
 const widgetStyle = computed(() => ({
   position: 'fixed',
   top: `${position.value.y}px`,
   left: `${position.value.x}px`,
   zIndex: 9999,
-  cursor: 'move',
   minWidth: '400px',
   maxWidth: '600px'
 }))
@@ -168,6 +190,35 @@ const saveStatusLabel = computed(() => {
   }
 })
 
+// Drag handlers
+function onCardMousedown(event: MouseEvent) {
+  // Only drag from the header area (not from input fields — they stop propagation)
+  isDragging = true
+  dragStartX = event.clientX
+  dragStartY = event.clientY
+  positionAtDragStart = { ...position.value }
+
+  document.addEventListener('mousemove', onMousemove)
+  document.addEventListener('mouseup', onMouseup)
+  event.preventDefault()
+}
+
+function onMousemove(event: MouseEvent) {
+  if (!isDragging) return
+  const dx = event.clientX - dragStartX
+  const dy = event.clientY - dragStartY
+  position.value = {
+    x: positionAtDragStart.x + dx,
+    y: positionAtDragStart.y + dy
+  }
+}
+
+function onMouseup() {
+  isDragging = false
+  document.removeEventListener('mousemove', onMousemove)
+  document.removeEventListener('mouseup', onMouseup)
+}
+
 // Methods
 async function loadNotes() {
   if (!activeBug.value) {
@@ -183,7 +234,16 @@ async function loadNotes() {
       activeBug.value.folder_path
     )
     localNotes.value = notes
-    localMeetingId.value = activeBug.value.meeting_id || ''
+
+    // Pre-populate meeting ID: use this bug's value if set, else carry over from store's lastMeetingId
+    if (activeBug.value.meeting_id) {
+      localMeetingId.value = activeBug.value.meeting_id
+    } else if (bugStore.lastSessionMeetingId) {
+      localMeetingId.value = bugStore.lastSessionMeetingId
+    } else {
+      localMeetingId.value = ''
+    }
+
     localSoftwareVersion.value = activeBug.value.software_version || ''
   } catch (error) {
     console.error('Failed to load notes:', error)
@@ -248,6 +308,10 @@ async function saveMetadata(field: 'meeting_id' | 'software_version', value: str
     await bugStore.updateBackendBug(activeBug.value.id, {
       [field]: value || null
     })
+    // Track meeting ID for pre-population on next bug
+    if (field === 'meeting_id' && value) {
+      bugStore.setLastSessionMeetingId(value)
+    }
     saveStatus.value = 'saved'
 
     // Clear "Saved" status after 2 seconds
@@ -288,10 +352,10 @@ function onSoftwareVersionChanged() {
   }, 500)
 }
 
-async function setupWindow() {
+async function setWindowAlwaysOnTop(value: boolean) {
   try {
     const appWindow = getCurrentWindow()
-    await appWindow.setAlwaysOnTop(true)
+    await appWindow.setAlwaysOnTop(value)
   } catch (error) {
     console.error('Failed to set window always-on-top:', error)
   }
@@ -299,7 +363,7 @@ async function setupWindow() {
 
 // Lifecycle
 onMounted(async () => {
-  await setupWindow()
+  await setWindowAlwaysOnTop(true)
   await loadNotes()
 })
 
@@ -310,7 +374,18 @@ onUnmounted(() => {
   if (savedStatusTimeout !== null) {
     clearTimeout(savedStatusTimeout)
   }
+  // Clean up drag listeners if somehow left behind
+  document.removeEventListener('mousemove', onMousemove)
+  document.removeEventListener('mouseup', onMouseup)
 })
+
+// Reset console tag toggle when bug changes (it's per-capture, not persistent)
+watch(
+  () => activeBug.value?.id,
+  () => {
+    bugStore.setTagNextScreenshotAsConsole(false)
+  }
+)
 
 // Watch for active bug changes
 watch(
@@ -328,12 +403,16 @@ watch(
         )
 
         // Save metadata changes
-        const updates: any = {}
+        const updates: { meeting_id?: string; software_version?: string } = {}
         if (localMeetingId.value !== (oldBug.meeting_id || '')) {
-          updates.meeting_id = localMeetingId.value || null
+          updates.meeting_id = localMeetingId.value || undefined
+          // Track for pre-population
+          if (localMeetingId.value) {
+            bugStore.setLastSessionMeetingId(localMeetingId.value)
+          }
         }
         if (localSoftwareVersion.value !== (oldBug.software_version || '')) {
-          updates.software_version = localSoftwareVersion.value || null
+          updates.software_version = localSoftwareVersion.value || undefined
         }
         if (Object.keys(updates).length > 0) {
           await bugStore.updateBackendBug(oldBug.id, updates)
@@ -347,16 +426,30 @@ watch(
     await loadNotes()
   }
 )
+
+// Watch visible prop to manage always-on-top state
+watch(
+  () => props.visible,
+  async (isVisible) => {
+    await setWindowAlwaysOnTop(isVisible)
+  }
+)
 </script>
 
 <style scoped>
 .quick-notepad {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   border-radius: 8px;
+  cursor: default;
 }
 
 .quick-notepad:hover {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.drag-handle {
+  cursor: move;
+  user-select: none;
 }
 
 .notepad-input :deep(textarea) {

@@ -55,6 +55,12 @@ export const useBugStore = defineStore('bug', () => {
   // Event listeners cleanup functions
   const eventUnlisteners = ref<UnlistenFn[]>([])
 
+  // Tracks the most recently used meeting ID within a session, for pre-populating new bugs
+  const lastSessionMeetingId = ref<string | null>(null)
+
+  // When true, the next screenshot captured for the active bug will be tagged as a console capture
+  const tagNextScreenshotAsConsole = ref(false)
+
   // ============================================================================
   // Getters
   // ============================================================================
@@ -246,12 +252,29 @@ export const useBugStore = defineStore('bug', () => {
     currentBugId.value = id
   }
 
+  function setLastSessionMeetingId(meetingId: string | null) {
+    lastSessionMeetingId.value = meetingId
+  }
+
+  function setTagNextScreenshotAsConsole(value: boolean) {
+    tagNextScreenshotAsConsole.value = value
+  }
+
+  /** Consume the console tag flag: returns true if set, then clears it. */
+  function consumeConsoleTag(): boolean {
+    const wasSet = tagNextScreenshotAsConsole.value
+    tagNextScreenshotAsConsole.value = false
+    return wasSet
+  }
+
   function clearBugs() {
     bugs.value = []
     backendBugs.value = []
     currentBugId.value = null
     activeBug.value = null
     error.value = null
+    lastSessionMeetingId.value = null
+    tagNextScreenshotAsConsole.value = false
   }
 
   function loadBugs(bugList: Bug[]) {
@@ -406,6 +429,8 @@ export const useBugStore = defineStore('bug', () => {
     activeBug,
     loading,
     error,
+    lastSessionMeetingId,
+    tagNextScreenshotAsConsole,
 
     // Getters
     hasError,
@@ -434,6 +459,9 @@ export const useBugStore = defineStore('bug', () => {
     getBugById,
     loadSampleData,
     clearError,
+    setLastSessionMeetingId,
+    setTagNextScreenshotAsConsole,
+    consumeConsoleTag,
 
     // Actions - Events
     setupEventListeners,

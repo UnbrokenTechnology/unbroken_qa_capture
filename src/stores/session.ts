@@ -250,11 +250,30 @@ export const useSessionStore = defineStore('session', () => {
       async (event) => {
         const { filePath } = event.payload
 
-        // Only auto-open if we have an active session and the setting is enabled
+        // Only process if we have an active session
         if (activeSession.value?.status === 'active') {
           // Import settings store dynamically to avoid circular dependency
           const { useSettingsStore } = await import('./settings')
           const settingsStore = useSettingsStore()
+
+          // Import bug store to check console tag flag
+          const { useBugStore } = await import('./bug')
+          const bugStore = useBugStore()
+
+          // If "tag next screenshot as console" is active, find and tag the new capture
+          if (bugStore.consumeConsoleTag() && bugStore.activeBug) {
+            const { getBugCaptures, updateCaptureConsoleFlag } = await import('../api/tauri')
+            try {
+              const captures = await getBugCaptures(bugStore.activeBug.id)
+              // Find the capture matching the detected file path
+              const matched = captures.find(c => c.file_path === filePath || c.file_path.endsWith(filePath.replace(/\\/g, '/').split('/').pop() ?? ''))
+              if (matched) {
+                await updateCaptureConsoleFlag(matched.id, true)
+              }
+            } catch (err) {
+              console.error('Failed to tag screenshot as console capture:', err)
+            }
+          }
 
           if (settingsStore.autoOpenAnnotation) {
             // Import tauri API dynamically
