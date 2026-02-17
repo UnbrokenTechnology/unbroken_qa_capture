@@ -147,13 +147,13 @@
               <div class="q-gutter-md">
                 <q-input
                   v-model="hotkeys.toggleSession"
-                  label="Toggle Session"
+                  label="Toggle Session (Start/Stop)"
                   hint="Default: Ctrl+Shift+Q"
                   outlined
                   readonly
                 >
                   <template #prepend>
-                    <q-icon name="play_arrow" />
+                    <q-icon name="toggle_on" />
                   </template>
                 </q-input>
 
@@ -189,7 +189,7 @@
                   readonly
                 >
                   <template #prepend>
-                    <q-icon name="note" />
+                    <q-icon name="note_add" />
                   </template>
                 </q-input>
 
@@ -481,7 +481,7 @@ const saving = ref(false)
 // Step 2: Sessions folder
 const sessionsFolderPath = ref('')
 
-// Step 3: Hotkeys (use defaults from hotkey.rs)
+// Step 3: Hotkeys (use actual defaults from hotkey.rs)
 const hotkeys = ref({
   toggleSession: 'Ctrl+Shift+Q',
   startBugCapture: 'PrintScreen',
@@ -618,12 +618,8 @@ async function completeSetup() {
   try {
     // Save all settings
     await settingsStore.saveSetting(SETTINGS_KEYS.DEFAULT_SAVE_PATH, sessionsFolderPath.value)
-    // Save new hotkey settings (matching hotkey.rs HotkeyAction enum)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_TOGGLE_SESSION, hotkeys.value.toggleSession)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_START_BUG_CAPTURE, hotkeys.value.startBugCapture)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_END_BUG_CAPTURE, hotkeys.value.endBugCapture)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_OPEN_QUICK_NOTEPAD, hotkeys.value.openQuickNotepad)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_OPEN_SESSION_NOTEPAD, hotkeys.value.openSessionNotepad)
+    // Note: Hotkeys are read-only in wizard - backend uses hardcoded defaults from hotkey.rs
+    // User can customize them later in Settings which will update the backend HotkeyConfig
     await settingsStore.saveSetting(SETTINGS_KEYS.AI_ENABLED, aiEnabled.value.toString())
 
     // Save Linear settings if enabled
@@ -660,22 +656,7 @@ onMounted(() => {
   if (settingsStore.defaultSavePath) {
     sessionsFolderPath.value = settingsStore.defaultSavePath
   }
-  // Load new hotkey settings
-  if (settingsStore.hotkeyToggleSession) {
-    hotkeys.value.toggleSession = settingsStore.hotkeyToggleSession
-  }
-  if (settingsStore.hotkeyStartBugCapture) {
-    hotkeys.value.startBugCapture = settingsStore.hotkeyStartBugCapture
-  }
-  if (settingsStore.hotkeyEndBugCapture) {
-    hotkeys.value.endBugCapture = settingsStore.hotkeyEndBugCapture
-  }
-  if (settingsStore.hotkeyOpenQuickNotepad) {
-    hotkeys.value.openQuickNotepad = settingsStore.hotkeyOpenQuickNotepad
-  }
-  if (settingsStore.hotkeyOpenSessionNotepad) {
-    hotkeys.value.openSessionNotepad = settingsStore.hotkeyOpenSessionNotepad
-  }
+  // Hotkeys always show defaults - they're read-only in wizard
 })
 </script>
 
