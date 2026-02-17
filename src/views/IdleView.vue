@@ -24,8 +24,14 @@
           color="primary"
           size="lg"
           class="start-session-btn full-width"
+          :loading="sessionStore.isStartingSession"
+          :disable="sessionStore.isStartingSession"
           @click="handleStartSession"
         >
+          <template #loading>
+            <q-spinner-dots size="1.5em" class="q-mr-sm" />
+            Starting session...
+          </template>
           <q-icon
             name="play_arrow"
             left

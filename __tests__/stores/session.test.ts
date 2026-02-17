@@ -54,12 +54,15 @@ describe('Session Store', () => {
     expect(store.sessions).toEqual([])
     expect(store.sessionSummaries).toEqual([])
     expect(store.loading).toBe(false)
+    expect(store.starting).toBe(false)
+    expect(store.initializing).toBe(false)
     expect(store.error).toBeNull()
   })
 
   it('should have correct computed getters', () => {
     const store = useSessionStore()
     expect(store.isSessionActive).toBe(false)
+    expect(store.isStartingSession).toBe(false)
     expect(store.activeSessionId).toBeNull()
     expect(store.sessionCount).toBe(0)
     expect(store.hasError).toBe(false)
@@ -194,6 +197,32 @@ describe('Session Store', () => {
 
       expect(store.activeSession).toBeNull()
     })
+
+    it('should set initializing=true while loading and false after', async () => {
+      const store = useSessionStore()
+      let initializingDuringCall = false
+
+      vi.mocked(tauri.getActiveSession).mockImplementation(async () => {
+        initializingDuringCall = store.initializing
+        return mockSession
+      })
+
+      expect(store.initializing).toBe(false)
+
+      await store.loadActiveSession()
+
+      expect(initializingDuringCall).toBe(true)
+      expect(store.initializing).toBe(false)
+    })
+
+    it('should clear initializing state even on error', async () => {
+      const store = useSessionStore()
+      vi.mocked(tauri.getActiveSession).mockRejectedValue(new Error('Failed'))
+
+      await expect(store.loadActiveSession()).rejects.toThrow('Failed')
+
+      expect(store.initializing).toBe(false)
+    })
   })
 
   describe('loadSessionSummaries', () => {
@@ -232,6 +261,35 @@ describe('Session Store', () => {
       await store.startSession()
 
       expect(tauri.updateSessionStatus).toHaveBeenCalledWith('session-1', 'ended')
+    })
+
+    it('should set starting=true while session is being created and false after', async () => {
+      const store = useSessionStore()
+      let startingDuringCall = false
+
+      vi.mocked(tauri.createSession).mockImplementation(async () => {
+        startingDuringCall = store.starting
+        return mockSession
+      })
+
+      expect(store.starting).toBe(false)
+      expect(store.isStartingSession).toBe(false)
+
+      await store.startSession()
+
+      expect(startingDuringCall).toBe(true)
+      expect(store.starting).toBe(false)
+      expect(store.isStartingSession).toBe(false)
+    })
+
+    it('should clear starting state even on error', async () => {
+      const store = useSessionStore()
+      vi.mocked(tauri.createSession).mockRejectedValue(new Error('Failed'))
+
+      await expect(store.startSession()).rejects.toThrow('Failed')
+
+      expect(store.starting).toBe(false)
+      expect(store.isStartingSession).toBe(false)
     })
   })
 
