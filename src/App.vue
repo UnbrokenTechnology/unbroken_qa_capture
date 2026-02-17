@@ -121,6 +121,9 @@ onMounted(async () => {
   // Secondary windows (session-notes, annotation, etc.) don't need the main-window setup
   if (isSecondaryWindow) return
 
+  // Initialize settings store so settings are available before any settings-dependent operations
+  settingsStore.initialize()
+
   // Check if first-run setup is needed
   try {
     const setupComplete = await tauri.hasCompletedSetup()
@@ -329,10 +332,20 @@ onMounted(async () => {
         await trayStore.setActive()
       } catch (err) {
         console.error('Failed to start session via hotkey:', err)
+        // If the backend rejected start because a session is already active,
+        // the frontend state is stale. Re-sync from the backend.
+        const errMsg = err instanceof Error ? err.message : String(err)
+        if (errMsg.includes('already active')) {
+          try {
+            await sessionStore.loadActiveSession()
+          } catch (syncErr) {
+            console.error('Failed to re-sync session state after start failure:', syncErr)
+          }
+        }
         $q.notify({
           type: 'negative',
           message: 'Failed to start session',
-          caption: err instanceof Error ? err.message : String(err),
+          caption: errMsg,
           position: 'bottom-right',
           timeout: 5000,
         })
@@ -418,7 +431,40 @@ onUnmounted(() => {
   // Clean up event listeners
   unlistenHandlers.forEach(unlisten => unlisten())
   sessionStore.cleanupEventListeners()
+  bugStore.cleanupEventListeners()
 })
+
+// Keep tray state in sync reactively with session/bug store state.
+// This ensures the tray is always consistent even if an event handler fails or is skipped.
+watch(
+  () => [sessionStore.isSessionActive, bugStore.activeBug?.id] as const,
+  ([sessionActive, activeBugId], [prevSessionActive, prevActiveBugId]) => {
+    // Skip during initialization — tray is set to idle in onMounted before this runs
+    if (appInitializing.value) return
+
+    if (activeBugId && activeBugId !== prevActiveBugId) {
+      // Bug capture just became active (or changed)
+      trayStore.setBugCapture(bugStore.activeBug?.display_id ?? activeBugId).catch(err => {
+        console.error('Failed to sync tray to bug state:', err)
+      })
+    } else if (!activeBugId && prevActiveBugId && sessionActive) {
+      // Bug capture ended but session still active
+      trayStore.setActive().catch(err => {
+        console.error('Failed to sync tray to active state:', err)
+      })
+    } else if (sessionActive && !prevSessionActive) {
+      // Session just became active
+      trayStore.setActive().catch(err => {
+        console.error('Failed to sync tray to active state:', err)
+      })
+    } else if (!sessionActive && prevSessionActive) {
+      // Session just ended
+      trayStore.setIdle().catch(err => {
+        console.error('Failed to sync tray to idle state:', err)
+      })
+    }
+  }
+)
 
 // Watch for active session changes and navigate accordingly (after init)
 // Only navigate on session transitions (null→active or active→null), not on updates
