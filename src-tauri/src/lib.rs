@@ -3,6 +3,7 @@ pub mod database;
 pub mod platform;
 pub mod session_manager;
 mod session_summary;
+mod session_json;
 mod hotkey;
 mod claude_cli;
 mod ticketing;

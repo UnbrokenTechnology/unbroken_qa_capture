@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::database::{Bug, BugStatus, BugType, Session, SessionStatus};
 use crate::database::{BugOps, BugRepository, SessionOps, SessionRepository};
+use crate::session_json::SessionJsonWriter;
 use crate::session_summary::SessionSummaryGenerator;
 
 /// Trait for emitting Tauri events
@@ -109,6 +110,11 @@ impl SessionManager {
             }),
         )?;
 
+        // Write initial .session.json (don't fail session start if this fails)
+        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(&session_id) {
+            eprintln!("Warning: Failed to write .session.json: {}", e);
+        }
+
         Ok(session)
     }
 
@@ -135,6 +141,11 @@ impl SessionManager {
         let summary_generator = SessionSummaryGenerator::new(self.db_path.clone());
         if let Err(e) = summary_generator.generate_summary(session_id, true) {
             eprintln!("Warning: Failed to generate session summary: {}", e);
+        }
+
+        // Update .session.json with final state (don't fail if this fails)
+        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(session_id) {
+            eprintln!("Warning: Failed to update .session.json on end: {}", e);
         }
 
         // Clear active session if it matches
@@ -188,6 +199,11 @@ impl SessionManager {
                 "folderPath": session.folder_path
             }),
         )?;
+
+        // Update .session.json to reflect resumed status (don't fail if this fails)
+        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(session_id) {
+            eprintln!("Warning: Failed to update .session.json on resume: {}", e);
+        }
 
         Ok(session)
     }
@@ -266,6 +282,11 @@ impl SessionManager {
             }),
         )?;
 
+        // Update .session.json to include new bug (don't fail if this fails)
+        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(session_id) {
+            eprintln!("Warning: Failed to update .session.json on bug start: {}", e);
+        }
+
         Ok(bug)
     }
 
@@ -303,6 +324,11 @@ impl SessionManager {
                 "sessionId": bug.session_id
             }),
         )?;
+
+        // Update .session.json to reflect bug status change (don't fail if this fails)
+        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(&bug.session_id) {
+            eprintln!("Warning: Failed to update .session.json on bug end: {}", e);
+        }
 
         Ok(())
     }
