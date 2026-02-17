@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useBugStore, type Bug } from '@/stores/bug'
+import { useBugStore } from '@/stores/bug'
 import type { Bug as BackendBug } from '@/types/backend'
 
 // Mock Tauri API
@@ -26,29 +26,6 @@ describe('Bug Store', () => {
     vi.clearAllMocks()
   })
 
-  const createMockBug = (id: string, title: string): Bug => ({
-    id,
-    title,
-    bug_type: 'UI',
-    description_steps: 'Test steps',
-    description_expected: 'Expected result',
-    description_actual: 'Actual result',
-    metadata: {
-      environment: {
-        os: 'Windows 11',
-        display_resolution: '1920x1080',
-        dpi_scaling: '100%',
-        ram: '16GB',
-        cpu: 'Intel i7',
-        foreground_app: 'TestApp'
-      },
-      console_captures: [],
-      custom_fields: {}
-    },
-    folder_path: '/test/path',
-    captures: []
-  })
-
   const createMockBackendBug = (id: string, title: string): BackendBug => ({
     id,
     session_id: 'session-1',
@@ -69,109 +46,10 @@ describe('Bug Store', () => {
     updated_at: '2024-01-01T10:00:00Z',
   })
 
-  it('should initialize with empty bugs array', () => {
+  it('should initialize with empty backendBugs array', () => {
     const store = useBugStore()
-    expect(store.bugs).toEqual([])
+    expect(store.backendBugs).toEqual([])
     expect(store.bugCount).toBe(0)
-  })
-
-  it('should add a new bug', () => {
-    const store = useBugStore()
-    const bug = createMockBug('1', 'Test Bug')
-
-    store.addBug(bug)
-
-    expect(store.bugs).toHaveLength(1)
-    expect(store.bugs[0]).toEqual(bug)
-    expect(store.bugCount).toBe(1)
-  })
-
-  it('should update existing bug when adding with same ID', () => {
-    const store = useBugStore()
-    const bug1 = createMockBug('1', 'Original Title')
-    const bug2 = createMockBug('1', 'Updated Title')
-
-    store.addBug(bug1)
-    store.addBug(bug2)
-
-    expect(store.bugs).toHaveLength(1)
-    expect(store.bugs[0]?.title).toBe('Updated Title')
-  })
-
-  it('should get bug by ID', () => {
-    const store = useBugStore()
-    const bug = createMockBug('1', 'Test Bug')
-
-    store.addBug(bug)
-
-    const foundBug = store.getBugById('1')
-    expect(foundBug).toEqual(bug)
-
-    const notFound = store.getBugById('999')
-    expect(notFound).toBeUndefined()
-  })
-
-  it('should remove a bug', () => {
-    const store = useBugStore()
-    const bug1 = createMockBug('1', 'Bug 1')
-    const bug2 = createMockBug('2', 'Bug 2')
-
-    store.addBug(bug1)
-    store.addBug(bug2)
-
-    store.removeBug('1')
-
-    expect(store.bugs).toHaveLength(1)
-    expect(store.bugs[0]?.id).toBe('2')
-  })
-
-  it('should update a bug', () => {
-    const store = useBugStore()
-    const bug = createMockBug('1', 'Original Title')
-
-    store.addBug(bug)
-    store.updateBug('1', { title: 'Updated Title', bug_type: 'Data' })
-
-    const updated = store.getBugById('1')
-    expect(updated?.title).toBe('Updated Title')
-    expect(updated?.bug_type).toBe('Data')
-  })
-
-  it('should set current bug', () => {
-    const store = useBugStore()
-    const bug = createMockBug('1', 'Test Bug')
-
-    store.addBug(bug)
-    store.setCurrentBug('1')
-
-    expect(store.currentBug).toEqual(bug)
-  })
-
-  it('should clear current bug when removed', () => {
-    const store = useBugStore()
-    const bug = createMockBug('1', 'Test Bug')
-
-    store.addBug(bug)
-    store.setCurrentBug('1')
-    store.removeBug('1')
-
-    expect(store.currentBug).toBeNull()
-  })
-
-  it('should clear all bugs', () => {
-    const store = useBugStore()
-    const bug1 = createMockBug('1', 'Bug 1')
-    const bug2 = createMockBug('2', 'Bug 2')
-
-    store.addBug(bug1)
-    store.addBug(bug2)
-    store.setCurrentBug('1')
-
-    store.clearBugs()
-
-    expect(store.bugs).toEqual([])
-    expect(store.bugCount).toBe(0)
-    expect(store.currentBug).toBeNull()
   })
 
   describe('Backend Operations', () => {
@@ -351,24 +229,7 @@ describe('Bug Store', () => {
     })
   })
 
-  describe('deleteBug with captures', () => {
-    it('should delete a bug that has associated legacy captures', async () => {
-      const store = useBugStore()
-      const legacyBug = createMockBug('bug-1', 'Bug with captures')
-      legacyBug.captures = ['/path/cap1.png', '/path/cap2.png']
-      store.addBug(legacyBug)
-
-      const backendBug = createMockBackendBug('bug-1', 'Bug with captures')
-      store.backendBugs.push(backendBug)
-      vi.mocked(tauri.deleteBug).mockResolvedValue()
-
-      await store.deleteBug('bug-1')
-
-      expect(store.backendBugs).toHaveLength(0)
-      expect(store.bugs).toHaveLength(0)
-      expect(tauri.deleteBug).toHaveBeenCalledWith('bug-1')
-    })
-
+  describe('deleteBug', () => {
     it('should clear activeBug when deleting the currently active bug', async () => {
       const store = useBugStore()
       const mockBug = createMockBackendBug('bug-1', 'Active bug')
@@ -379,21 +240,6 @@ describe('Bug Store', () => {
       await store.deleteBug('bug-1')
 
       expect(store.activeBug).toBeNull()
-    })
-
-    it('should clear currentBugId when deleting the current bug', async () => {
-      const store = useBugStore()
-      const legacyBug = createMockBug('bug-1', 'Current bug')
-      store.addBug(legacyBug)
-      store.setCurrentBug('bug-1')
-
-      const backendBug = createMockBackendBug('bug-1', 'Current bug')
-      store.backendBugs.push(backendBug)
-      vi.mocked(tauri.deleteBug).mockResolvedValue()
-
-      await store.deleteBug('bug-1')
-
-      expect(store.currentBug).toBeNull()
     })
   })
 
@@ -445,6 +291,34 @@ describe('Bug Store', () => {
       const mockBug = { ...createMockBackendBug('bug-1', 'Test'), status: 'capturing' as const }
       store.activeBug = mockBug
       expect(store.isCapturing).toBe(true)
+    })
+
+    it('should compute bugCount from backendBugs', () => {
+      const store = useBugStore()
+      expect(store.bugCount).toBe(0)
+
+      store.backendBugs.push(createMockBackendBug('bug-1', 'Bug 1'))
+      store.backendBugs.push(createMockBackendBug('bug-2', 'Bug 2'))
+      expect(store.bugCount).toBe(2)
+    })
+  })
+
+  describe('clearBugs', () => {
+    it('should clear all state', () => {
+      const store = useBugStore()
+      const mockBug = createMockBackendBug('bug-1', 'Bug 1')
+      store.backendBugs.push(mockBug)
+      store.activeBug = mockBug
+      store.setLastSessionMeetingId('meeting-123')
+      store.setTagNextScreenshotAsConsole(true)
+
+      store.clearBugs()
+
+      expect(store.backendBugs).toEqual([])
+      expect(store.bugCount).toBe(0)
+      expect(store.activeBug).toBeNull()
+      expect(store.lastSessionMeetingId).toBeNull()
+      expect(store.tagNextScreenshotAsConsole).toBe(false)
     })
   })
 

@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { Quasar } from 'quasar'
 import Home from '@/views/Home.vue'
+import type { Bug as BackendBug } from '@/types/backend'
 
 // Mock Tauri API
 vi.mock('@/api/tauri', () => ({
@@ -24,6 +25,26 @@ vi.mock('@tauri-apps/api/event', () => ({
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }))
+
+const createMockBackendBug = (id: string, title: string): BackendBug => ({
+  id,
+  session_id: 'session-1',
+  bug_number: 1,
+  display_id: `Bug-0${id}`,
+  type: 'bug',
+  title,
+  notes: null,
+  description: 'Test description',
+  ai_description: null,
+  status: 'captured',
+  meeting_id: null,
+  software_version: null,
+  console_parse_json: null,
+  metadata_json: null,
+  folder_path: '/test/path',
+  created_at: '2024-01-01T10:00:00Z',
+  updated_at: '2024-01-01T10:00:00Z',
+})
 
 describe('Home View', () => {
   let pinia: ReturnType<typeof createPinia>
@@ -82,16 +103,16 @@ describe('Home View', () => {
       expect(wrapper.text()).toContain('No bugs available')
     })
 
-    it('shows "Load Sample Data" button when no bugs exist', async () => {
-      const wrapper = mountHome()
-      await flushPromises()
-      expect(wrapper.text()).toContain('Load Sample Data')
-    })
-
     it('does not show the bug list when empty', async () => {
       const wrapper = mountHome()
       await flushPromises()
       expect(wrapper.find('ul').exists()).toBe(false)
+    })
+
+    it('does not show a Load Sample Data button', async () => {
+      const wrapper = mountHome()
+      await flushPromises()
+      expect(wrapper.find('button.q-btn').exists()).toBe(false)
     })
   })
 
@@ -99,19 +120,19 @@ describe('Home View', () => {
     it('shows bug list when bugs are available', async () => {
       const { useBugStore } = await import('@/stores/bug')
       const bugStore = useBugStore()
-      bugStore.loadSampleData()
+      bugStore.backendBugs.push(createMockBackendBug('1', 'Login button not responding'))
+      bugStore.backendBugs.push(createMockBackendBug('2', 'Data not saving in form'))
 
       const wrapper = mountHome()
       await flushPromises()
 
-      // Sample data has 2 bugs, the list should appear
       expect(wrapper.find('ul').exists()).toBe(true)
     })
 
     it('hides empty state when bugs are present', async () => {
       const { useBugStore } = await import('@/stores/bug')
       const bugStore = useBugStore()
-      bugStore.loadSampleData()
+      bugStore.backendBugs.push(createMockBackendBug('1', 'Login button not responding'))
 
       const wrapper = mountHome()
       await flushPromises()
@@ -122,7 +143,8 @@ describe('Home View', () => {
     it('renders bug titles in the list', async () => {
       const { useBugStore } = await import('@/stores/bug')
       const bugStore = useBugStore()
-      bugStore.loadSampleData()
+      bugStore.backendBugs.push(createMockBackendBug('1', 'Login button not responding'))
+      bugStore.backendBugs.push(createMockBackendBug('2', 'Data not saving in form'))
 
       const wrapper = mountHome()
       await flushPromises()
@@ -134,35 +156,20 @@ describe('Home View', () => {
     it('renders bug type in the list', async () => {
       const { useBugStore } = await import('@/stores/bug')
       const bugStore = useBugStore()
-      bugStore.loadSampleData()
+      bugStore.backendBugs.push(createMockBackendBug('1', 'Login button not responding'))
 
       const wrapper = mountHome()
       await flushPromises()
 
-      expect(wrapper.text()).toContain('UI')
+      expect(wrapper.text()).toContain('bug')
     })
   })
 
   describe('interactions', () => {
-    it('calls loadSampleData when Load Sample Data button is clicked', async () => {
-      const { useBugStore } = await import('@/stores/bug')
-      const bugStore = useBugStore()
-      const loadSpy = vi.spyOn(bugStore, 'loadSampleData')
-
-      const wrapper = mountHome()
-      await flushPromises()
-
-      const buttons = wrapper.findAll('button.q-btn')
-      expect(buttons.length).toBeGreaterThan(0)
-      await buttons[0]!.trigger('click')
-
-      expect(loadSpy).toHaveBeenCalled()
-    })
-
     it('navigates to bug-detail when a bug item is clicked', async () => {
       const { useBugStore } = await import('@/stores/bug')
       const bugStore = useBugStore()
-      bugStore.loadSampleData()
+      bugStore.backendBugs.push(createMockBackendBug('1', 'Login button not responding'))
 
       const wrapper = mountHome()
       await flushPromises()

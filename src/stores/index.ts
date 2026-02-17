@@ -76,7 +76,6 @@ export { useSettingsStore } from './settings'
 export { useTrayStore } from './tray'
 
 // Re-export types
-export type { Bug, BugMetadata, Environment } from './bug'
 export type { TrayState, TrayStatus } from './tray'
 export type { SettingsKey } from './settings'
 export { SETTINGS_KEYS } from './settings'
