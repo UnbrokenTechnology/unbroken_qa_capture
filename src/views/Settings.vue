@@ -1109,6 +1109,7 @@ async function saveSettings(): Promise<void> {
       message: 'Settings saved successfully',
       position: 'top',
     })
+    goBack()
   } catch (err) {
     console.error('Failed to save settings:', err)
     $q.notify({
