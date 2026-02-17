@@ -195,12 +195,15 @@
             Description
           </div>
 
-          <div
-            v-if="bug.description"
-            class="text-body2 whitespace-pre-wrap"
-          >
-            {{ bug.description }}
-          </div>
+          <q-input
+            v-model="descriptionDraft"
+            type="textarea"
+            outlined
+            autogrow
+            :min-rows="3"
+            placeholder="Describe the bug..."
+            @blur="saveDescription"
+          />
 
           <div
             v-if="bug.notes"
@@ -224,13 +227,6 @@
             <div class="text-body2 whitespace-pre-wrap">
               {{ bug.ai_description }}
             </div>
-          </div>
-
-          <div
-            v-if="!bug.description && !bug.notes && !bug.ai_description"
-            class="text-body2 text-grey"
-          >
-            No description provided.
           </div>
         </q-card-section>
       </q-card>
@@ -694,6 +690,7 @@ const selectedScreenshotIndex = ref(0)
 const loading = ref(false)
 const captures = ref<Capture[]>([])
 const captureViewMode = ref<'timeline' | 'carousel'>('timeline')
+const descriptionDraft = ref('')
 
 // Reassign capture state
 const showReassignDialog = ref(false)
@@ -801,6 +798,26 @@ function formatCaptureTime(isoString: string): string {
 // Navigate back to bug list
 function goBack() {
   router.back()
+}
+
+// Save description to database on blur
+async function saveDescription() {
+  if (!bug.value) return
+  const newDescription = descriptionDraft.value.trim()
+  const current = bug.value.description ?? ''
+  if (newDescription === current) return
+
+  try {
+    await bugStore.updateBackendBug(bug.value.id, { description: newDescription })
+  } catch (err) {
+    console.error('Failed to save description:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to save description',
+      position: 'top',
+      timeout: 3000,
+    })
+  }
 }
 
 function isMeetingUrl(value: string | null | undefined): boolean {
@@ -990,9 +1007,20 @@ onMounted(async () => {
     }
   }
 
+  // Initialize description draft from the loaded bug
+  descriptionDraft.value = bug.value?.description ?? ''
+
   // Load captures for this bug
   await refreshCaptures()
 })
+
+// Sync description draft when bug data changes (e.g. after store load)
+watch(
+  () => bug.value?.description,
+  (newVal) => {
+    descriptionDraft.value = newVal ?? ''
+  }
+)
 
 // Auto-refresh captures when a new screenshot is taken for this bug
 watch(
