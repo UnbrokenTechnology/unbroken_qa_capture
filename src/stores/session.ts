@@ -21,6 +21,10 @@ export const useSessionStore = defineStore('session', () => {
   // Event listeners cleanup functions
   const eventUnlisteners = ref<UnlistenFn[]>([])
 
+  // Screenshot notification state: set when a screenshot is captured
+  // Components watch this to show toast notifications
+  const lastScreenshotEvent = ref<{ filePath: string; bugDisplayId: string | null; timestamp: number } | null>(null)
+
   // ============================================================================
   // Getters
   // ============================================================================
@@ -263,7 +267,7 @@ export const useSessionStore = defineStore('session', () => {
     const unlistenScreenshotCaptured = await listen<{ filePath: string; timestamp: number }>(
       'screenshot:captured',
       async (event) => {
-        const { filePath } = event.payload
+        const { filePath, timestamp } = event.payload
 
         // Only process if we have an active session
         if (activeSession.value?.status === 'active') {
@@ -274,6 +278,10 @@ export const useSessionStore = defineStore('session', () => {
           // Import bug store to check console tag flag
           const { useBugStore } = await import('./bug')
           const bugStore = useBugStore()
+
+          // Notify watchers about the screenshot, including which bug it belongs to
+          const activeBugDisplayId = bugStore.activeBug?.display_id ?? null
+          lastScreenshotEvent.value = { filePath, bugDisplayId: activeBugDisplayId, timestamp }
 
           // If "tag next screenshot as console" is active, find and tag the new capture
           if (bugStore.consumeConsoleTag() && bugStore.activeBug) {
@@ -389,6 +397,7 @@ export const useSessionStore = defineStore('session', () => {
     starting,
     initializing,
     error,
+    lastScreenshotEvent,
 
     // Getters
     isSessionActive,

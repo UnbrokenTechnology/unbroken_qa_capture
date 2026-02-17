@@ -36,6 +36,18 @@
         <div class="text-h4 flex-1">
           {{ bug.title || bug.display_id }}
         </div>
+        <q-badge
+          v-if="bug.status === 'capturing'"
+          color="red"
+          class="q-mr-md capturing-badge"
+        >
+          <q-icon
+            name="fiber_manual_record"
+            size="10px"
+            class="q-mr-xs"
+          />
+          CAPTURING
+        </q-badge>
         <q-btn
           color="secondary"
           icon="folder_open"
@@ -166,14 +178,27 @@
         </q-card-section>
       </q-card>
 
-      <!-- Screenshots Carousel Card -->
+      <!-- Screenshots Card -->
       <q-card
         v-if="screenshotCaptures.length > 0"
         class="q-mb-md"
       >
         <q-card-section>
-          <div class="text-h6 q-mb-md">
-            Screenshots ({{ screenshotCaptures.length }})
+          <div class="row items-center q-mb-md">
+            <q-icon
+              name="photo_camera"
+              size="sm"
+              color="primary"
+              class="q-mr-sm"
+            />
+            <span class="text-h6">Screenshots ({{ screenshotCaptures.length }})</span>
+            <q-space />
+            <q-badge
+              color="primary"
+              outline
+            >
+              Associated with {{ bug.display_id }}
+            </q-badge>
           </div>
           <q-carousel
             v-model="currentSlide"
@@ -223,16 +248,39 @@
                     </div>
                   </template>
                 </q-img>
-                <q-btn
-                  color="primary"
-                  icon="edit"
-                  label="Annotate"
-                  class="annotate-btn"
-                  @click="openAnnotator(capture, index)"
-                />
+                <div class="screenshot-slide-footer">
+                  <span class="text-caption text-grey-6">{{ index + 1 }} / {{ screenshotCaptures.length }}</span>
+                  <q-btn
+                    color="primary"
+                    icon="edit"
+                    label="Annotate"
+                    size="sm"
+                    @click="openAnnotator(capture, index)"
+                  />
+                </div>
               </div>
             </q-carousel-slide>
           </q-carousel>
+        </q-card-section>
+      </q-card>
+
+      <!-- No captures info card (shown when bug has no screenshots yet) -->
+      <q-card
+        v-else-if="!loading && captures.length === 0"
+        class="q-mb-md"
+      >
+        <q-card-section class="text-center q-py-lg">
+          <q-icon
+            name="photo_camera"
+            size="48px"
+            color="grey-4"
+          />
+          <div class="text-body2 text-grey-7 q-mt-sm">
+            No screenshots yet
+          </div>
+          <div class="text-caption text-grey-5 q-mt-xs">
+            Screenshots taken while capturing {{ bug.display_id }} will appear here
+          </div>
         </q-card-section>
       </q-card>
 
@@ -398,9 +446,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBugStore } from '@/stores/bug'
+import { useSessionStore } from '@/stores/session'
 import { invoke } from '@tauri-apps/api/core'
 import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import { useQuasar } from 'quasar'
@@ -425,6 +474,7 @@ function isVideoPath(path: string): boolean {
 const route = useRoute()
 const router = useRouter()
 const bugStore = useBugStore()
+const sessionStore = useSessionStore()
 const $q = useQuasar()
 
 const currentSlide = ref(0)
@@ -560,6 +610,16 @@ function handleAnnotationSaved(annotatedPath: string) {
   console.log('Annotated screenshot saved to:', annotatedPath)
 }
 
+async function refreshCaptures() {
+  const id = bugId.value
+  if (!id) return
+  try {
+    captures.value = await tauri.getBugCaptures(id)
+  } catch (err) {
+    console.error('Failed to load captures:', err)
+  }
+}
+
 // Load bug data on mount — handles direct navigation/page reload
 onMounted(async () => {
   const id = bugId.value
@@ -578,12 +638,28 @@ onMounted(async () => {
   }
 
   // Load captures for this bug
-  try {
-    captures.value = await tauri.getBugCaptures(id)
-  } catch (err) {
-    console.error('Failed to load captures:', err)
-  }
+  await refreshCaptures()
 })
+
+// Auto-refresh captures when a new screenshot is taken for this bug
+watch(
+  () => sessionStore.lastScreenshotEvent,
+  async (event) => {
+    if (!event) return
+    // Only refresh if the screenshot belongs to the bug we're viewing
+    const activeBug = bugStore.activeBug
+    if (activeBug?.id === bugId.value) {
+      await refreshCaptures()
+      $q.notify({
+        type: 'positive',
+        icon: 'photo_camera',
+        message: 'New screenshot added',
+        position: 'top',
+        timeout: 2000,
+      })
+    }
+  }
+)
 </script>
 
 <style scoped>
@@ -608,12 +684,20 @@ onMounted(async () => {
 
 .screenshot-slide {
   position: relative;
+  flex-direction: column;
 }
 
-.annotate-btn {
+.screenshot-slide-footer {
   position: absolute;
-  bottom: 16px;
-  right: 16px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
   z-index: 10;
 }
 
@@ -628,5 +712,18 @@ onMounted(async () => {
   white-space: pre-wrap;
   word-break: break-all;
   line-height: 1.4;
+}
+
+.capturing-badge {
+  animation: pulse-badge 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.screenshot-slide-footer .q-btn {
+  color: white !important;
 }
 </style>

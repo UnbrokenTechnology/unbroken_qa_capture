@@ -196,7 +196,7 @@ describe('BugDetail', () => {
     expect(wrapper.text()).toContain('Screenshots (2)')
   })
 
-  it('should not display screenshots section when no captures', async () => {
+  it('should display no-captures placeholder when no captures', async () => {
     const store = useBugStore()
     const bug = createMockBackendBug('1')
     store.backendBugs.push(bug)
@@ -204,7 +204,9 @@ describe('BugDetail', () => {
     const wrapper = await mountComponent('1')
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('Screenshots')
+    // Should show the "no screenshots yet" placeholder, not the carousel
+    expect(wrapper.text()).toContain('No screenshots yet')
+    expect(wrapper.text()).not.toContain('Screenshots (')
   })
 
   it('should navigate back when back button is clicked', async () => {
