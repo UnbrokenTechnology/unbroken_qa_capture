@@ -146,6 +146,14 @@ export async function updateBug(id: string, update: BugUpdate): Promise<void> {
   if (update.status === 'captured') {
     await invoke('end_bug_capture', { bugId: id })
   }
+  // Persist description changes to the database
+  if (update.description !== undefined) {
+    await invoke('update_bug_description', { bugId: id, description: update.description ?? '' })
+  }
+}
+
+export async function updateBugDescription(bugId: string, description: string): Promise<void> {
+  await invoke('update_bug_description', { bugId, description })
 }
 
 /** Resume capturing for an existing bug — sets status back to 'capturing' and marks it as the active bug. */

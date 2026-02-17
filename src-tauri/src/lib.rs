@@ -1439,6 +1439,32 @@ async fn save_bug_description(
 }
 
 #[tauri::command]
+fn update_bug_description(
+    bug_id: String,
+    description: String,
+    app: tauri::AppHandle
+) -> Result<(), String> {
+    use database::{Database, BugOps, BugRepository};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = BugRepository::new(db.connection());
+
+    let mut bug = repo.get(&bug_id)
+        .map_err(|e: rusqlite::Error| e.to_string())?
+        .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
+
+    bug.description = if description.is_empty() { None } else { Some(description) };
+
+    repo.update(&bug)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
 fn format_session_export(session_folder_path: String) -> Result<(), String> {
     use std::path::Path;
     use std::fs;
@@ -2289,6 +2315,7 @@ pub fn run() {
             get_unsorted_captures,
             assign_capture_to_bug,
             update_bug_console_parse,
+            update_bug_description,
             update_capture_console_flag,
             get_app_version,
             enable_startup,

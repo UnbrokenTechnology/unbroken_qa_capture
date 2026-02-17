@@ -48,6 +48,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useSessionStore } from '../stores/session'
 import * as tauri from '../api/tauri'
 
@@ -142,7 +143,13 @@ onMounted(async () => {
   const unlistenDeleted = await listen('session-deleted', () => { sessionStore.loadActiveSession() })
   const unlistenStatusChanged = await listen('session-status-changed', () => { sessionStore.loadActiveSession() })
 
-  unlistenHandlers = [unlistenCreated, unlistenUpdated, unlistenDeleted, unlistenStatusChanged]
+  // Ensure the native X close button works by explicitly handling the close event
+  const appWindow = getCurrentWindow()
+  const unlistenClose = await appWindow.onCloseRequested(async () => {
+    await appWindow.close()
+  })
+
+  unlistenHandlers = [unlistenCreated, unlistenUpdated, unlistenDeleted, unlistenStatusChanged, unlistenClose]
 })
 
 onUnmounted(() => {
