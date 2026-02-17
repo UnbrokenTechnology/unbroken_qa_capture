@@ -51,6 +51,18 @@
       v-model="showFirstRunWizard"
       @complete="onSetupComplete"
     />
+
+    <!-- Quick Notepad (hotkey: Ctrl+Shift+N) -->
+    <QuickNotepad
+      :visible="showQuickNotepad"
+      @close="showQuickNotepad = false"
+    />
+
+    <!-- Session Notepad (hotkey: Ctrl+Shift+M) -->
+    <SessionNotepad
+      :visible="showSessionNotepad"
+      @close="showSessionNotepad = false"
+    />
   </q-layout>
 </template>
 
@@ -66,6 +78,8 @@ import { useSettingsStore } from './stores/settings'
 import SessionStatusWidget from './components/SessionStatusWidget.vue'
 import SessionToolbar from './components/SessionToolbar.vue'
 import FirstRunWizard from './components/FirstRunWizard.vue'
+import QuickNotepad from './components/QuickNotepad.vue'
+import SessionNotepad from './components/SessionNotepad.vue'
 import * as tauri from './api/tauri'
 
 const router = useRouter()
@@ -76,6 +90,8 @@ const bugStore = useBugStore()
 const settingsStore = useSettingsStore()
 const showStatusWidget = ref(true)
 const showFirstRunWizard = ref(false)
+const showQuickNotepad = ref(false)
+const showSessionNotepad = ref(false)
 // True until we've finished checking for an active session on startup
 const appInitializing = ref(true)
 provide('showFirstRunWizard', showFirstRunWizard)
@@ -177,7 +193,103 @@ onMounted(async () => {
     }
   })
 
-  unlistenHandlers = [unlistenStartSession, unlistenNewBug, unlistenSettings, unlistenWindowShown]
+  // Listen for global hotkey events from Rust HotkeyManager
+  const unlistenHotkeyToggleSession = await listen('hotkey-toggle-session', async () => {
+    if (sessionStore.isSessionActive && sessionStore.activeSessionId) {
+      try {
+        await sessionStore.endSession(sessionStore.activeSessionId)
+        await trayStore.setIdle()
+      } catch (err) {
+        console.error('Failed to end session via hotkey:', err)
+        $q.notify({
+          type: 'negative',
+          message: 'Failed to end session',
+          caption: err instanceof Error ? err.message : String(err),
+          position: 'bottom-right',
+          timeout: 5000,
+        })
+      }
+    } else {
+      try {
+        await sessionStore.startSession()
+        await trayStore.setActive()
+      } catch (err) {
+        console.error('Failed to start session via hotkey:', err)
+        $q.notify({
+          type: 'negative',
+          message: 'Failed to start session',
+          caption: err instanceof Error ? err.message : String(err),
+          position: 'bottom-right',
+          timeout: 5000,
+        })
+      }
+    }
+  })
+
+  const unlistenHotkeyStartBugCapture = await listen('hotkey-start-bug-capture', async () => {
+    if (sessionStore.isSessionActive && sessionStore.activeSessionId) {
+      try {
+        await bugStore.startBugCapture({ session_id: sessionStore.activeSessionId, status: 'capturing' })
+        await trayStore.setBugCapture()
+        router.push({ name: 'active-session' })
+      } catch (err) {
+        console.error('Failed to start bug capture via hotkey:', err)
+        $q.notify({
+          type: 'negative',
+          message: 'Failed to start bug capture',
+          caption: err instanceof Error ? err.message : String(err),
+          position: 'bottom-right',
+          timeout: 5000,
+        })
+      }
+    } else {
+      $q.notify({
+        type: 'warning',
+        message: 'No active session',
+        caption: 'Start a session before capturing bugs',
+        position: 'bottom-right',
+        timeout: 3000,
+      })
+    }
+  })
+
+  const unlistenHotkeyEndBugCapture = await listen('hotkey-end-bug-capture', async () => {
+    if (bugStore.activeBug?.id) {
+      try {
+        await bugStore.completeBugCapture(bugStore.activeBug.id)
+        await trayStore.setActive()
+      } catch (err) {
+        console.error('Failed to complete bug capture via hotkey:', err)
+        $q.notify({
+          type: 'negative',
+          message: 'Failed to complete bug capture',
+          caption: err instanceof Error ? err.message : String(err),
+          position: 'bottom-right',
+          timeout: 5000,
+        })
+      }
+    }
+  })
+
+  const unlistenHotkeyOpenQuickNotepad = await listen('hotkey-open-quick-notepad', () => {
+    showQuickNotepad.value = !showQuickNotepad.value
+  })
+
+  const unlistenHotkeyOpenSessionNotepad = await listen('hotkey-open-session-notepad', () => {
+    showSessionNotepad.value = !showSessionNotepad.value
+  })
+
+  unlistenHandlers = [
+    unlistenStartSession,
+    unlistenNewBug,
+    unlistenSettings,
+    unlistenWindowShown,
+    unlistenHotkeyToggleSession,
+    unlistenHotkeyStartBugCapture,
+    unlistenHotkeyEndBugCapture,
+    unlistenHotkeyOpenQuickNotepad,
+    unlistenHotkeyOpenSessionNotepad,
+  ]
 })
 
 onUnmounted(() => {
