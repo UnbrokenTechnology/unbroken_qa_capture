@@ -258,73 +258,17 @@ export const useSessionStore = defineStore('session', () => {
     error.value = null
   }
 
+  function setLastScreenshotEvent(event: { filePath: string; bugDisplayId: string | null; timestamp: number }): void {
+    lastScreenshotEvent.value = event
+  }
+
   // ============================================================================
   // Event Listeners
   // ============================================================================
 
   async function setupEventListeners(): Promise<void> {
-    // Listen for screenshot:captured events (auto-open annotation if enabled)
-    const unlistenScreenshotCaptured = await listen<{ filePath: string; timestamp: number }>(
-      'screenshot:captured',
-      async (event) => {
-        const { filePath, timestamp } = event.payload
-
-        // Only process if we have an active session
-        if (activeSession.value?.status === 'active') {
-          // Import settings store dynamically to avoid circular dependency
-          const { useSettingsStore } = await import('./settings')
-          const settingsStore = useSettingsStore()
-
-          // Import bug store to check console tag flag
-          const { useBugStore } = await import('./bug')
-          const bugStore = useBugStore()
-
-          // Notify watchers about the screenshot, including which bug it belongs to
-          const activeBugDisplayId = bugStore.activeBug?.display_id ?? null
-          lastScreenshotEvent.value = { filePath, bugDisplayId: activeBugDisplayId, timestamp }
-
-          // If "tag next screenshot as console" is active, find and tag the new capture
-          if (bugStore.consumeConsoleTag() && bugStore.activeBug) {
-            const { getBugCaptures, updateCaptureConsoleFlag } = await import('../api/tauri')
-            try {
-              const captures = await getBugCaptures(bugStore.activeBug.id)
-              // Find the capture matching the detected file path
-              const matched = captures.find(c => c.file_path === filePath || c.file_path.endsWith(filePath.replace(/\\/g, '/').split('/').pop() ?? ''))
-              if (matched) {
-                await updateCaptureConsoleFlag(matched.id, true)
-              }
-            } catch (err) {
-              console.error('Failed to tag screenshot as console capture:', err)
-            }
-          }
-
-          if (settingsStore.autoOpenAnnotation) {
-            const { openAnnotationWindow, getBugCaptures } = await import('../api/tauri')
-            try {
-              // Look up the capture ID for the new screenshot so the annotation
-              // window can update the DB record after save
-              let captureId: string | undefined
-              if (bugStore.activeBug) {
-                try {
-                  const captures = await getBugCaptures(bugStore.activeBug.id)
-                  const matched = captures.find(c =>
-                    c.file_path === filePath ||
-                    c.file_path.endsWith(filePath.replace(/\\/g, '/').split('/').pop() ?? '')
-                  )
-                  captureId = matched?.id
-                } catch {
-                  // Non-fatal: annotation will still save the file, just won't update DB
-                }
-              }
-              await openAnnotationWindow(filePath, captureId)
-            } catch (err) {
-              console.error('Failed to auto-open annotation window:', err)
-            }
-          }
-        }
-      }
-    )
-    eventUnlisteners.value.push(unlistenScreenshotCaptured)
+    // Note: screenshot:captured is handled by useCaptureEventHandler composable
+    // (wired in App.vue) to avoid circular store dependencies.
 
     // Listen for session created events
     const unlistenSessionCreated = await listen<Session>('session-created', (event) => {
@@ -425,6 +369,7 @@ export const useSessionStore = defineStore('session', () => {
 
     // Actions - Local State
     setActiveSession,
+    setLastScreenshotEvent,
     clearError,
     clearAll,
 
