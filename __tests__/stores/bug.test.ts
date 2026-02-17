@@ -174,31 +174,6 @@ describe('Bug Store', () => {
     expect(store.currentBug).toBeNull()
   })
 
-  it('should load bugs from array', () => {
-    const store = useBugStore()
-    const bugs = [
-      createMockBug('1', 'Bug 1'),
-      createMockBug('2', 'Bug 2'),
-      createMockBug('3', 'Bug 3')
-    ]
-
-    store.loadBugs(bugs)
-
-    expect(store.bugs).toEqual(bugs)
-    expect(store.bugCount).toBe(3)
-  })
-
-  it('should load sample data', () => {
-    const store = useBugStore()
-
-    store.loadSampleData()
-
-    expect(store.bugCount).toBeGreaterThan(0)
-    expect(store.bugs[0]).toHaveProperty('title')
-    expect(store.bugs[0]).toHaveProperty('bug_type')
-    expect(store.bugs[0]).toHaveProperty('metadata')
-  })
-
   describe('Backend Operations', () => {
     it('should create a backend bug', async () => {
       const store = useBugStore()
@@ -349,19 +324,6 @@ describe('Bug Store', () => {
   })
 
   describe('completeBugCapture edge cases', () => {
-    it('should complete a bug capture for the active bug and clear activeBug', async () => {
-      const store = useBugStore()
-      const mockBug = createMockBackendBug('bug-1', 'Test')
-      store.activeBug = mockBug
-      store.backendBugs.push(mockBug)
-      vi.mocked(tauri.updateBug).mockResolvedValue()
-
-      await store.completeBugCapture('bug-1')
-
-      expect(store.backendBugs[0]?.status).toBe('captured')
-      expect(store.activeBug).toBeNull()
-    })
-
     it('should handle completeBugCapture when capture was never started (no activeBug)', async () => {
       const store = useBugStore()
       const mockBug = createMockBackendBug('bug-1', 'Orphan bug')

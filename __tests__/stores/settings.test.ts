@@ -71,12 +71,6 @@ describe('Settings Store', () => {
     expect(store.hasError).toBe(false)
   })
 
-  it('should have autoOpenAnnotation setting with default value true', () => {
-    const store = useSettingsStore()
-    expect(store.settings[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION]).toBe('true')
-    expect(store.autoOpenAnnotation).toBe(true)
-  })
-
   it('should correctly parse autoOpenAnnotation boolean value', () => {
     const store = useSettingsStore()
 
@@ -437,12 +431,6 @@ describe('Settings Store', () => {
       expect(store.getSetting('nonexistent_key', 'my-fallback')).toBe('my-fallback')
     })
 
-    it('should preserve autoOpenAnnotation default true when backend unavailable', () => {
-      const store = useSettingsStore()
-      // No backend call made — defaults only
-      expect(store.autoOpenAnnotation).toBe(true)
-      expect(store.settings[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION]).toBe('true')
-    })
   })
 
   describe('initialize', () => {

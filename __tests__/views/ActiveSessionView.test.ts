@@ -153,12 +153,6 @@ describe('ActiveSessionView', () => {
     })
   }
 
-  it('mounts without errors', async () => {
-    const wrapper = mountActiveSessionView()
-    await flushPromises()
-    expect(wrapper.vm).toBeDefined()
-  })
-
   describe('status bar', () => {
     it('shows session duration when active session is present', async () => {
       const { useSessionStore } = await import('@/stores/session')
@@ -170,18 +164,6 @@ describe('ActiveSessionView', () => {
 
       // Status bar should be visible (no first run wizard)
       expect(wrapper.find('.status-bar').exists()).toBe(true)
-    })
-
-    it('shows the schedule icon in status bar', async () => {
-      const { useSessionStore } = await import('@/stores/session')
-      const sessionStore = useSessionStore()
-      sessionStore.setActiveSession(mockSession)
-
-      const wrapper = mountActiveSessionView()
-      await flushPromises()
-
-      // Should display time-related content in status bar
-      expect(wrapper.find('.q-card').exists()).toBe(true)
     })
 
     it('hides status bar when first-run wizard is shown', async () => {

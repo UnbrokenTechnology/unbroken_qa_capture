@@ -74,7 +74,6 @@ export { useSessionStore } from './session'
 export { useBugStore } from './bug'
 export { useSettingsStore } from './settings'
 export { useTrayStore } from './tray'
-export { useCounterStore } from './counter'
 
 // Re-export types
 export type { Bug, BugMetadata, Environment } from './bug'
