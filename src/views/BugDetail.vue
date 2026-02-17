@@ -131,12 +131,12 @@
 
       <!-- Screenshots Carousel Card -->
       <q-card
-        v-if="bug.captures.length > 0"
+        v-if="screenshotCaptures.length > 0"
         class="q-mb-md"
       >
         <q-card-section>
           <div class="text-h6 q-mb-md">
-            Screenshots ({{ bug.captures.length }})
+            Screenshots ({{ screenshotCaptures.length }})
           </div>
           <q-carousel
             v-model="currentSlide"
@@ -150,7 +150,7 @@
             class="bg-grey-2 rounded-borders"
           >
             <q-carousel-slide
-              v-for="(capture, index) in bug.captures"
+              v-for="(capture, index) in screenshotCaptures"
               :key="index"
               :name="index"
               class="q-pa-none"
@@ -196,6 +196,29 @@
               </div>
             </q-carousel-slide>
           </q-carousel>
+        </q-card-section>
+      </q-card>
+
+      <!-- Videos Card -->
+      <q-card
+        v-if="videoCaptures.length > 0"
+        class="q-mb-md"
+      >
+        <q-card-section>
+          <div class="text-h6 q-mb-md">
+            Videos ({{ videoCaptures.length }})
+          </div>
+          <div class="column q-gutter-md">
+            <div
+              v-for="(capture, index) in videoCaptures"
+              :key="index"
+            >
+              <div class="text-caption text-grey-6 q-mb-xs">
+                {{ capture.split(/[\\/]/).pop() }}
+              </div>
+              <VideoPlayer :file-path="capture" />
+            </div>
+          </div>
         </q-card-section>
       </q-card>
 
@@ -293,6 +316,14 @@ import { useBugStore } from '@/stores/bug'
 import { invoke } from '@tauri-apps/api/core'
 import { useQuasar } from 'quasar'
 import ScreenshotAnnotator from '@/components/ScreenshotAnnotator.vue'
+import VideoPlayer from '@/components/VideoPlayer.vue'
+
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi']
+
+function isVideoPath(path: string): boolean {
+  const lower = path.toLowerCase()
+  return VIDEO_EXTENSIONS.some(ext => lower.endsWith(ext))
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -310,6 +341,14 @@ const bugId = computed(() => route.params.id as string)
 
 // Get the bug data from the store
 const bug = computed(() => bugStore.getBugById(bugId.value))
+
+const screenshotCaptures = computed(() =>
+  bug.value ? bug.value.captures.filter(c => !isVideoPath(c)) : []
+)
+
+const videoCaptures = computed(() =>
+  bug.value ? bug.value.captures.filter(c => isVideoPath(c)) : []
+)
 
 // Navigate back to bug list
 function goBack() {

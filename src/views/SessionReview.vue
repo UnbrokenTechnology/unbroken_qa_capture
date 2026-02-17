@@ -120,21 +120,35 @@
                       {{ bug.folder_path }}
                     </q-item-label>
 
-                    <!-- Screenshot Thumbnails -->
+                    <!-- Capture Thumbnails -->
                     <div
                       v-if="bugCaptures[bug.id] && bugCaptures[bug.id]!.length > 0"
                       class="row q-gutter-xs q-mt-sm"
                     >
                       <div
-                        v-for="(capture, index) in bugCaptures[bug.id]!.slice(0, 3)"
+                        v-for="capture in bugCaptures[bug.id]!.slice(0, 3)"
                         :key="capture.id"
                         class="thumbnail-container"
                       >
+                        <!-- Video thumbnail: show video icon -->
+                        <div
+                          v-if="capture.file_type === 'video'"
+                          class="thumbnail flex flex-center bg-grey-8 cursor-pointer"
+                          @click.stop
+                        >
+                          <q-icon
+                            name="videocam"
+                            size="sm"
+                            color="white"
+                          />
+                        </div>
+                        <!-- Screenshot thumbnail -->
                         <q-img
+                          v-else
                           :src="`file://${capture.file_path}`"
                           class="thumbnail"
                           fit="cover"
-                          @click.stop="viewScreenshot(bug.id, index)"
+                          @click.stop="viewScreenshot(bug.id, getScreenshotIndex(bug.id, capture.id))"
                         >
                           <template #error>
                             <div class="absolute-full flex flex-center bg-grey-3">
@@ -417,13 +431,16 @@
               </div>
 
               <!-- Screenshots -->
-              <div v-if="selectedBugCaptures.length > 0">
+              <div
+                v-if="selectedBugScreenshots.length > 0"
+                class="q-mb-md"
+              >
                 <div class="text-caption text-grey-7 q-mb-xs">
-                  Screenshots ({{ selectedBugCaptures.length }})
+                  Screenshots ({{ selectedBugScreenshots.length }})
                 </div>
                 <div class="row q-gutter-md">
                   <div
-                    v-for="(capture, index) in selectedBugCaptures"
+                    v-for="(capture, index) in selectedBugScreenshots"
                     :key="capture.id"
                     class="screenshot-container"
                     style="position: relative;"
@@ -456,6 +473,24 @@
                         {{ capture.is_console_capture ? 'Unmark as console capture' : 'Mark as console capture' }}
                       </q-tooltip>
                     </q-btn>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Videos -->
+              <div v-if="selectedBugVideos.length > 0">
+                <div class="text-caption text-grey-7 q-mb-xs">
+                  Videos ({{ selectedBugVideos.length }})
+                </div>
+                <div class="column q-gutter-md">
+                  <div
+                    v-for="capture in selectedBugVideos"
+                    :key="capture.id"
+                  >
+                    <div class="text-caption text-grey-6 q-mb-xs">
+                      {{ capture.file_name }}
+                    </div>
+                    <VideoPlayer :file-path="capture.file_path" />
                   </div>
                 </div>
               </div>
@@ -556,7 +591,7 @@
       <q-card class="bg-black">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6 text-white">
-            Screenshot {{ currentScreenshotIndex + 1 }} / {{ selectedBugCaptures.length }}
+            Screenshot {{ currentScreenshotIndex + 1 }} / {{ selectedBugScreenshots.length }}
           </div>
           <q-space />
           <q-btn
@@ -571,8 +606,8 @@
 
         <q-card-section class="flex flex-center full-height">
           <q-img
-            v-if="selectedBugCaptures[currentScreenshotIndex]"
-            :src="`file://${selectedBugCaptures[currentScreenshotIndex]!.file_path}`"
+            v-if="selectedBugScreenshots[currentScreenshotIndex]"
+            :src="`file://${selectedBugScreenshots[currentScreenshotIndex]!.file_path}`"
             fit="contain"
             class="full-width"
           >
@@ -594,7 +629,7 @@
         </q-card-section>
 
         <q-card-actions
-          v-if="selectedBugCaptures.length > 1"
+          v-if="selectedBugScreenshots.length > 1"
           class="row justify-center"
         >
           <q-btn
@@ -610,7 +645,7 @@
             flat
             round
             color="white"
-            :disable="currentScreenshotIndex === selectedBugCaptures.length - 1"
+            :disable="currentScreenshotIndex === selectedBugScreenshots.length - 1"
             @click="currentScreenshotIndex++"
           />
         </q-card-actions>
@@ -806,6 +841,7 @@ import { useSessionStore } from '@/stores/session'
 import type { BugType, BugStatus, Capture, TicketingCredentials } from '@/types/backend'
 import * as tauri from '@/api/tauri'
 import { Notify } from 'quasar'
+import VideoPlayer from '@/components/VideoPlayer.vue'
 
 const router = useRouter()
 const bugStore = useBugStore()
@@ -873,6 +909,14 @@ const selectedBugCaptures = computed(() => {
   return bugCaptures.value[selectedBugId.value] || []
 })
 
+const selectedBugScreenshots = computed(() =>
+  selectedBugCaptures.value.filter(c => c.file_type === 'screenshot')
+)
+
+const selectedBugVideos = computed(() =>
+  selectedBugCaptures.value.filter(c => c.file_type === 'video')
+)
+
 // Only bugs that are "ready" status can be pushed
 const finalizedBugs = computed(() => {
   return bugs.value.filter(b => b.status === 'ready' || b.status === 'reviewed')
@@ -893,7 +937,7 @@ async function loadBugCaptures(bugId: string) {
     // Load captures for this bug if not already loaded
     if (!bugCaptures.value[bugId]) {
       const captures = await tauri.getBugCaptures(bugId)
-      bugCaptures.value[bugId] = captures.filter(c => c.file_type === 'screenshot')
+      bugCaptures.value[bugId] = captures
     }
   } catch (err) {
     console.error('Failed to load bug captures:', err)
@@ -940,7 +984,7 @@ async function toggleConsoleCapture(captureId: string, isConsole: boolean) {
     // Reload captures for selected bug
     if (selectedBugId.value) {
       const captures = await tauri.getBugCaptures(selectedBugId.value)
-      bugCaptures.value[selectedBugId.value] = captures.filter(c => c.file_type === 'screenshot')
+      bugCaptures.value[selectedBugId.value] = captures
     }
 
     $q.notify({
@@ -959,12 +1003,18 @@ async function toggleConsoleCapture(captureId: string, isConsole: boolean) {
   }
 }
 
-function viewScreenshot(bugId: string, index: number) {
+function viewScreenshot(bugId: string, screenshotIndex: number) {
   if (selectedBugId.value !== bugId) {
     selectBug(bugId)
   }
-  currentScreenshotIndex.value = index
+  currentScreenshotIndex.value = screenshotIndex
   showScreenshotDialog.value = true
+}
+
+/** Return the index of `capture` within the screenshots-only list for the given bug. */
+function getScreenshotIndex(bugId: string, captureId: string): number {
+  const screenshots = (bugCaptures.value[bugId] || []).filter(c => c.file_type === 'screenshot')
+  return screenshots.findIndex(c => c.id === captureId)
 }
 
 function getBugTypeColor(type: BugType): string {
