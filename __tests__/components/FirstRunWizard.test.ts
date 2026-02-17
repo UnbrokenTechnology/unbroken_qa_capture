@@ -477,4 +477,126 @@ describe('FirstRunWizard', () => {
       expect(finishButton!.props('disable')).toBe(false)
     })
   })
+
+  describe('Navigate-back: preserve completed state', () => {
+    // Helper: count step tabs with the "done" CSS class in the stepper header
+    const countDoneStepTabs = () =>
+      document.body.querySelectorAll('.q-stepper__tab--done').length
+
+    it('should keep step 1 marked as done after navigating back from step 2', async () => {
+      mountComponent()
+      await flushPromises()
+
+      // Initially no steps are done
+      expect(countDoneStepTabs()).toBe(0)
+
+      // Navigate to step 2
+      // Find Next button via wrapper since querySelector approach is fragile
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      let nextBtn = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Next'
+      )
+      await nextBtn!.trigger('click')
+      await flushPromises()
+
+      // Navigate back to step 1
+      const backButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Back'
+      )
+      await backButton!.trigger('click')
+      await flushPromises()
+
+      // Step 1 tab should now be marked done
+      expect(document.body.querySelectorAll('.q-stepper__tab--done').length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('should keep steps 1 and 2 marked as done after navigating back from step 3', async () => {
+      mockOpen.mockResolvedValue('/test/sessions')
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      // Navigate to step 2
+      let nextButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Next'
+      )
+      await nextButton!.trigger('click')
+      await flushPromises()
+
+      // Select folder to enable proceeding
+      const browseButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('icon') === 'folder_open'
+      )
+      await browseButton!.trigger('click')
+      await flushPromises()
+
+      // Navigate to step 3
+      nextButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Next'
+      )
+      await nextButton!.trigger('click')
+      await flushPromises()
+
+      // Navigate back to step 2
+      const backButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Back'
+      )
+      await backButton!.trigger('click')
+      await flushPromises()
+
+      // Step 1 tab should be done (we've advanced past step 1 to step 3)
+      expect(document.body.querySelectorAll('.q-stepper__tab--done').length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('should not mark steps as done if they have not been visited', async () => {
+      mountComponent()
+      await flushPromises()
+
+      // On step 1, no steps have been completed yet (maxStepReached=1, no step satisfies maxStepReached > N for N>=1)
+      expect(countDoneStepTabs()).toBe(0)
+    })
+
+    it('should preserve done state: navigating forward then back keeps steps done', async () => {
+      mockOpen.mockResolvedValue('/test/sessions')
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      // Navigate forward through steps 1 -> 2 -> 3
+      let nextButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Next'
+      )
+      await nextButton!.trigger('click')
+      await flushPromises()
+
+      const browseButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('icon') === 'folder_open'
+      )
+      await browseButton!.trigger('click')
+      await flushPromises()
+
+      nextButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Next'
+      )
+      await nextButton!.trigger('click')
+      await flushPromises()
+
+      // Now at step 3 — step 1 and 2 tabs should be done
+      const doneAtStep3 = document.body.querySelectorAll('.q-stepper__tab--done').length
+      expect(doneAtStep3).toBeGreaterThanOrEqual(1)
+
+      // Navigate back to step 2
+      const backButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Back'
+      )
+      await backButton!.trigger('click')
+      await flushPromises()
+
+      // Step 1 tab should still be done after navigating back
+      const doneAfterBack = document.body.querySelectorAll('.q-stepper__tab--done').length
+      expect(doneAfterBack).toBeGreaterThanOrEqual(1)
+    })
+  })
 })

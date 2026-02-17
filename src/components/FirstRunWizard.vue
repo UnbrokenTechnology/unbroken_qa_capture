@@ -30,8 +30,8 @@
             :name="1"
             title="Welcome"
             icon="waving_hand"
-            :done="step > 1 && step1Complete"
-            :error="step > 1 && !step1Complete"
+            :done="maxStepReached > 1 && step1Complete"
+            :error="maxStepReached > 1 && !step1Complete"
           >
             <div class="q-pa-md text-center">
               <q-icon
@@ -74,8 +74,8 @@
             :name="2"
             title="Sessions Folder"
             icon="folder"
-            :done="step > 2 && step2Complete"
-            :error="step > 2 && !step2Complete"
+            :done="maxStepReached > 2 && step2Complete"
+            :error="maxStepReached > 2 && !step2Complete"
           >
             <div class="q-pa-md">
               <h6 class="q-mt-none q-mb-md">
@@ -132,8 +132,8 @@
             :name="3"
             title="Hotkeys"
             icon="keyboard"
-            :done="step > 3 && step3Complete"
-            :error="step > 3 && !step3Complete"
+            :done="maxStepReached > 3 && step3Complete"
+            :error="maxStepReached > 3 && !step3Complete"
           >
             <div class="q-pa-md">
               <h6 class="q-mt-none q-mb-md">
@@ -223,8 +223,8 @@
             :name="4"
             title="Linear Setup"
             icon="bug_report"
-            :done="step > 4 && step4Complete"
-            :error="step > 4 && !step4Complete"
+            :done="maxStepReached > 4 && step4Complete"
+            :error="maxStepReached > 4 && !step4Complete"
           >
             <div class="q-pa-md">
               <h6 class="q-mt-none q-mb-md">
@@ -287,8 +287,8 @@
             :name="5"
             title="AI Setup"
             icon="psychology"
-            :done="step > 5 && step5Complete"
-            :error="step > 5 && !step5Complete"
+            :done="maxStepReached > 5 && step5Complete"
+            :error="maxStepReached > 5 && !step5Complete"
           >
             <div class="q-pa-md">
               <h6 class="q-mt-none q-mb-md">
@@ -475,6 +475,7 @@ const show = computed({
 
 // Stepper state
 const step = ref(1)
+const maxStepReached = ref(1)
 const stepper = ref()
 const saving = ref(false)
 
@@ -542,6 +543,9 @@ const step5Complete = computed(() => true) // AI setup is optional, always compl
 function nextStep() {
   if (canProceed.value) {
     step.value++
+    if (step.value > maxStepReached.value) {
+      maxStepReached.value = step.value
+    }
     // Auto-check Claude status when reaching step 5
     if (step.value === 5) {
       checkClaudeStatus()
