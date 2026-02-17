@@ -29,7 +29,10 @@
           @click="handleStartSession"
         >
           <template #loading>
-            <q-spinner-dots size="1.5em" class="q-mr-sm" />
+            <q-spinner-dots
+              size="1.5em"
+              class="q-mr-sm"
+            />
             Starting session...
           </template>
           <q-icon

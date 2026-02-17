@@ -58,6 +58,7 @@
 import { ref, onMounted, onUnmounted, watch, provide } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useRouter } from 'vue-router'
+import { useQuasar } from 'quasar'
 import { useTrayStore } from './stores/tray'
 import { useSessionStore } from './stores/session'
 import { useBugStore } from './stores/bug'
@@ -68,6 +69,7 @@ import FirstRunWizard from './components/FirstRunWizard.vue'
 import * as tauri from './api/tauri'
 
 const router = useRouter()
+const $q = useQuasar()
 const trayStore = useTrayStore()
 const sessionStore = useSessionStore()
 const bugStore = useBugStore()
@@ -134,6 +136,13 @@ onMounted(async () => {
         await sessionStore.startSession()
       } catch (err) {
         console.error('Failed to start session from tray:', err)
+        $q.notify({
+          type: 'negative',
+          message: 'Failed to start session',
+          caption: err instanceof Error ? err.message : String(err),
+          position: 'bottom-right',
+          timeout: 5000,
+        })
       }
     }
   })

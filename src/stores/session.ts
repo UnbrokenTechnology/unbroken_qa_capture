@@ -171,6 +171,9 @@ export const useSessionStore = defineStore('session', () => {
       }
 
       return await createSession({})
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      throw err
     } finally {
       starting.value = false
     }
