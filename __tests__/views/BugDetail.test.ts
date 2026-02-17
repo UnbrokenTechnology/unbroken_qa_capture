@@ -16,6 +16,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 vi.mock('@/api/tauri', () => ({
   getBugCaptures: vi.fn().mockResolvedValue([]),
   getBug: vi.fn().mockResolvedValue(null),
+  updateCaptureConsoleFlag: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Create a mock notify function
@@ -402,5 +403,128 @@ describe('BugDetail', () => {
 
     expect(tauriApi.getBug).toHaveBeenCalledWith('42')
     expect(wrapper.text()).toContain('Test Bug Title')
+  })
+
+  it('should display "Mark as Console" button on screenshot captures', async () => {
+    const tauriApi = await import('@/api/tauri')
+    vi.mocked(tauriApi.getBugCaptures).mockResolvedValue([
+      createMockCapture('screenshot1.png', '1'),
+    ])
+
+    const store = useBugStore()
+    store.backendBugs.push(createMockBackendBug('1'))
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Mark as Console')
+  })
+
+  it('should call updateCaptureConsoleFlag when "Mark as Console" button is clicked', async () => {
+    const tauriApi = await import('@/api/tauri')
+    const capture = createMockCapture('screenshot1.png', '1')
+    vi.mocked(tauriApi.getBugCaptures).mockResolvedValue([capture])
+
+    const store = useBugStore()
+    store.backendBugs.push(createMockBackendBug('1'))
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button')
+    const markConsoleBtn = buttons.find(b => b.text().includes('Mark as Console'))
+    expect(markConsoleBtn).toBeDefined()
+
+    await markConsoleBtn!.trigger('click')
+    await flushPromises()
+
+    expect(tauriApi.updateCaptureConsoleFlag).toHaveBeenCalledWith(capture.id, true)
+  })
+
+  it('should display "Unmark" button on console captures', async () => {
+    const tauriApi = await import('@/api/tauri')
+    const capture = { ...createMockCapture('console1.png', '1'), is_console_capture: true }
+    vi.mocked(tauriApi.getBugCaptures).mockResolvedValue([capture])
+
+    const store = useBugStore()
+    store.backendBugs.push(createMockBackendBug('1'))
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unmark')
+  })
+
+  it('should call updateCaptureConsoleFlag(id, false) when "Unmark" is clicked on a console capture', async () => {
+    const tauriApi = await import('@/api/tauri')
+    const capture = { ...createMockCapture('console1.png', '1'), is_console_capture: true }
+    vi.mocked(tauriApi.getBugCaptures).mockResolvedValue([capture])
+
+    const store = useBugStore()
+    store.backendBugs.push(createMockBackendBug('1'))
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button')
+    const unmarkBtn = buttons.find(b => b.text().includes('Unmark'))
+    expect(unmarkBtn).toBeDefined()
+
+    await unmarkBtn!.trigger('click')
+    await flushPromises()
+
+    expect(tauriApi.updateCaptureConsoleFlag).toHaveBeenCalledWith(capture.id, false)
+  })
+
+  it('should show success notification after marking as console capture', async () => {
+    const tauriApi = await import('@/api/tauri')
+    const capture = createMockCapture('screenshot1.png', '1')
+    vi.mocked(tauriApi.getBugCaptures).mockResolvedValue([capture])
+    vi.mocked(tauriApi.updateCaptureConsoleFlag).mockResolvedValue(undefined)
+
+    const store = useBugStore()
+    store.backendBugs.push(createMockBackendBug('1'))
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button')
+    const markConsoleBtn = buttons.find(b => b.text().includes('Mark as Console'))
+
+    await markConsoleBtn!.trigger('click')
+    await flushPromises()
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'positive',
+        message: 'Marked as console capture',
+      })
+    )
+  })
+
+  it('should show error notification when console flag update fails', async () => {
+    const tauriApi = await import('@/api/tauri')
+    const capture = createMockCapture('screenshot1.png', '1')
+    vi.mocked(tauriApi.getBugCaptures).mockResolvedValue([capture])
+    vi.mocked(tauriApi.updateCaptureConsoleFlag).mockRejectedValueOnce(new Error('DB error'))
+
+    const store = useBugStore()
+    store.backendBugs.push(createMockBackendBug('1'))
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button')
+    const markConsoleBtn = buttons.find(b => b.text().includes('Mark as Console'))
+
+    await markConsoleBtn!.trigger('click')
+    await flushPromises()
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'negative',
+        message: 'Failed to update console capture status',
+      })
+    )
   })
 })
