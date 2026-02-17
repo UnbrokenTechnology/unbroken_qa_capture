@@ -25,6 +25,11 @@ The original PRD is in the repository as `Unbroken_QA_Capture_PRD.md`.
 - **Tauri icons must be 8-bit PNGs.** Tauri's icon decoder does not support 16-bit PNG bit depth. If icons are regenerated, ensure they are saved as 8-bit RGBA. The `.ico` should also be regenerated from 8-bit sources.
 - **Shell scripts must use LF line endings.** All `.sh` files in `.swarm/` run inside Linux containers. Windows CRLF line endings cause `exec: no such file or directory` errors. The `.gitattributes` enforces `eol=lf` for `*.sh`, `*.py`, and `Dockerfile`, but after fixing line endings you may need `git add --renormalize .swarm/` to apply the rule to already-tracked files.
 - **Keep the bare repo's main in sync.** Agents push to `.swarm/repo.git`. If your local main is ahead (e.g. after manual commits), run `git push swarm main` so agents can merge their feature branches cleanly.
+- **Kill the app before rebuilding.** Cargo cannot overwrite the running exe (`Access is denied, os error 5`). Stop `unbroken-qa-capture.exe` before running `npm run tauri:dev` or `tauri:build`. The `swarm-pull.ps1` script handles this automatically.
+- **Port 5173 conflicts.** Vite will fail to start if a previous dev server is still bound to port 5173. Kill the old `node`/`vite` process first.
+- **Local commits can diverge from swarm.** If you commit locally while agents are also merging to the swarm's main, `git pull swarm main --ff-only` will fail. Rebase with `git rebase swarm/main`, then force-push to origin with `git push origin main --force-with-lease`.
+- **Hotkey double-registration bug.** On startup you'll see "HotKey already registered" errors. This is caused by `hotkey.rs:register_hotkey()` calling both `on_shortcut()` (which implicitly registers) and then `register()` (redundant). The hotkeys still work because `on_shortcut()` succeeds first, but the redundant `.register()` call should be removed.
+- **PowerShell execution policy.** Windows may block `.ps1` scripts by default. Always invoke with `powershell -ExecutionPolicy Bypass -File <script>`.
 
 ## Repository
 
