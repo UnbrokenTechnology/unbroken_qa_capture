@@ -112,6 +112,10 @@ export async function getSessionSummaries(): Promise<SessionSummary[]> {
   return await invoke<SessionSummary[]>('get_session_summaries')
 }
 
+export async function generateSessionSummary(sessionId: string, includeAiSummary: boolean): Promise<string> {
+  return await invoke<string>('generate_session_summary', { sessionId, includeAiSummary })
+}
+
 export async function updateSessionStatus(id: string, status: string): Promise<void> {
   await invoke('update_session_status', { sessionId: id, status })
 }

@@ -586,6 +586,14 @@
           @click="generateAllDescriptions"
         />
         <q-btn
+          color="info"
+          icon="summarize"
+          label="Generate Session Summary"
+          :disable="!sessionStore.activeSession"
+          :loading="isSummaryGenerating"
+          @click="generateSessionSummary"
+        />
+        <q-btn
           color="positive"
           icon="upload"
           label="Export to Linear"
@@ -642,6 +650,45 @@
             color="primary"
             :disable="!refinementInstructions.trim()"
             @click="refineDescription"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Session Summary Dialog -->
+    <q-dialog v-model="showSummaryDialog">
+      <q-card style="min-width: 500px; max-width: 600px">
+        <q-card-section>
+          <div class="text-h6">
+            Session Summary Generated
+          </div>
+        </q-card-section>
+
+        <q-card-section>
+          <div class="text-body2 text-grey-8 q-mb-sm">
+            The summary has been saved to <code>session-summary.md</code> in your session folder.
+          </div>
+          <q-input
+            v-model="summaryFilePath"
+            label="File path"
+            outlined
+            readonly
+            dense
+          />
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn
+            flat
+            label="Close"
+            color="grey"
+            @click="showSummaryDialog = false"
+          />
+          <q-btn
+            label="Copy Path"
+            color="primary"
+            icon="content_copy"
+            @click="copySummaryPath"
           />
         </q-card-actions>
       </q-card>
@@ -959,6 +1006,12 @@ const claudeAvailable = ref(false)
 const claudeStatusMessage = ref('')
 const showRefineDialog = ref(false)
 const refinementInstructions = ref('')
+
+// Session Summary State
+const showSummaryDialog = ref(false)
+const isSummaryGenerating = ref(false)
+const summaryContent = ref('')
+const summaryFilePath = ref('')
 
 // Computed
 const bugs = computed(() => bugStore.backendBugs)
@@ -1454,6 +1507,44 @@ async function saveDescription() {
       message: `Failed to save description: ${err}`,
       position: 'top'
     })
+  }
+}
+
+function copySummaryPath() {
+  navigator.clipboard.writeText(summaryFilePath.value).then(() => {
+    $q.notify({ type: 'positive', message: 'Path copied to clipboard', position: 'top', timeout: 1500 })
+  }).catch(() => {
+    $q.notify({ type: 'negative', message: 'Failed to copy to clipboard', position: 'top' })
+  })
+}
+
+async function generateSessionSummary() {
+  if (!sessionStore.activeSession) return
+
+  try {
+    isSummaryGenerating.value = true
+    const filePath = await tauri.generateSessionSummary(sessionStore.activeSession.id, false)
+    summaryFilePath.value = filePath
+
+    // Read the generated file content to display in the dialog
+    // The backend returns the file path; we display a success message and show the path
+    summaryContent.value = `Session summary generated and saved to:\n${filePath}\n\nOpen the file to view the full summary.`
+    showSummaryDialog.value = true
+
+    $q.notify({
+      type: 'positive',
+      message: 'Session summary generated successfully',
+      position: 'top'
+    })
+  } catch (err) {
+    console.error('Failed to generate session summary:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to generate session summary: ${err}`,
+      position: 'top'
+    })
+  } finally {
+    isSummaryGenerating.value = false
   }
 }
 
