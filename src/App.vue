@@ -98,6 +98,9 @@ provide('showFirstRunWizard', showFirstRunWizard)
 
 let unlistenHandlers: UnlistenFn[] = []
 
+// Routes that are valid sub-views when a session is active — do not redirect away from these
+const activeSessionSubRoutes = new Set(['active-session', 'bug-detail', 'annotate'])
+
 function toggleStatusWidget() {
   showStatusWidget.value = !showStatusWidget.value
 }
@@ -271,12 +274,19 @@ onMounted(async () => {
   })
 
   // When the window is restored from tray (icon click or "Open Main Window"),
-  // navigate back to the correct screen — never leave the user stranded on Settings.
+  // navigate back to the correct screen — but preserve the user's current view
+  // if they are already on a valid sub-view for the current session state.
   const unlistenWindowShown = await listen('tray-window-shown', () => {
+    const currentRouteName = router.currentRoute.value.name
     if (sessionStore.isSessionActive) {
-      router.push({ name: 'active-session' })
+      // Don't redirect if already on an active-session sub-view
+      if (!activeSessionSubRoutes.has(currentRouteName as string)) {
+        router.push({ name: 'active-session' })
+      }
     } else {
-      router.push({ name: 'home' })
+      if (currentRouteName !== 'home' && currentRouteName !== 'session-review' && currentRouteName !== 'settings') {
+        router.push({ name: 'home' })
+      }
     }
   })
 
@@ -389,22 +399,23 @@ onUnmounted(() => {
 })
 
 // Watch for active session changes and navigate accordingly (after init)
+// Only navigate on session transitions (null→active or active→null), not on updates
+// to an already-active session (e.g. session metadata refreshed via backend events).
 watch(
-  () => sessionStore.activeSession,
-  (newSession, oldSession) => {
+  () => sessionStore.activeSession?.id,
+  (newId, oldId) => {
     // Don't navigate during initial load — handled above in onMounted
     if (appInitializing.value) return
 
-    // Don't navigate if we're already on the correct page
     const currentRouteName = router.currentRoute.value.name
 
-    if (newSession && newSession.status === 'active') {
-      // Session started or became active - navigate to active session view
-      if (currentRouteName !== 'active-session') {
+    if (newId && !oldId) {
+      // Session just started — navigate to active session view
+      if (!activeSessionSubRoutes.has(currentRouteName as string)) {
         router.push({ name: 'active-session' })
       }
-    } else if (oldSession && !newSession) {
-      // Session ended - navigate to home/idle view
+    } else if (!newId && oldId) {
+      // Session ended — navigate to home/idle view
       if (currentRouteName !== 'home' && currentRouteName !== 'session-review') {
         router.push({ name: 'home' })
       }
