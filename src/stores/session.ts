@@ -13,6 +13,8 @@ export const useSessionStore = defineStore('session', () => {
   const sessions = ref<Session[]>([])
   const sessionSummaries = ref<SessionSummary[]>([])
   const loading = ref(false)
+  const starting = ref(false)
+  const initializing = ref(false)
   const error = ref<string | null>(null)
 
   // Event listeners cleanup functions
@@ -26,6 +28,7 @@ export const useSessionStore = defineStore('session', () => {
   const activeSessionId = computed(() => activeSession.value?.id ?? null)
   const sessionCount = computed(() => sessions.value.length)
   const hasError = computed(() => error.value !== null)
+  const isStartingSession = computed(() => starting.value)
 
   // ============================================================================
   // Actions - Session CRUD
@@ -126,6 +129,7 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   async function loadActiveSession(): Promise<void> {
+    initializing.value = true
     loading.value = true
     error.value = null
     try {
@@ -135,6 +139,7 @@ export const useSessionStore = defineStore('session', () => {
       throw err
     } finally {
       loading.value = false
+      initializing.value = false
     }
   }
 
@@ -156,19 +161,25 @@ export const useSessionStore = defineStore('session', () => {
   // ============================================================================
 
   async function startSession(sessionData?: Partial<Session>): Promise<Session> {
-    // End any active session first
-    if (activeSession.value && activeSession.value.status === 'active') {
-      await endSession(activeSession.value.id)
-    }
+    starting.value = true
+    error.value = null
+    try {
+      // End any active session first
+      if (activeSession.value && activeSession.value.status === 'active') {
+        await endSession(activeSession.value.id)
+      }
 
-    const newSession: Partial<Session> = {
-      ...sessionData,
-      status: 'active',
-      started_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-    }
+      const newSession: Partial<Session> = {
+        ...sessionData,
+        status: 'active',
+        started_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      }
 
-    return await createSession(newSession)
+      return await createSession(newSession)
+    } finally {
+      starting.value = false
+    }
   }
 
   async function endSession(id: string): Promise<void> {
@@ -330,10 +341,13 @@ export const useSessionStore = defineStore('session', () => {
     sessions,
     sessionSummaries,
     loading,
+    starting,
+    initializing,
     error,
 
     // Getters
     isSessionActive,
+    isStartingSession,
     activeSessionId,
     sessionCount,
     hasError,
