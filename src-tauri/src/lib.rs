@@ -35,6 +35,12 @@ static TRAY_ICON: Mutex<Option<TrayIcon>> = Mutex::new(None);
 // Global ticketing integration
 static TICKETING_INTEGRATION: Mutex<Option<Arc<dyn TicketingIntegration>>> = Mutex::new(None);
 
+// Global capture bridge (platform-specific screenshot/file-watcher implementation)
+static CAPTURE_BRIDGE: Mutex<Option<Box<dyn platform::CaptureBridge>>> = Mutex::new(None);
+
+// Active file watcher handle (None when no session is active)
+static ACTIVE_WATCHER: Mutex<Option<platform::WatcherHandle>> = Mutex::new(None);
+
 // Tauri event emitter implementation
 struct TauriEventEmitter {
     app_handle: Arc<Mutex<Option<AppHandle>>>,
@@ -425,12 +431,70 @@ async fn update_session_notes(
 // ─── Session Manager Commands ────────────────────────────────────────────
 
 #[tauri::command]
-fn start_session() -> Result<database::Session, String> {
+fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
+    use std::sync::mpsc;
+
     let manager_guard = SESSION_MANAGER.lock().unwrap();
     let manager = manager_guard
         .as_ref()
         .ok_or("Session manager not initialized")?;
-    manager.start_session()
+    let session = manager.start_session()?;
+
+    // Automatically start the file watcher for the new session folder
+    let folder_path = session.folder_path.clone();
+    drop(manager_guard); // Release lock before acquiring CAPTURE_BRIDGE lock
+
+    let (tx, rx) = mpsc::channel();
+    {
+        let bridge_guard = CAPTURE_BRIDGE.lock().unwrap();
+        if let Some(bridge) = bridge_guard.as_ref() {
+            // Stop any existing watcher first
+            {
+                let mut active = ACTIVE_WATCHER.lock().unwrap();
+                if let Some(old_handle) = active.take() {
+                    let _ = bridge.stop_file_watcher(old_handle);
+                }
+            }
+
+            match bridge.start_file_watcher(std::path::Path::new(&folder_path), tx) {
+                Ok(handle) => {
+                    *ACTIVE_WATCHER.lock().unwrap() = Some(handle);
+
+                    // Spawn background thread to forward capture events to the frontend
+                    let app_handle = app.clone();
+                    std::thread::spawn(move || {
+                        while let Ok(event) = rx.recv() {
+                            match event {
+                                platform::CaptureEvent::ScreenshotDetected { file_path, detected_at, .. } => {
+                                    let path_str = file_path.to_string_lossy().to_string();
+                                    let _ = app_handle.emit("screenshot:captured", serde_json::json!({
+                                        "filePath": path_str,
+                                        "timestamp": detected_at,
+                                    }));
+                                }
+                                platform::CaptureEvent::VideoDetected { file_path, detected_at, .. } => {
+                                    let path_str = file_path.to_string_lossy().to_string();
+                                    let _ = app_handle.emit("capture:file-detected", serde_json::json!({
+                                        "filePath": path_str,
+                                        "timestamp": detected_at,
+                                        "type": "video",
+                                    }));
+                                }
+                                platform::CaptureEvent::WatcherError { message } => {
+                                    eprintln!("File watcher error: {}", message);
+                                }
+                            }
+                        }
+                    });
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to start file watcher for session folder '{}': {}", folder_path, e);
+                }
+            }
+        }
+    }
+
+    Ok(session)
 }
 
 #[tauri::command]
@@ -439,7 +503,23 @@ fn end_session(session_id: String) -> Result<(), String> {
     let manager = manager_guard
         .as_ref()
         .ok_or("Session manager not initialized")?;
-    manager.end_session(&session_id)
+    let result = manager.end_session(&session_id);
+    drop(manager_guard); // Release lock before acquiring CAPTURE_BRIDGE lock
+
+    // Stop the active file watcher when the session ends
+    {
+        let bridge_guard = CAPTURE_BRIDGE.lock().unwrap();
+        if let Some(bridge) = bridge_guard.as_ref() {
+            let mut active = ACTIVE_WATCHER.lock().unwrap();
+            if let Some(handle) = active.take() {
+                if let Err(e) = bridge.stop_file_watcher(handle) {
+                    eprintln!("Warning: Failed to stop file watcher: {}", e);
+                }
+            }
+        }
+    }
+
+    result
 }
 
 #[tauri::command]
@@ -1146,6 +1226,98 @@ fn update_capture_console_flag(
         .map_err(|e: rusqlite::Error| e.to_string())
 }
 
+// ─── Capture Bridge Commands ──────────────────────────────────────────
+
+/// Trigger the OS screenshot tool (Snipping Tool on Windows).
+/// Opens the snipping tool so the user can take a screenshot.
+#[tauri::command]
+fn trigger_screenshot() -> Result<(), String> {
+    let bridge_guard = CAPTURE_BRIDGE.lock().unwrap();
+    let bridge = bridge_guard
+        .as_ref()
+        .ok_or("Capture bridge not initialized")?;
+    bridge.trigger_screenshot().map_err(|e| e.to_string())
+}
+
+/// Start watching the given folder for new screenshot/video files.
+/// Emits `screenshot:captured` events to the frontend when files are detected.
+/// Automatically stops any previously running watcher before starting a new one.
+#[tauri::command]
+fn start_file_watcher(folder_path: String, app: tauri::AppHandle) -> Result<(), String> {
+    use std::sync::mpsc;
+    use std::path::Path;
+
+    let folder = Path::new(&folder_path);
+
+    let (tx, rx) = mpsc::channel();
+
+    let bridge_guard = CAPTURE_BRIDGE.lock().unwrap();
+    let bridge = bridge_guard
+        .as_ref()
+        .ok_or("Capture bridge not initialized")?;
+
+    // Stop any existing watcher first
+    {
+        let mut active = ACTIVE_WATCHER.lock().unwrap();
+        if let Some(old_handle) = active.take() {
+            let _ = bridge.stop_file_watcher(old_handle);
+        }
+    }
+
+    let handle = bridge.start_file_watcher(folder, tx).map_err(|e| e.to_string())?;
+
+    {
+        let mut active = ACTIVE_WATCHER.lock().unwrap();
+        *active = Some(handle);
+    }
+
+    // Spawn a background thread to forward capture events to the frontend
+    let app_handle = app.clone();
+    std::thread::spawn(move || {
+        while let Ok(event) = rx.recv() {
+            match event {
+                platform::CaptureEvent::ScreenshotDetected { file_path, detected_at, .. } => {
+                    let path_str = file_path.to_string_lossy().to_string();
+                    let _ = app_handle.emit("screenshot:captured", serde_json::json!({
+                        "filePath": path_str,
+                        "timestamp": detected_at,
+                    }));
+                }
+                platform::CaptureEvent::VideoDetected { file_path, detected_at, .. } => {
+                    let path_str = file_path.to_string_lossy().to_string();
+                    let _ = app_handle.emit("capture:file-detected", serde_json::json!({
+                        "filePath": path_str,
+                        "timestamp": detected_at,
+                        "type": "video",
+                    }));
+                }
+                platform::CaptureEvent::WatcherError { message } => {
+                    eprintln!("File watcher error: {}", message);
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
+/// Stop the active file watcher (if any).
+#[tauri::command]
+fn stop_file_watcher() -> Result<(), String> {
+    let bridge_guard = CAPTURE_BRIDGE.lock().unwrap();
+    let bridge = bridge_guard
+        .as_ref()
+        .ok_or("Capture bridge not initialized")?;
+
+    let mut active = ACTIVE_WATCHER.lock().unwrap();
+    if let Some(handle) = active.take() {
+        bridge.stop_file_watcher(handle).map_err(|e| e.to_string())
+    } else {
+        // No active watcher — not an error
+        Ok(())
+    }
+}
+
 // ─── Annotation Window Commands ──────────────────────────────────────
 
 #[tauri::command]
@@ -1261,6 +1433,9 @@ pub fn run() {
             ));
 
             *SESSION_MANAGER.lock().unwrap() = Some(manager);
+
+            // Initialize capture bridge (platform-specific screenshot/file-watcher)
+            *CAPTURE_BRIDGE.lock().unwrap() = Some(platform::get_capture_bridge());
 
             // Initialize hotkey manager and load config from settings
             let hotkey_manager = Arc::new(HotkeyManager::new());
@@ -1457,7 +1632,10 @@ pub fn run() {
             enable_startup,
             disable_startup,
             emit_screenshot_captured,
-            open_annotation_window
+            open_annotation_window,
+            trigger_screenshot,
+            start_file_watcher,
+            stop_file_watcher
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
