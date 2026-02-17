@@ -1810,13 +1810,37 @@ async function exportToFile() {
 async function generateAllDescriptions() {
   if (bugs.value.length === 0) return
 
+  const bugsWithoutDescriptions = bugs.value.filter(b => !b.description && !b.ai_description)
+  const requestCount = bugsWithoutDescriptions.length
+
+  if (requestCount === 0) {
+    $q.notify({
+      type: 'info',
+      message: 'All bugs already have descriptions.',
+      position: 'top'
+    })
+    return
+  }
+
+  const confirmed = await new Promise<boolean>(resolve => {
+    $q.dialog({
+      title: 'Generate All Descriptions',
+      message: `Generate descriptions for ${requestCount} bug${requestCount === 1 ? '' : 's'}? This will make approximately ${requestCount} Claude AI request${requestCount === 1 ? '' : 's'}.`,
+      ok: { label: 'Generate', color: 'primary' },
+      cancel: { label: 'Cancel', flat: true },
+      persistent: true,
+    }).onOk(() => resolve(true)).onCancel(() => resolve(false))
+  })
+
+  if (!confirmed) return
+
   isGeneratingAll.value = true
 
   try {
     let successCount = 0
     let failCount = 0
 
-    for (const bug of bugs.value) {
+    for (const bug of bugsWithoutDescriptions) {
       try {
         // Load captures for this bug
         await loadBugCaptures(bug.id)
