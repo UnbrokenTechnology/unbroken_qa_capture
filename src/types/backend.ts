@@ -66,7 +66,8 @@ export type CaptureType = 'screenshot' | 'video' | 'console'
 
 export interface Capture {
   id: string
-  bug_id: string
+  /** null when the capture was made with no active bug (stored in _unsorted/) */
+  bug_id: string | null
   session_id: string
   file_name: string
   file_path: string

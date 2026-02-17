@@ -2,6 +2,7 @@
 
 exports[`Tauri command registration contract > parsed backend handlers snapshot (informational) 1`] = `
 [
+  "assign_capture_to_bug",
   "copy_bug_to_clipboard",
   "delete_setting",
   "disable_startup",
@@ -27,6 +28,7 @@ exports[`Tauri command registration contract > parsed backend handlers snapshot 
   "get_setting",
   "get_template_path",
   "get_template_source",
+  "get_unsorted_captures",
   "greet",
   "has_completed_setup",
   "is_hotkey_registered",
@@ -73,6 +75,7 @@ exports[`Tauri command registration contract > parsed backend handlers snapshot 
 
 exports[`Tauri command registration contract > parsed frontend commands snapshot (informational) 1`] = `
 [
+  "assign_capture_to_bug",
   "copy_bug_to_clipboard",
   "delete_setting",
   "end_bug_capture",
@@ -88,6 +91,7 @@ exports[`Tauri command registration contract > parsed frontend commands snapshot
   "get_session_notes",
   "get_session_summaries",
   "get_setting",
+  "get_unsorted_captures",
   "greet",
   "has_completed_setup",
   "list_sessions",

@@ -11,6 +11,7 @@ pub trait CaptureOps {
     fn list_by_bug(&self, bug_id: &str) -> SqlResult<Vec<Capture>>;
     fn list_by_session(&self, session_id: &str) -> SqlResult<Vec<Capture>>;
     fn list_console_captures(&self, bug_id: &str) -> SqlResult<Vec<Capture>>;
+    fn list_unsorted(&self, session_id: &str) -> SqlResult<Vec<Capture>>;
 }
 
 /// Capture repository implementation
@@ -178,6 +179,32 @@ impl<'a> CaptureOps for CaptureRepository<'a> {
 
         rows.collect()
     }
+
+    fn list_unsorted(&self, session_id: &str) -> SqlResult<Vec<Capture>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, bug_id, session_id, file_name, file_path, file_type, annotated_path, file_size_bytes, is_console_capture, parsed_content, created_at
+             FROM captures WHERE session_id = ?1 AND bug_id IS NULL ORDER BY created_at ASC"
+        )?;
+
+        let rows = stmt.query_map(params![session_id], |row| {
+            let type_str: String = row.get(5)?;
+            Ok(Capture {
+                id: row.get(0)?,
+                bug_id: row.get(1)?,
+                session_id: row.get(2)?,
+                file_name: row.get(3)?,
+                file_path: row.get(4)?,
+                file_type: CaptureType::from_str(&type_str).unwrap_or(CaptureType::Screenshot),
+                annotated_path: row.get(6)?,
+                file_size_bytes: row.get(7)?,
+                is_console_capture: row.get(8)?,
+                parsed_content: row.get(9)?,
+                created_at: row.get(10)?,
+            })
+        })?;
+
+        rows.collect()
+    }
 }
 
 #[cfg(test)]
@@ -229,7 +256,7 @@ mod tests {
     fn create_test_capture(session_id: &str, bug_id: &str, capture_id: &str, is_console: bool) -> Capture {
         Capture {
             id: capture_id.to_string(),
-            bug_id: bug_id.to_string(),
+            bug_id: Some(bug_id.to_string()),
             session_id: session_id.to_string(),
             file_name: "screenshot.png".to_string(),
             file_path: "captures/screenshot.png".to_string(),
@@ -347,5 +374,37 @@ mod tests {
         let console_captures = repo.list_console_captures("bug-7").unwrap();
         assert_eq!(console_captures.len(), 2);
         assert!(console_captures.iter().all(|c| c.is_console_capture));
+    }
+
+    #[test]
+    fn test_list_unsorted() {
+        let db = Database::in_memory().unwrap();
+        create_test_session(&db, "session-8");
+        create_test_bug(&db, "session-8", "bug-8");
+        let repo = CaptureRepository::new(db.connection());
+
+        // Create a capture associated with a bug
+        repo.create(&create_test_capture("session-8", "bug-8", "capture-12", false)).unwrap();
+
+        // Create an unsorted capture (bug_id = None)
+        let unsorted = Capture {
+            id: "capture-13".to_string(),
+            bug_id: None,
+            session_id: "session-8".to_string(),
+            file_name: "orphan.png".to_string(),
+            file_path: "/test/_unsorted/orphan.png".to_string(),
+            file_type: CaptureType::Screenshot,
+            annotated_path: None,
+            file_size_bytes: Some(512),
+            is_console_capture: false,
+            parsed_content: None,
+            created_at: "2024-01-01T10:00:00Z".to_string(),
+        };
+        repo.create(&unsorted).unwrap();
+
+        let unsorted_list = repo.list_unsorted("session-8").unwrap();
+        assert_eq!(unsorted_list.len(), 1);
+        assert_eq!(unsorted_list[0].id, "capture-13");
+        assert!(unsorted_list[0].bug_id.is_none());
     }
 }

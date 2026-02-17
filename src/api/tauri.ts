@@ -192,6 +192,14 @@ export async function getBugCaptures(bugId: string): Promise<Capture[]> {
   return await invoke<Capture[]>('get_bug_captures', { bugId })
 }
 
+export async function getUnsortedCaptures(sessionId: string): Promise<Capture[]> {
+  return await invoke<Capture[]>('get_unsorted_captures', { sessionId })
+}
+
+export async function assignCaptureToBug(captureId: string, bugId: string): Promise<void> {
+  await invoke('assign_capture_to_bug', { captureId, bugId })
+}
+
 export async function updateCaptureConsoleFlag(captureId: string, isConsoleCapture: boolean): Promise<void> {
   await invoke('update_capture_console_flag', { captureId, isConsoleCapture })
 }

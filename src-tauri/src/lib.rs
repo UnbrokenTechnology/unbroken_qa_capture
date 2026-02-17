@@ -582,6 +582,102 @@ async fn update_session_notes(
 
 // ─── Session Manager Commands ────────────────────────────────────────────
 
+/// Copy a file detected with no active bug into the session's _unsorted/ directory,
+/// create a Capture record with bug_id=None, and emit a capture:file-detected event.
+fn route_to_unsorted(
+    app_handle: &AppHandle,
+    file_path: &std::path::Path,
+    session_folder: &str,
+    session_id: &str,
+    file_size: u64,
+    _is_video: bool,
+) {
+    use database::{Database, CaptureOps, CaptureRepository, Capture, CaptureType};
+    use uuid::Uuid;
+    use chrono::Utc;
+
+    let unsorted_dir = std::path::Path::new(session_folder).join("_unsorted");
+
+    // Ensure _unsorted directory exists (may have been deleted by the OS or tests)
+    if let Err(e) = std::fs::create_dir_all(&unsorted_dir) {
+        eprintln!("Warning: Failed to create _unsorted directory: {}", e);
+        return;
+    }
+
+    let file_name = match file_path.file_name() {
+        Some(n) => n.to_string_lossy().to_string(),
+        None => {
+            eprintln!("Warning: Could not determine file name for unsorted capture");
+            return;
+        }
+    };
+
+    // Destination path in _unsorted/
+    let dest_path = unsorted_dir.join(&file_name);
+
+    // Copy (not move) so the original location is preserved if needed
+    if let Err(e) = std::fs::copy(file_path, &dest_path) {
+        eprintln!("Warning: Failed to copy file to _unsorted/: {}", e);
+        return;
+    }
+
+    // Determine capture type from extension
+    let extension = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let capture_type = match extension.as_str() {
+        "mp4" | "webm" | "mkv" => CaptureType::Video,
+        _ => CaptureType::Screenshot,
+    };
+
+    // Get DB path
+    let db_path = app_handle.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    }).join("qa_capture.db");
+
+    let db = match Database::open(&db_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("Warning: Failed to open database for unsorted capture: {}", e);
+            return;
+        }
+    };
+
+    let repo = CaptureRepository::new(db.connection());
+    let capture_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let capture = Capture {
+        id: capture_id.clone(),
+        bug_id: None,
+        session_id: session_id.to_string(),
+        file_name: file_name.clone(),
+        file_path: dest_path.to_string_lossy().to_string(),
+        file_type: capture_type,
+        annotated_path: None,
+        file_size_bytes: Some(file_size as i64),
+        is_console_capture: false,
+        parsed_content: None,
+        created_at: now,
+    };
+
+    if let Err(e) = repo.create(&capture) {
+        eprintln!("Warning: Failed to create unsorted capture record: {}", e);
+        return;
+    }
+
+    // Emit event so the frontend can update the Unsorted Captures section
+    let _ = app_handle.emit("capture:file-detected", serde_json::json!({
+        "filePath": dest_path.to_string_lossy().to_string(),
+        "captureId": capture_id,
+        "sessionId": session_id,
+        "bugId": null,
+        "type": capture.file_type.as_str(),
+    }));
+}
+
 #[tauri::command]
 fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
     use std::sync::mpsc;
@@ -614,23 +710,56 @@ fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
 
                     // Spawn background thread to forward capture events to the frontend
                     let app_handle = app.clone();
+                    let session_folder = folder_path.clone();
                     std::thread::spawn(move || {
                         while let Ok(event) = rx.recv() {
                             match event {
-                                platform::CaptureEvent::ScreenshotDetected { file_path, detected_at, .. } => {
-                                    let path_str = file_path.to_string_lossy().to_string();
-                                    let _ = app_handle.emit("screenshot:captured", serde_json::json!({
-                                        "filePath": path_str,
-                                        "timestamp": detected_at,
-                                    }));
+                                platform::CaptureEvent::ScreenshotDetected { file_path, detected_at, file_size } => {
+                                    // If no active bug, route to _unsorted/
+                                    let active_bug_id = SESSION_MANAGER
+                                        .lock()
+                                        .ok()
+                                        .and_then(|m| m.as_ref().and_then(|sm| sm.get_active_bug_id()));
+                                    let active_session_id = SESSION_MANAGER
+                                        .lock()
+                                        .ok()
+                                        .and_then(|m| m.as_ref().and_then(|sm| sm.get_active_session_id()));
+
+                                    if active_bug_id.is_none() {
+                                        if let Some(session_id) = active_session_id {
+                                            route_to_unsorted(&app_handle, &file_path, &session_folder, &session_id, file_size, false);
+                                        }
+                                    } else {
+                                        let path_str = file_path.to_string_lossy().to_string();
+                                        let _ = app_handle.emit("screenshot:captured", serde_json::json!({
+                                            "filePath": path_str,
+                                            "timestamp": detected_at,
+                                        }));
+                                    }
                                 }
-                                platform::CaptureEvent::VideoDetected { file_path, detected_at, .. } => {
-                                    let path_str = file_path.to_string_lossy().to_string();
-                                    let _ = app_handle.emit("capture:file-detected", serde_json::json!({
-                                        "filePath": path_str,
-                                        "timestamp": detected_at,
-                                        "type": "video",
-                                    }));
+                                platform::CaptureEvent::VideoDetected { file_path, detected_at, file_size } => {
+                                    // If no active bug, route to _unsorted/
+                                    let active_bug_id = SESSION_MANAGER
+                                        .lock()
+                                        .ok()
+                                        .and_then(|m| m.as_ref().and_then(|sm| sm.get_active_bug_id()));
+                                    let active_session_id = SESSION_MANAGER
+                                        .lock()
+                                        .ok()
+                                        .and_then(|m| m.as_ref().and_then(|sm| sm.get_active_session_id()));
+
+                                    if active_bug_id.is_none() {
+                                        if let Some(session_id) = active_session_id {
+                                            route_to_unsorted(&app_handle, &file_path, &session_folder, &session_id, file_size, true);
+                                        }
+                                    } else {
+                                        let path_str = file_path.to_string_lossy().to_string();
+                                        let _ = app_handle.emit("capture:file-detected", serde_json::json!({
+                                            "filePath": path_str,
+                                            "timestamp": detected_at,
+                                            "type": "video",
+                                        }));
+                                    }
                                 }
                                 platform::CaptureEvent::WatcherError { message } => {
                                     eprintln!("File watcher error: {}", message);
@@ -1315,6 +1444,44 @@ fn get_bug_captures(bug_id: String, app: tauri::AppHandle) -> Result<Vec<databas
 }
 
 #[tauri::command]
+fn get_unsorted_captures(session_id: String, app: tauri::AppHandle) -> Result<Vec<database::Capture>, String> {
+    use database::{Database, CaptureOps, CaptureRepository};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = CaptureRepository::new(db.connection());
+
+    repo.list_unsorted(&session_id)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn assign_capture_to_bug(capture_id: String, bug_id: String, app: tauri::AppHandle) -> Result<(), String> {
+    use database::{Database, CaptureOps, CaptureRepository};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = CaptureRepository::new(db.connection());
+
+    let mut capture = repo.get(&capture_id)
+        .map_err(|e: rusqlite::Error| e.to_string())?
+        .ok_or_else(|| format!("Capture not found: {}", capture_id))?;
+
+    capture.bug_id = Some(bug_id);
+
+    repo.update(&capture)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
 fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
@@ -1908,6 +2075,8 @@ pub fn run() {
             mark_setup_complete,
             reset_setup,
             get_bug_captures,
+            get_unsorted_captures,
+            assign_capture_to_bug,
             update_bug_console_parse,
             update_capture_console_flag,
             get_app_version,

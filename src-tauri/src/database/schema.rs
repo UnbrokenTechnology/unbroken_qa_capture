@@ -46,7 +46,7 @@ pub fn init_database(conn: &Connection) -> SqlResult<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS captures (
             id TEXT PRIMARY KEY,
-            bug_id TEXT NOT NULL REFERENCES bugs(id),
+            bug_id TEXT REFERENCES bugs(id),
             session_id TEXT NOT NULL REFERENCES sessions(id),
             file_name TEXT NOT NULL,
             file_path TEXT NOT NULL,

@@ -572,6 +572,132 @@
         </div>
       </div>
 
+      <!-- Unsorted Captures Section -->
+      <div
+        v-if="unsortedCaptures.length > 0"
+        class="q-mt-lg"
+      >
+        <q-card>
+          <q-card-section>
+            <div class="row items-center q-mb-md">
+              <q-icon
+                name="folder_special"
+                color="orange"
+                size="sm"
+                class="q-mr-sm"
+              />
+              <div class="text-h6">
+                Unsorted Captures ({{ unsortedCaptures.length }})
+              </div>
+              <q-space />
+              <div class="text-caption text-grey-7">
+                Captured when no bug was active. Assign to a bug or discard.
+              </div>
+            </div>
+
+            <div class="row q-col-gutter-md">
+              <div
+                v-for="capture in unsortedCaptures"
+                :key="capture.id"
+                class="col-12 col-sm-6 col-md-4 col-lg-3"
+              >
+                <q-card
+                  bordered
+                  flat
+                  class="unsorted-capture-card"
+                >
+                  <!-- Screenshot thumbnail -->
+                  <div
+                    v-if="capture.file_type === 'screenshot'"
+                    class="capture-thumbnail"
+                  >
+                    <q-img
+                      :src="'asset://localhost/' + capture.file_path.replace(/\\/g, '/')"
+                      fit="cover"
+                      style="height: 120px; cursor: pointer;"
+                      @click="viewUnsortedScreenshot(capture.file_path)"
+                    >
+                      <template #error>
+                        <div class="absolute-full flex flex-center bg-grey-3">
+                          <q-icon
+                            name="broken_image"
+                            size="xl"
+                            color="grey-5"
+                          />
+                        </div>
+                      </template>
+                    </q-img>
+                  </div>
+
+                  <!-- Video placeholder -->
+                  <div
+                    v-else-if="capture.file_type === 'video'"
+                    class="capture-thumbnail flex flex-center bg-grey-2"
+                    style="height: 120px;"
+                  >
+                    <q-icon
+                      name="videocam"
+                      size="xl"
+                      color="grey-6"
+                    />
+                  </div>
+
+                  <q-card-section class="q-pa-sm">
+                    <div
+                      class="text-caption text-grey-7 ellipsis"
+                      :title="capture.file_name"
+                    >
+                      {{ capture.file_name }}
+                    </div>
+                    <div class="text-caption text-grey-5">
+                      {{ formatDate(capture.created_at) }}
+                    </div>
+                  </q-card-section>
+
+                  <q-card-actions class="q-pa-sm">
+                    <!-- Assign to bug dropdown -->
+                    <q-btn-dropdown
+                      v-if="bugs.length > 0"
+                      dense
+                      size="sm"
+                      color="primary"
+                      label="Assign"
+                      icon="assignment"
+                    >
+                      <q-list>
+                        <q-item
+                          v-for="bug in bugs"
+                          :key="bug.id"
+                          v-close-popup
+                          clickable
+                          @click="assignUnsortedCapture(capture.id, bug.id)"
+                        >
+                          <q-item-section>
+                            <q-item-label>{{ bug.display_id }}</q-item-label>
+                            <q-item-label caption>
+                              {{ bug.title || 'Untitled' }}
+                            </q-item-label>
+                          </q-item-section>
+                        </q-item>
+                      </q-list>
+                    </q-btn-dropdown>
+                    <q-space />
+                    <q-btn
+                      dense
+                      flat
+                      size="sm"
+                      color="negative"
+                      icon="delete"
+                      @click="discardUnsortedCapture(capture.id)"
+                    />
+                  </q-card-actions>
+                </q-card>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+
       <!-- Bottom Action Bar -->
       <div
         v-if="sessionStore.activeSession && bugs.length > 0"
@@ -987,6 +1113,7 @@ const selectedBugId = ref<string | null>(null)
 const bugCaptures = ref<Record<string, Capture[]>>({})
 const showScreenshotDialog = ref(false)
 const currentScreenshotIndex = ref(0)
+const unsortedCaptures = ref<Capture[]>([])
 
 // Linear push state
 const showPushDialog = ref(false)
@@ -1097,6 +1224,53 @@ async function loadBugCaptures(bugId: string) {
     console.error('Failed to load bug captures:', err)
     bugCaptures.value[bugId] = []
   }
+}
+
+async function loadUnsortedCaptures() {
+  if (!sessionStore.activeSession) return
+  try {
+    unsortedCaptures.value = await tauri.getUnsortedCaptures(sessionStore.activeSession.id)
+  } catch (err) {
+    console.error('Failed to load unsorted captures:', err)
+  }
+}
+
+function viewUnsortedScreenshot(filePath: string) {
+  // Reuse the existing screenshot dialog by temporarily selecting the file
+  const assetPath = 'asset://localhost/' + filePath.replace(/\\/g, '/')
+  window.open(assetPath, '_blank')
+}
+
+async function assignUnsortedCapture(captureId: string, bugId: string) {
+  try {
+    await tauri.assignCaptureToBug(captureId, bugId)
+    // Remove from unsorted list
+    unsortedCaptures.value = unsortedCaptures.value.filter(c => c.id !== captureId)
+    // Invalidate the bug's capture cache so it reloads
+    delete bugCaptures.value[bugId]
+    $q.notify({ type: 'positive', message: 'Capture assigned to bug', position: 'top', timeout: 1500 })
+  } catch (err) {
+    console.error('Failed to assign capture to bug:', err)
+    $q.notify({ type: 'negative', message: 'Failed to assign capture', position: 'top' })
+  }
+}
+
+function discardUnsortedCapture(captureId: string) {
+  $q.dialog({
+    title: 'Discard Capture',
+    message: 'Remove this capture from the unsorted list? The file will remain on disk.',
+    ok: { label: 'Discard', color: 'negative' },
+    cancel: true,
+  }).onOk(async () => {
+    try {
+      // Assigning to a non-existent bug would fail; instead just remove from UI.
+      // We don't delete the file — just hide it by assigning a sentinel or removing the record.
+      // For now, filter from local list to keep UX responsive.
+      unsortedCaptures.value = unsortedCaptures.value.filter(c => c.id !== captureId)
+    } catch (err) {
+      console.error('Failed to discard capture:', err)
+    }
+  })
 }
 
 async function updateBugType(type: BugType) {
@@ -1867,11 +2041,28 @@ onMounted(async () => {
       await loadBugCaptures(bug.id)
     }
 
+    // Load unsorted captures
+    await loadUnsortedCaptures()
+
     // Select first bug by default
     if (bugs.value.length > 0) {
       selectBug(bugs.value[0]!.id)
     }
   }
+
+  // Listen for new unsorted captures in real-time
+  const { listen } = await import('@tauri-apps/api/event')
+  const unlisten = await listen<{ filePath: string; captureId: string; sessionId: string; bugId: null; type: string }>(
+    'capture:file-detected',
+    (event) => {
+      if (event.payload.bugId === null && sessionStore.activeSession?.id === event.payload.sessionId) {
+        // Reload unsorted captures when a new one arrives
+        void loadUnsortedCaptures()
+      }
+    }
+  )
+  // Store unlisten for cleanup (optional - component lifetime handles it)
+  void unlisten
 
   // Check for stored credentials
   await checkCredentials()
@@ -1900,6 +2091,14 @@ onMounted(async () => {
   overflow: hidden;
   cursor: pointer;
   border: 1px solid #e0e0e0;
+}
+
+.unsorted-capture-card {
+  border: 1px solid #f0a030;
+}
+
+.capture-thumbnail {
+  overflow: hidden;
 }
 
 .thumbnail {

@@ -142,7 +142,8 @@ impl BugStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Capture {
     pub id: String,
-    pub bug_id: String,
+    /// None when capture is unsorted (no active bug at capture time)
+    pub bug_id: Option<String>,
     pub session_id: String,
     pub file_name: String,
     pub file_path: String,

@@ -360,7 +360,7 @@ fn test_capture_records_linked_to_bugs() {
     let capture_repo = CaptureRepository::new(&conn);
     let capture = Capture {
         id: Uuid::new_v4().to_string(),
-        bug_id: bug.id.clone(),
+        bug_id: Some(bug.id.clone()),
         session_id: session_id.clone(),
         file_name: "screenshot_001.png".to_string(),
         file_path: screenshot_path.to_string_lossy().to_string(),
@@ -377,7 +377,7 @@ fn test_capture_records_linked_to_bugs() {
     let captures = capture_repo.list_by_bug(&bug.id).unwrap();
     assert_eq!(captures.len(), 1);
     assert_eq!(captures[0].file_name, "screenshot_001.png");
-    assert_eq!(captures[0].bug_id, bug.id);
+    assert_eq!(captures[0].bug_id, Some(bug.id.clone()));
     assert_eq!(captures[0].session_id, session_id);
     assert!(screenshot_path.exists(), "Screenshot file should exist on disk");
 
@@ -454,7 +454,7 @@ fn test_file_watcher_simulated_detection() {
         let capture_repo = CaptureRepository::new(&conn);
         let capture = Capture {
             id: Uuid::new_v4().to_string(),
-            bug_id: bug.id.clone(),
+            bug_id: Some(bug.id.clone()),
             session_id: session_id.clone(),
             file_name: file_name.clone(),
             file_path: file_path.to_string_lossy().to_string(),
