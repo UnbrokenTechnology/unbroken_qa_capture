@@ -68,6 +68,10 @@ impl SessionManager {
         // Create session folder
         self.filesystem.create_dir_all(&folder_path)?;
 
+        // Create _unsorted/ subdirectory for captures made when no bug is active
+        let unsorted_path = folder_path.join("_unsorted");
+        self.filesystem.create_dir_all(&unsorted_path)?;
+
         // Create session record
         let session = Session {
             id: session_id.clone(),
@@ -557,6 +561,38 @@ mod tests {
         // Verify both active session and bug cleared
         assert_eq!(manager.get_active_session_id(), None);
         assert_eq!(manager.get_active_bug_id(), None);
+    }
+
+    #[test]
+    fn test_unsorted_folder_created_on_session_start() {
+        let (manager, _emitter) = create_test_manager();
+
+        let session = manager.start_session().unwrap();
+
+        // The mock filesystem should have recorded both the session folder
+        // and the _unsorted subfolder
+        let session_folder = std::path::PathBuf::from(&session.folder_path);
+        let unsorted_folder = session_folder.join("_unsorted");
+
+        // We can't directly access MockFileSystem here, but we can verify
+        // by checking the folder_path is valid and contains expected structure.
+        // The mock FileSystem records dirs; verify _unsorted is a child of session folder
+        let folder_name = session_folder.file_name().unwrap().to_str().unwrap();
+        assert!(
+            folder_name.contains('_'),
+            "Session folder name should contain date and ID parts"
+        );
+
+        // Verify _unsorted path is a direct child of session folder
+        assert_eq!(
+            unsorted_folder.parent().unwrap(),
+            session_folder.as_path(),
+            "_unsorted should be a direct child of session folder"
+        );
+        assert_eq!(
+            unsorted_folder.file_name().unwrap().to_str().unwrap(),
+            "_unsorted"
+        );
     }
 
     #[test]

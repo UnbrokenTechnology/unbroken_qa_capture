@@ -393,7 +393,7 @@ describe('Capture type contract', () => {
   it('mock satisfies Capture interface', () => {
     const spec: FieldSpec = {
       id: 'string',
-      bug_id: 'string',
+      bug_id: 'nullable-string',
       session_id: 'string',
       file_name: 'string',
       file_path: 'string',
@@ -428,6 +428,11 @@ describe('Capture type contract', () => {
   it('file_size_bytes can be null', () => {
     const c: Capture = { ...mockCapture, file_size_bytes: null }
     expect(c.file_size_bytes).toBeNull()
+  })
+
+  it('bug_id can be null for unsorted captures', () => {
+    const c: Capture = { ...mockCapture, bug_id: null }
+    expect(c.bug_id).toBeNull()
   })
 
   it('file_type accepts all CaptureType values', () => {
