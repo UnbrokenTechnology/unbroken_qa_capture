@@ -136,6 +136,22 @@ fn test_full_session_lifecycle_real_fs() {
         session.folder_path
     );
 
+    // Verify _captures/ subdirectory exists (PRD §10: temporary landing zone for Snipping Tool)
+    let captures_dir = session_folder.join("_captures");
+    assert!(
+        captures_dir.exists(),
+        "_captures/ subdirectory should be created on session start: {}",
+        captures_dir.display()
+    );
+
+    // Verify _unsorted/ subdirectory exists
+    let unsorted_dir = session_folder.join("_unsorted");
+    assert!(
+        unsorted_dir.exists(),
+        "_unsorted/ subdirectory should be created on session start: {}",
+        unsorted_dir.display()
+    );
+
     let session_id = session.id.clone();
 
     // Capture 3 bugs

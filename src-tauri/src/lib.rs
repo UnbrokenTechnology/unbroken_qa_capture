@@ -582,7 +582,46 @@ async fn update_session_notes(
 
 // ─── Session Manager Commands ────────────────────────────────────────────
 
+/// Determine capture type and generate PRD-compliant file name.
+/// Screenshots: capture-{NNN}.png, Videos: recording-{NNN}.mp4 (or .webm/.mkv).
+fn make_capture_filename(source_path: &std::path::Path, capture_number: u32) -> (String, database::CaptureType) {
+    use database::CaptureType;
+    let extension = source_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png")
+        .to_lowercase();
+    match extension.as_str() {
+        "mp4" | "webm" | "mkv" => (
+            format!("recording-{:03}.{}", capture_number, extension),
+            CaptureType::Video,
+        ),
+        ext => (
+            format!("capture-{:03}.{}", capture_number, ext),
+            CaptureType::Screenshot,
+        ),
+    }
+}
+
+/// Count existing captures in a directory to determine the next sequential number.
+fn next_capture_number(dir: &std::path::Path) -> u32 {
+    let count = std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    let name = e.file_name();
+                    let s = name.to_string_lossy();
+                    s.starts_with("capture-") || s.starts_with("recording-")
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    (count as u32) + 1
+}
+
 /// Copy a file detected with no active bug into the session's _unsorted/ directory,
+/// rename it per PRD conventions (capture-NNN.png / recording-NNN.mp4),
 /// create a Capture record with bug_id=None, and emit a capture:file-detected event.
 fn route_to_unsorted(
     app_handle: &AppHandle,
@@ -592,7 +631,7 @@ fn route_to_unsorted(
     file_size: u64,
     _is_video: bool,
 ) {
-    use database::{Database, CaptureOps, CaptureRepository, Capture, CaptureType};
+    use database::{Database, CaptureOps, CaptureRepository, Capture};
     use uuid::Uuid;
     use chrono::Utc;
 
@@ -604,15 +643,11 @@ fn route_to_unsorted(
         return;
     }
 
-    let file_name = match file_path.file_name() {
-        Some(n) => n.to_string_lossy().to_string(),
-        None => {
-            eprintln!("Warning: Could not determine file name for unsorted capture");
-            return;
-        }
-    };
+    // Generate PRD-compliant file name
+    let capture_num = next_capture_number(&unsorted_dir);
+    let (file_name, capture_type) = make_capture_filename(file_path, capture_num);
 
-    // Destination path in _unsorted/
+    // Destination path in _unsorted/ with new name
     let dest_path = unsorted_dir.join(&file_name);
 
     // Copy (not move) so the original location is preserved if needed
@@ -620,17 +655,6 @@ fn route_to_unsorted(
         eprintln!("Warning: Failed to copy file to _unsorted/: {}", e);
         return;
     }
-
-    // Determine capture type from extension
-    let extension = file_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    let capture_type = match extension.as_str() {
-        "mp4" | "webm" | "mkv" => CaptureType::Video,
-        _ => CaptureType::Screenshot,
-    };
 
     // Get DB path
     let db_path = app_handle.path().app_data_dir().unwrap_or_else(|_| {
@@ -678,6 +702,87 @@ fn route_to_unsorted(
     }));
 }
 
+/// Copy a file detected while a bug is active into the bug's folder,
+/// rename it per PRD conventions (capture-NNN.png / recording-NNN.mp4),
+/// create a Capture record with bug_id set, and emit a capture:file-detected event.
+fn route_to_bug(
+    app_handle: &AppHandle,
+    file_path: &std::path::Path,
+    session_id: &str,
+    bug_id: &str,
+    bug_folder: &str,
+    file_size: u64,
+) {
+    use database::{Database, CaptureOps, CaptureRepository, Capture};
+    use uuid::Uuid;
+    use chrono::Utc;
+
+    let bug_dir = std::path::Path::new(bug_folder);
+
+    // Ensure bug folder exists
+    if let Err(e) = std::fs::create_dir_all(bug_dir) {
+        eprintln!("Warning: Failed to create bug directory: {}", e);
+        return;
+    }
+
+    // Generate PRD-compliant file name
+    let capture_num = next_capture_number(bug_dir);
+    let (file_name, capture_type) = make_capture_filename(file_path, capture_num);
+
+    let dest_path = bug_dir.join(&file_name);
+
+    // Copy file to bug folder with new name
+    if let Err(e) = std::fs::copy(file_path, &dest_path) {
+        eprintln!("Warning: Failed to copy file to bug folder: {}", e);
+        return;
+    }
+
+    // Get DB path
+    let db_path = app_handle.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    }).join("qa_capture.db");
+
+    let db = match Database::open(&db_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("Warning: Failed to open database for bug capture: {}", e);
+            return;
+        }
+    };
+
+    let repo = CaptureRepository::new(db.connection());
+    let capture_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let capture = Capture {
+        id: capture_id.clone(),
+        bug_id: Some(bug_id.to_string()),
+        session_id: session_id.to_string(),
+        file_name: file_name.clone(),
+        file_path: dest_path.to_string_lossy().to_string(),
+        file_type: capture_type,
+        annotated_path: None,
+        file_size_bytes: Some(file_size as i64),
+        is_console_capture: false,
+        parsed_content: None,
+        created_at: now,
+    };
+
+    if let Err(e) = repo.create(&capture) {
+        eprintln!("Warning: Failed to create bug capture record: {}", e);
+        return;
+    }
+
+    // Emit event so the frontend can update the Bug Captures section
+    let _ = app_handle.emit("capture:file-detected", serde_json::json!({
+        "filePath": dest_path.to_string_lossy().to_string(),
+        "captureId": capture_id,
+        "sessionId": session_id,
+        "bugId": bug_id,
+        "type": capture.file_type.as_str(),
+    }));
+}
+
 #[tauri::command]
 fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
     use std::sync::mpsc;
@@ -688,8 +793,13 @@ fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
         .ok_or("Session manager not initialized")?;
     let session = manager.start_session()?;
 
-    // Automatically start the file watcher for the new session folder
+    // Watch _captures/ subdirectory — the PRD-specified temporary landing zone
+    // where Snipping Tool saves files before they are sorted into bug subfolders.
     let folder_path = session.folder_path.clone();
+    let captures_watch_path = std::path::Path::new(&folder_path)
+        .join("_captures")
+        .to_string_lossy()
+        .to_string();
     drop(manager_guard); // Release lock before acquiring CAPTURE_BRIDGE lock
 
     let (tx, rx) = mpsc::channel();
@@ -704,61 +814,66 @@ fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
                 }
             }
 
-            match bridge.start_file_watcher(std::path::Path::new(&folder_path), tx) {
+            match bridge.start_file_watcher(std::path::Path::new(&captures_watch_path), tx) {
                 Ok(handle) => {
                     *ACTIVE_WATCHER.lock().unwrap() = Some(handle);
 
-                    // Spawn background thread to forward capture events to the frontend
+                    // Spawn background thread to sort capture events from _captures/
+                    // into bug subfolders or _unsorted/, with PRD-compliant naming.
                     let app_handle = app.clone();
                     let session_folder = folder_path.clone();
                     std::thread::spawn(move || {
                         while let Ok(event) = rx.recv() {
                             match event {
-                                platform::CaptureEvent::ScreenshotDetected { file_path, detected_at, file_size } => {
-                                    // If no active bug, route to _unsorted/
-                                    let active_bug_id = SESSION_MANAGER
-                                        .lock()
-                                        .ok()
-                                        .and_then(|m| m.as_ref().and_then(|sm| sm.get_active_bug_id()));
-                                    let active_session_id = SESSION_MANAGER
-                                        .lock()
-                                        .ok()
-                                        .and_then(|m| m.as_ref().and_then(|sm| sm.get_active_session_id()));
+                                platform::CaptureEvent::ScreenshotDetected { file_path, detected_at: _, file_size } => {
+                                    let (active_bug_id, active_session_id) = {
+                                        let guard = SESSION_MANAGER.lock().ok();
+                                        let bug_id = guard.as_ref().and_then(|m| m.as_ref().and_then(|sm| sm.get_active_bug_id()));
+                                        let session_id = guard.as_ref().and_then(|m| m.as_ref().and_then(|sm| sm.get_active_session_id()));
+                                        (bug_id, session_id)
+                                    };
 
-                                    if active_bug_id.is_none() {
+                                    if let Some(bug_id) = active_bug_id {
                                         if let Some(session_id) = active_session_id {
-                                            route_to_unsorted(&app_handle, &file_path, &session_folder, &session_id, file_size, false);
+                                            // Look up bug folder from DB
+                                            let db_path = app_handle.path().app_data_dir()
+                                                .unwrap_or_else(|_| std::env::current_dir().unwrap().join("data"))
+                                                .join("qa_capture.db");
+                                            if let Ok(db) = database::Database::open(&db_path) {
+                                                use database::{BugOps, BugRepository};
+                                                let repo = BugRepository::new(db.connection());
+                                                if let Ok(Some(bug)) = repo.get(&bug_id) {
+                                                    route_to_bug(&app_handle, &file_path, &session_id, &bug_id, &bug.folder_path, file_size);
+                                                }
+                                            }
                                         }
-                                    } else {
-                                        let path_str = file_path.to_string_lossy().to_string();
-                                        let _ = app_handle.emit("screenshot:captured", serde_json::json!({
-                                            "filePath": path_str,
-                                            "timestamp": detected_at,
-                                        }));
+                                    } else if let Some(session_id) = active_session_id {
+                                        route_to_unsorted(&app_handle, &file_path, &session_folder, &session_id, file_size, false);
                                     }
                                 }
-                                platform::CaptureEvent::VideoDetected { file_path, detected_at, file_size } => {
-                                    // If no active bug, route to _unsorted/
-                                    let active_bug_id = SESSION_MANAGER
-                                        .lock()
-                                        .ok()
-                                        .and_then(|m| m.as_ref().and_then(|sm| sm.get_active_bug_id()));
-                                    let active_session_id = SESSION_MANAGER
-                                        .lock()
-                                        .ok()
-                                        .and_then(|m| m.as_ref().and_then(|sm| sm.get_active_session_id()));
+                                platform::CaptureEvent::VideoDetected { file_path, detected_at: _, file_size } => {
+                                    let (active_bug_id, active_session_id) = {
+                                        let guard = SESSION_MANAGER.lock().ok();
+                                        let bug_id = guard.as_ref().and_then(|m| m.as_ref().and_then(|sm| sm.get_active_bug_id()));
+                                        let session_id = guard.as_ref().and_then(|m| m.as_ref().and_then(|sm| sm.get_active_session_id()));
+                                        (bug_id, session_id)
+                                    };
 
-                                    if active_bug_id.is_none() {
+                                    if let Some(bug_id) = active_bug_id {
                                         if let Some(session_id) = active_session_id {
-                                            route_to_unsorted(&app_handle, &file_path, &session_folder, &session_id, file_size, true);
+                                            let db_path = app_handle.path().app_data_dir()
+                                                .unwrap_or_else(|_| std::env::current_dir().unwrap().join("data"))
+                                                .join("qa_capture.db");
+                                            if let Ok(db) = database::Database::open(&db_path) {
+                                                use database::{BugOps, BugRepository};
+                                                let repo = BugRepository::new(db.connection());
+                                                if let Ok(Some(bug)) = repo.get(&bug_id) {
+                                                    route_to_bug(&app_handle, &file_path, &session_id, &bug_id, &bug.folder_path, file_size);
+                                                }
+                                            }
                                         }
-                                    } else {
-                                        let path_str = file_path.to_string_lossy().to_string();
-                                        let _ = app_handle.emit("capture:file-detected", serde_json::json!({
-                                            "filePath": path_str,
-                                            "timestamp": detected_at,
-                                            "type": "video",
-                                        }));
+                                    } else if let Some(session_id) = active_session_id {
+                                        route_to_unsorted(&app_handle, &file_path, &session_folder, &session_id, file_size, true);
                                     }
                                 }
                                 platform::CaptureEvent::WatcherError { message } => {
@@ -769,7 +884,7 @@ fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
                     });
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to start file watcher for session folder '{}': {}", folder_path, e);
+                    eprintln!("Warning: Failed to start file watcher for _captures/ folder '{}': {}", captures_watch_path, e);
                 }
             }
         }
@@ -2568,5 +2683,76 @@ mod tests {
         assert_eq!(w, 32);
         assert_eq!(h, 32);
         assert_eq!(rgba.len(), 32 * 32 * 4);
+    }
+
+    // ------------------------------------------------------------------
+    // Capture naming convention tests (PRD §10)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_make_capture_filename_screenshot() {
+        use database::CaptureType;
+        let path = std::path::Path::new("screenshot_20240217_143025.png");
+        let (name, ctype) = make_capture_filename(path, 1);
+        assert_eq!(name, "capture-001.png");
+        assert_eq!(ctype, CaptureType::Screenshot);
+
+        let (name2, _) = make_capture_filename(path, 42);
+        assert_eq!(name2, "capture-042.png");
+    }
+
+    #[test]
+    fn test_make_capture_filename_video_mp4() {
+        use database::CaptureType;
+        let path = std::path::Path::new("recording.mp4");
+        let (name, ctype) = make_capture_filename(path, 1);
+        assert_eq!(name, "recording-001.mp4");
+        assert_eq!(ctype, CaptureType::Video);
+    }
+
+    #[test]
+    fn test_make_capture_filename_video_webm() {
+        use database::CaptureType;
+        let path = std::path::Path::new("clip.webm");
+        let (name, ctype) = make_capture_filename(path, 5);
+        assert_eq!(name, "recording-005.webm");
+        assert_eq!(ctype, CaptureType::Video);
+    }
+
+    #[test]
+    fn test_make_capture_filename_jpg() {
+        use database::CaptureType;
+        let path = std::path::Path::new("image.jpg");
+        let (name, ctype) = make_capture_filename(path, 99);
+        assert_eq!(name, "capture-099.jpg");
+        assert_eq!(ctype, CaptureType::Screenshot);
+    }
+
+    #[test]
+    fn test_next_capture_number_empty_dir() {
+        let temp_dir = std::env::temp_dir().join(format!("test_capture_num_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Empty dir — next number should be 1
+        assert_eq!(next_capture_number(&temp_dir), 1);
+
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_next_capture_number_with_existing_captures() {
+        let temp_dir = std::env::temp_dir().join(format!("test_capture_num_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Add some capture files
+        std::fs::write(temp_dir.join("capture-001.png"), "").unwrap();
+        std::fs::write(temp_dir.join("capture-002.png"), "").unwrap();
+        std::fs::write(temp_dir.join("recording-003.mp4"), "").unwrap();
+        // Non-capture file should not count
+        std::fs::write(temp_dir.join("notes.md"), "").unwrap();
+
+        assert_eq!(next_capture_number(&temp_dir), 4);
+
+        std::fs::remove_dir_all(&temp_dir).ok();
     }
 }

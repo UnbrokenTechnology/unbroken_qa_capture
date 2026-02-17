@@ -68,6 +68,10 @@ impl SessionManager {
         // Create session folder
         self.filesystem.create_dir_all(&folder_path)?;
 
+        // Create _captures/ subdirectory as temporary landing zone for Snipping Tool output
+        let captures_path = folder_path.join("_captures");
+        self.filesystem.create_dir_all(&captures_path)?;
+
         // Create _unsorted/ subdirectory for captures made when no bug is active
         let unsorted_path = folder_path.join("_unsorted");
         self.filesystem.create_dir_all(&unsorted_path)?;
@@ -564,23 +568,34 @@ mod tests {
     }
 
     #[test]
-    fn test_unsorted_folder_created_on_session_start() {
+    fn test_captures_and_unsorted_folders_created_on_session_start() {
         let (manager, _emitter) = create_test_manager();
 
         let session = manager.start_session().unwrap();
 
         // The mock filesystem should have recorded both the session folder
-        // and the _unsorted subfolder
+        // and both subdirectories
         let session_folder = std::path::PathBuf::from(&session.folder_path);
+        let captures_folder = session_folder.join("_captures");
         let unsorted_folder = session_folder.join("_unsorted");
 
         // We can't directly access MockFileSystem here, but we can verify
         // by checking the folder_path is valid and contains expected structure.
-        // The mock FileSystem records dirs; verify _unsorted is a child of session folder
         let folder_name = session_folder.file_name().unwrap().to_str().unwrap();
         assert!(
             folder_name.contains('_'),
             "Session folder name should contain date and ID parts"
+        );
+
+        // Verify _captures path is a direct child of session folder
+        assert_eq!(
+            captures_folder.parent().unwrap(),
+            session_folder.as_path(),
+            "_captures should be a direct child of session folder"
+        );
+        assert_eq!(
+            captures_folder.file_name().unwrap().to_str().unwrap(),
+            "_captures"
         );
 
         // Verify _unsorted path is a direct child of session folder
