@@ -72,7 +72,7 @@ describe('Settings View', () => {
 
     // Setup default mock implementations
     vi.mocked(tauri.getAllSettings).mockResolvedValue([
-      { key: 'sessions_root_folder', value: '/sessions', updated_at: '2024-01-01T00:00:00Z' },
+      { key: 'default_save_path', value: '/sessions', updated_at: '2024-01-01T00:00:00Z' },
       { key: 'hotkey_toggle_session', value: 'Ctrl+Shift+Q', updated_at: '2024-01-01T00:00:00Z' }
     ])
     vi.mocked(tauri.setSetting).mockResolvedValue()
@@ -119,7 +119,7 @@ describe('Settings View', () => {
       await flushPromises()
 
       const vm = wrapper.vm as any
-      expect(vm.localSettings).toHaveProperty('sessions_root_folder')
+      expect(vm.localSettings).toHaveProperty('default_save_path')
     })
 
     it('has launch on startup toggle', async () => {
@@ -262,7 +262,7 @@ describe('Settings View', () => {
       const vm = wrapper.vm as any
 
       // Modify settings
-      vm.localSettings.sessions_root_folder = '/test/sessions'
+      vm.localSettings.default_save_path = '/test/sessions'
       vm.localSettings.hotkey_toggle_session = 'Ctrl+Shift+T'
 
       await wrapper.vm.$nextTick()
@@ -326,7 +326,7 @@ describe('Settings View', () => {
       await vm.selectSessionsRoot()
 
       // Verify path was updated
-      expect(vm.localSettings.sessions_root_folder).toBe('/selected/path')
+      expect(vm.localSettings.default_save_path).toBe('/selected/path')
     })
 
     it('handles file selection cancellation', async () => {
@@ -341,13 +341,13 @@ describe('Settings View', () => {
       await flushPromises()
 
       const vm = wrapper.vm as any
-      const originalPath = vm.localSettings.sessions_root_folder
+      const originalPath = vm.localSettings.default_save_path
 
       // Try to select path (user cancels)
       await vm.selectSessionsRoot()
 
       // Verify path was not changed
-      expect(vm.localSettings.sessions_root_folder).toBe(originalPath)
+      expect(vm.localSettings.default_save_path).toBe(originalPath)
     })
   })
 })

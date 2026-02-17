@@ -31,6 +31,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 // Mock Tauri API
 vi.mock('@/api/tauri', () => ({
   getClaudeStatus: vi.fn(),
+  refreshClaudeStatus: vi.fn(),
   markSetupComplete: vi.fn(),
   getSetting: vi.fn(),
   setSetting: vi.fn(),
@@ -66,6 +67,7 @@ describe('FirstRunWizard', () => {
 
     // Setup default mocks
     vi.mocked(tauri.getClaudeStatus).mockResolvedValue(mockNotInstalledClaudeStatus)
+    vi.mocked(tauri.refreshClaudeStatus).mockResolvedValue(mockNotInstalledClaudeStatus)
     vi.mocked(tauri.markSetupComplete).mockResolvedValue(undefined)
     vi.mocked(tauri.getSetting).mockResolvedValue(null)
     vi.mocked(tauri.setSetting).mockResolvedValue(undefined)
@@ -205,7 +207,7 @@ describe('FirstRunWizard', () => {
       await flushPromises()
 
       const bodyText = document.body.textContent || ''
-      expect(bodyText).toContain('Configure Keyboard Shortcuts')
+      expect(bodyText).toContain('Current Keyboard Shortcuts')
       expect(bodyText).toContain('Ctrl+Shift+B')
       expect(bodyText).toContain('Ctrl+Shift+S')
       expect(bodyText).toContain('Ctrl+Shift+E')
@@ -239,11 +241,11 @@ describe('FirstRunWizard', () => {
         await flushPromises()
       }
 
-      expect(vi.mocked(tauri.getClaudeStatus)).toHaveBeenCalled()
+      expect(vi.mocked(tauri.refreshClaudeStatus)).toHaveBeenCalled()
     })
 
     it('should display Ready status when Claude CLI is installed and authenticated', async () => {
-      vi.mocked(tauri.getClaudeStatus).mockResolvedValue(mockReadyClaudeStatus)
+      vi.mocked(tauri.refreshClaudeStatus).mockResolvedValue(mockReadyClaudeStatus)
 
       const wrapper = mountComponent()
       await flushPromises()
@@ -276,7 +278,7 @@ describe('FirstRunWizard', () => {
     })
 
     it('should display NotInstalled status when Claude CLI is not found', async () => {
-      vi.mocked(tauri.getClaudeStatus).mockResolvedValue(mockNotInstalledClaudeStatus)
+      vi.mocked(tauri.refreshClaudeStatus).mockResolvedValue(mockNotInstalledClaudeStatus)
 
       const wrapper = mountComponent()
       await flushPromises()
@@ -311,7 +313,7 @@ describe('FirstRunWizard', () => {
   describe('Setup Completion', () => {
     it('should save all settings when finishing setup', async () => {
       mockOpen.mockResolvedValue('/test/sessions')
-      vi.mocked(tauri.getClaudeStatus).mockResolvedValue(mockReadyClaudeStatus)
+      vi.mocked(tauri.refreshClaudeStatus).mockResolvedValue(mockReadyClaudeStatus)
 
       const wrapper = mountComponent()
       await flushPromises()

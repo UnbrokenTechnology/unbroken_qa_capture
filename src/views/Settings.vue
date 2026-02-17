@@ -51,7 +51,7 @@
 
           <div class="q-gutter-md">
             <q-input
-              v-model="localSettings.sessions_root_folder"
+              v-model="localSettings.default_save_path"
               label="Sessions Root Folder"
               hint="Default folder to save QA sessions"
               outlined
@@ -648,7 +648,7 @@ const $q = useQuasar()
 // Local settings state (for editing before save)
 const localSettings = ref({
   // General
-  sessions_root_folder: '',
+  default_save_path: '',
   launch_on_startup: false,
   minimize_to_tray: true,
 
@@ -753,7 +753,7 @@ function recordHotkey(key: string): void {
 
 // Check if all settings are valid
 const hasValidSettings = computed(() => {
-  return localSettings.value.sessions_root_folder !== ''
+  return localSettings.value.default_save_path !== ''
 })
 
 // File path selection
@@ -765,7 +765,7 @@ async function selectSessionsRoot(): Promise<void> {
       title: 'Select Sessions Root Folder',
     })
     if (selected) {
-      localSettings.value.sessions_root_folder = selected as string
+      localSettings.value.default_save_path = selected as string
     }
   } catch (err) {
     console.error('Failed to select sessions root:', err)
@@ -972,7 +972,7 @@ function openLink(url: string): void {
 function loadSettings(): void {
   localSettings.value = {
     // General
-    sessions_root_folder: settingsStore.getSetting('sessions_root_folder', ''),
+    default_save_path: settingsStore.getSetting('default_save_path', ''),
     launch_on_startup: settingsStore.getSetting('launch_on_startup', 'false') === 'true',
     minimize_to_tray: settingsStore.getSetting('minimize_to_tray', 'true') === 'true',
 
@@ -1007,7 +1007,7 @@ async function saveSettings(): Promise<void> {
     // Save all settings to backend
     const settingsToSave: Record<string, string> = {
       // General
-      sessions_root_folder: localSettings.value.sessions_root_folder,
+      default_save_path: localSettings.value.default_save_path,
       launch_on_startup: localSettings.value.launch_on_startup.toString(),
       minimize_to_tray: localSettings.value.minimize_to_tray.toString(),
 

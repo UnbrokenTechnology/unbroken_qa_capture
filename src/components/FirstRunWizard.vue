@@ -30,7 +30,8 @@
             :name="1"
             title="Welcome"
             icon="waving_hand"
-            :done="step > 1"
+            :done="step > 1 && step1Complete"
+            :error="step > 1 && !step1Complete"
           >
             <div class="q-pa-md text-center">
               <q-icon
@@ -73,7 +74,8 @@
             :name="2"
             title="Sessions Folder"
             icon="folder"
-            :done="step > 2"
+            :done="step > 2 && step2Complete"
+            :error="step > 2 && !step2Complete"
           >
             <div class="q-pa-md">
               <h6 class="q-mt-none q-mb-md">
@@ -130,15 +132,16 @@
             :name="3"
             title="Hotkeys"
             icon="keyboard"
-            :done="step > 3"
+            :done="step > 3 && step3Complete"
+            :error="step > 3 && !step3Complete"
           >
             <div class="q-pa-md">
               <h6 class="q-mt-none q-mb-md">
-                Configure Keyboard Shortcuts
+                Current Keyboard Shortcuts
               </h6>
               <p class="text-body1 q-mb-md">
-                Set up global hotkeys to quickly capture bugs and manage sessions.
-                You can customize these later in Settings.
+                These are the default global hotkeys for quickly capturing bugs and managing sessions.
+                You can customize these in Settings after setup is complete.
               </p>
 
               <div class="q-gutter-md">
@@ -196,7 +199,8 @@
             :name="4"
             title="Linear Setup"
             icon="bug_report"
-            :done="step > 4"
+            :done="step > 4 && step4Complete"
+            :error="step > 4 && !step4Complete"
           >
             <div class="q-pa-md">
               <h6 class="q-mt-none q-mb-md">
@@ -259,7 +263,8 @@
             :name="5"
             title="AI Setup"
             icon="psychology"
-            :done="step > 5"
+            :done="step > 5 && step5Complete"
+            :error="step > 5 && !step5Complete"
           >
             <div class="q-pa-md">
               <h6 class="q-mt-none q-mb-md">
@@ -494,6 +499,19 @@ const canProceed = computed(() => {
   }
 })
 
+// Step completion status (for stepper header indicators)
+const step1Complete = computed(() => true) // Welcome step is always complete
+const step2Complete = computed(() => sessionsFolderPath.value !== '')
+const step3Complete = computed(() => true) // Hotkeys step is always complete (defaults are fine)
+const step4Complete = computed(() => {
+  // Linear setup is optional, so it's complete if disabled OR if enabled with valid credentials
+  if (!linearSetup.value.enabled) {
+    return true
+  }
+  return linearSetup.value.apiKey !== '' && linearSetup.value.teamId !== ''
+})
+const step5Complete = computed(() => true) // AI setup is optional, always complete
+
 // Step navigation
 function nextStep() {
   if (canProceed.value) {
@@ -529,7 +547,8 @@ async function selectSessionsFolder() {
 async function checkClaudeStatus() {
   claudeChecking.value = true
   try {
-    const status = await tauri.getClaudeStatus()
+    // Use refresh instead of get to force a fresh check (not cached)
+    const status = await tauri.refreshClaudeStatus()
 
     if ('Ready' in status) {
       claudeStatus.value = 'Ready'
