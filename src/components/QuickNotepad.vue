@@ -50,7 +50,22 @@
             @mousedown.stop
           >
             <template #prepend>
-              <q-icon name="videocam" />
+              <q-icon :name="meetingIdIsUrl ? 'link' : 'videocam'" :color="meetingIdIsUrl ? 'primary' : undefined" />
+            </template>
+            <template
+              v-if="meetingIdIsUrl"
+              #append
+            >
+              <q-btn
+                flat
+                dense
+                round
+                icon="open_in_new"
+                size="sm"
+                color="primary"
+                title="Open URL in browser"
+                @click.stop="openMeetingUrl"
+              />
             </template>
           </q-input>
         </div>
@@ -113,6 +128,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useBugStore } from '../stores/bug'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import * as tauri from '../api/tauri'
 
 // Props
@@ -163,6 +179,19 @@ const widgetStyle = computed(() => ({
 }))
 
 const activeBug = computed(() => bugStore.activeBug)
+
+const meetingIdIsUrl = computed(() => {
+  const val = localMeetingId.value
+  return val.startsWith('http://') || val.startsWith('https://')
+})
+
+function openMeetingUrl() {
+  if (meetingIdIsUrl.value) {
+    shellOpen(localMeetingId.value).catch((err) => {
+      console.error('Failed to open URL:', err)
+    })
+  }
+}
 
 const saveStatusColor = computed(() => {
   switch (saveStatus.value) {
