@@ -142,4 +142,25 @@ watch(
 </script>
 
 <style scoped>
+/* Windows 11 Mica/Acrylic effect on header */
+:deep(.q-header) {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(46, 49, 146, 0.92) !important;
+}
+
+/* Rounded corners on cards and dialogs for Windows 11 feel */
+:deep(.q-card) {
+  border-radius: 8px;
+}
+
+:deep(.q-dialog .q-card) {
+  border-radius: 12px;
+}
+
+/* Smooth font rendering with Segoe UI Variable */
+:deep(*) {
+  font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
 </style>

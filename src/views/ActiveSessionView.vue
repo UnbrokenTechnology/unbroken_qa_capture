@@ -193,12 +193,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, inject, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useQuasar } from 'quasar'
 import { useSessionStore } from '@/stores/session'
 import { useBugStore } from '@/stores/bug'
 import SessionNotepad from '@/components/SessionNotepad.vue'
 import type { Bug as BackendBug } from '@/types/backend'
 
 const router = useRouter()
+const $q = useQuasar()
 const sessionStore = useSessionStore()
 const bugStore = useBugStore()
 
@@ -299,47 +301,68 @@ function getBugStatusColor(status: string): string {
 }
 
 async function handleNewBugCapture() {
-  try {
-    // Start a new bug capture
-    if (!activeSession.value) {
-      console.error('No active session')
-      return
-    }
+  if (!activeSession.value) {
+    $q.notify({ type: 'warning', message: 'No active session', position: 'bottom-right' })
+    return
+  }
 
+  try {
     await bugStore.startBugCapture({
       session_id: activeSession.value.id,
       status: 'capturing',
     })
   } catch (error) {
     console.error('Failed to start bug capture:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to start bug capture',
+      caption: error instanceof Error ? error.message : String(error),
+      position: 'bottom-right',
+      timeout: 5000,
+    })
   }
 }
 
 async function handleEndBugCapture() {
-  try {
-    if (!bugStore.activeBug) {
-      console.error('No active bug capture')
-      return
-    }
+  if (!bugStore.activeBug) {
+    $q.notify({ type: 'warning', message: 'No active bug capture', position: 'bottom-right' })
+    return
+  }
 
+  try {
     await bugStore.completeBugCapture(bugStore.activeBug.id)
   } catch (error) {
     console.error('Failed to end bug capture:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to complete bug capture',
+      caption: error instanceof Error ? error.message : String(error),
+      position: 'bottom-right',
+      timeout: 5000,
+    })
   }
 }
 
 async function handleEndSession() {
-  try {
-    if (!activeSession.value) {
-      console.error('No active session')
-      return
-    }
+  if (!activeSession.value) {
+    $q.notify({ type: 'warning', message: 'No active session', position: 'bottom-right' })
+    return
+  }
 
-    await sessionStore.endSession(activeSession.value.id)
+  try {
+    const sessionId = activeSession.value.id
+    await sessionStore.endSession(sessionId)
     // Navigation will be handled by App.vue watching activeSession
-    router.push({ name: 'session-review', params: { id: activeSession.value.id } })
+    router.push({ name: 'session-review', params: { id: sessionId } })
   } catch (error) {
     console.error('Failed to end session:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to end session',
+      caption: error instanceof Error ? error.message : String(error),
+      position: 'bottom-right',
+      timeout: 5000,
+    })
   }
 }
 
@@ -357,6 +380,13 @@ async function loadSessionBugs() {
     await bugStore.loadBugsBySession(activeSession.value.id)
   } catch (error) {
     console.error('Failed to load session bugs:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to load bugs for this session',
+      caption: error instanceof Error ? error.message : String(error),
+      position: 'bottom-right',
+      timeout: 4000,
+    })
   }
 }
 
@@ -408,6 +438,7 @@ watch(
 
 .status-bar {
   background: white;
+  border-radius: 8px;
   animation: fadeIn 0.3s ease-in;
 }
 
@@ -417,12 +448,16 @@ watch(
 
 .bug-cards-list {
   background: white;
+  border-radius: 8px;
   max-height: 400px;
   overflow-y: auto;
+  /* Smooth scrolling for 30-bug list performance */
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
 .bug-card {
-  transition: background-color 0.2s ease;
+  transition: background-color 0.15s ease;
 }
 
 .bug-card:hover {
@@ -470,45 +505,64 @@ watch(
 
 .session-notepad-expansion {
   background: white;
+  border-radius: 8px;
   animation: fadeIn 0.5s ease-in;
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Compact mode: 400x500px */
+@media (max-width: 440px) {
+  .content-wrapper {
+    padding: 0.5rem 0.25rem;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  .bug-thumbnail,
+  .bug-thumbnail-placeholder {
+    width: 50px;
+    height: 38px;
+    min-width: 50px;
+  }
+  .bug-cards-list {
+    max-height: 260px;
+  }
+  .status-bar .q-card-section {
+    flex-wrap: wrap;
+    gap: 4px;
   }
 }
 
-/* Responsive design for 400x600px minimum */
-@media (max-width: 600px) {
+/* Comfortable mode: 600x800px */
+@media (min-width: 441px) and (max-width: 660px) {
   .content-wrapper {
-    padding: 0.5rem;
+    padding: 0.75rem;
   }
-
-  .status-bar .q-card-section {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .bug-thumbnail,
   .bug-thumbnail-placeholder {
     width: 60px;
     height: 45px;
     min-width: 60px;
+  }
+  .bug-cards-list {
+    max-height: 340px;
+  }
+}
+
+/* Full mode: 1000x800px+ */
+@media (min-width: 1000px) {
+  .content-wrapper {
+    max-width: 900px;
+    padding: 1.5rem 2rem;
+  }
+  .bug-cards-list {
+    max-height: 500px;
   }
 }
 </style>

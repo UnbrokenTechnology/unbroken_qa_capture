@@ -135,10 +135,12 @@
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useQuasar } from 'quasar'
 import { useSessionStore } from '@/stores/session'
 import type { SessionSummary } from '@/types/backend'
 
 const router = useRouter()
+const $q = useQuasar()
 const sessionStore = useSessionStore()
 
 // Limit to 10 most recent sessions
@@ -152,6 +154,13 @@ onMounted(async () => {
     await sessionStore.loadSessionSummaries()
   } catch (error) {
     console.error('Failed to load session summaries:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to load recent sessions',
+      caption: error instanceof Error ? error.message : String(error),
+      position: 'bottom-right',
+      timeout: 4000,
+    })
   }
 })
 
@@ -161,6 +170,13 @@ async function handleStartSession() {
     // Navigation will be handled by App.vue watching activeSession
   } catch (error) {
     console.error('Failed to start session:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to start session',
+      caption: error instanceof Error ? error.message : String(error),
+      position: 'bottom-right',
+      timeout: 5000,
+    })
   }
 }
 
@@ -277,6 +293,7 @@ function getStatusColor(status: string): string {
   font-weight: 600;
   letter-spacing: 0.5px;
   transition: transform 0.2s ease;
+  border-radius: 8px;
 }
 
 .start-session-btn:hover {
@@ -290,6 +307,7 @@ function getStatusColor(status: string): string {
 
 .sessions-list {
   background: white;
+  border-radius: 8px;
   animation: slideUp 0.3s ease-out;
 }
 
@@ -308,22 +326,41 @@ function getStatusColor(status: string): string {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Compact mode: 400x500px */
+@media (max-width: 440px) {
+  .content-wrapper {
+    padding: 0.75rem 0.5rem;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  .app-branding .q-icon {
+    font-size: 40px !important;
+  }
+  .start-session-btn {
+    font-size: 0.95rem;
+    padding: 0.6rem 1rem;
+  }
+}
+
+/* Comfortable mode: 600x800px */
+@media (min-width: 441px) and (max-width: 660px) {
+  .content-wrapper {
+    padding: 1.5rem 1rem;
+  }
+}
+
+/* Full mode: 1000x800px+ */
+@media (min-width: 1000px) {
+  .content-wrapper {
+    max-width: 800px;
+    padding: 2.5rem 2rem;
   }
 }
 </style>
