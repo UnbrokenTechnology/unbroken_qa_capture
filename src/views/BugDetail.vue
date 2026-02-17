@@ -316,21 +316,31 @@
                           </div>
                         </template>
                       </q-img>
-                      <q-btn
-                        flat
-                        size="sm"
-                        icon="edit"
-                        label="Annotate"
-                        color="primary"
-                        class="q-mt-xs"
-                        @click="openAnnotator(capture.annotated_path || capture.file_path, getScreenshotIndex(capture))"
-                      />
-                      <q-badge
-                        v-if="capture.annotated_path"
-                        color="blue"
-                        class="q-ml-xs"
-                        label="Annotated"
-                      />
+                      <div class="row items-center q-gutter-xs q-mt-xs">
+                        <q-btn
+                          flat
+                          size="sm"
+                          icon="edit"
+                          label="Annotate"
+                          color="primary"
+                          @click="openAnnotator(capture.annotated_path || capture.file_path, getScreenshotIndex(capture))"
+                        />
+                        <q-btn
+                          flat
+                          size="sm"
+                          icon="terminal"
+                          label="Mark as Console"
+                          color="grey-7"
+                          @click="toggleConsoleCapture(capture.id, true)"
+                        >
+                          <q-tooltip>Tag this screenshot as a console capture for error/warning extraction</q-tooltip>
+                        </q-btn>
+                        <q-badge
+                          v-if="capture.annotated_path"
+                          color="blue"
+                          label="Annotated"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -344,8 +354,20 @@
 
                   <!-- Console capture -->
                   <div v-else-if="capture.is_console_capture">
-                    <div class="text-caption text-grey-6">
-                      Console screenshot: {{ capture.file_name }}
+                    <div class="row items-center q-gutter-xs">
+                      <div class="text-caption text-grey-6">
+                        Console screenshot: {{ capture.file_name }}
+                      </div>
+                      <q-btn
+                        flat
+                        size="sm"
+                        icon="cancel"
+                        label="Unmark"
+                        color="orange-7"
+                        @click="toggleConsoleCapture(capture.id, false)"
+                      >
+                        <q-tooltip>Remove console capture tag</q-tooltip>
+                      </q-btn>
                     </div>
                   </div>
                 </div>
@@ -987,6 +1009,27 @@ async function refreshCaptures() {
     captures.value = await tauri.getBugCaptures(id)
   } catch (err) {
     console.error('Failed to load captures:', err)
+  }
+}
+
+async function toggleConsoleCapture(captureId: string, isConsole: boolean) {
+  try {
+    await tauri.updateCaptureConsoleFlag(captureId, isConsole)
+    await refreshCaptures()
+    $q.notify({
+      type: 'positive',
+      message: isConsole ? 'Marked as console capture' : 'Unmarked as console capture',
+      position: 'top',
+      timeout: 1500,
+    })
+  } catch (err) {
+    console.error('Failed to toggle console capture:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to update console capture status',
+      position: 'top',
+      timeout: 3000,
+    })
   }
 }
 
