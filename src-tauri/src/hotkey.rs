@@ -134,11 +134,6 @@ impl HotkeyManager {
             })
             .map_err(|e| format!("Failed to register shortcut: {}", e))?;
 
-        // Register the shortcut to be active
-        app.global_shortcut()
-            .register(shortcut)
-            .map_err(|e| format!("Failed to activate shortcut: {}", e))?;
-
         Ok(())
     }
 
