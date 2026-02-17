@@ -5,9 +5,16 @@ import * as tauri from '../api/tauri'
 
 // Settings keys
 export const SETTINGS_KEYS = {
+  // Legacy hotkey keys (deprecated, kept for migration)
   HOTKEY_CAPTURE: 'hotkey_capture',
   HOTKEY_START_SESSION: 'hotkey_start_session',
   HOTKEY_END_SESSION: 'hotkey_end_session',
+  // New hotkey keys (matching hotkey.rs HotkeyAction enum)
+  HOTKEY_TOGGLE_SESSION: 'hotkey_toggle_session',
+  HOTKEY_START_BUG_CAPTURE: 'hotkey_start_bug_capture',
+  HOTKEY_END_BUG_CAPTURE: 'hotkey_end_bug_capture',
+  HOTKEY_OPEN_QUICK_NOTEPAD: 'hotkey_open_quick_notepad',
+  HOTKEY_OPEN_SESSION_NOTEPAD: 'hotkey_open_session_notepad',
   DEFAULT_SAVE_PATH: 'default_save_path',
   CUSTOM_TEMPLATE_PATH: 'custom_template_path',
   AUTO_START_RECORDING: 'auto_start_recording',
@@ -22,9 +29,16 @@ export type SettingsKey = typeof SETTINGS_KEYS[keyof typeof SETTINGS_KEYS]
 
 // Default settings values
 const DEFAULT_SETTINGS: Record<SettingsKey, string> = {
+  // Legacy hotkey defaults (deprecated)
   [SETTINGS_KEYS.HOTKEY_CAPTURE]: 'Ctrl+Shift+B',
   [SETTINGS_KEYS.HOTKEY_START_SESSION]: 'Ctrl+Shift+S',
   [SETTINGS_KEYS.HOTKEY_END_SESSION]: 'Ctrl+Shift+E',
+  // New hotkey defaults (matching hotkey.rs HotkeyConfig::default())
+  [SETTINGS_KEYS.HOTKEY_TOGGLE_SESSION]: 'Ctrl+Shift+Q',
+  [SETTINGS_KEYS.HOTKEY_START_BUG_CAPTURE]: 'PrintScreen',
+  [SETTINGS_KEYS.HOTKEY_END_BUG_CAPTURE]: 'F4',
+  [SETTINGS_KEYS.HOTKEY_OPEN_QUICK_NOTEPAD]: 'Ctrl+Shift+N',
+  [SETTINGS_KEYS.HOTKEY_OPEN_SESSION_NOTEPAD]: 'Ctrl+Shift+M',
   [SETTINGS_KEYS.DEFAULT_SAVE_PATH]: '',
   [SETTINGS_KEYS.CUSTOM_TEMPLATE_PATH]: '',
   [SETTINGS_KEYS.AUTO_START_RECORDING]: 'false',
@@ -52,9 +66,16 @@ export const useSettingsStore = defineStore('settings', () => {
   const hasError = computed(() => error.value !== null)
 
   // Typed getters for specific settings
+  // Legacy hotkey getters (deprecated)
   const hotkeyCapture = computed(() => settings.value[SETTINGS_KEYS.HOTKEY_CAPTURE])
   const hotkeyStartSession = computed(() => settings.value[SETTINGS_KEYS.HOTKEY_START_SESSION])
   const hotkeyEndSession = computed(() => settings.value[SETTINGS_KEYS.HOTKEY_END_SESSION])
+  // New hotkey getters
+  const hotkeyToggleSession = computed(() => settings.value[SETTINGS_KEYS.HOTKEY_TOGGLE_SESSION])
+  const hotkeyStartBugCapture = computed(() => settings.value[SETTINGS_KEYS.HOTKEY_START_BUG_CAPTURE])
+  const hotkeyEndBugCapture = computed(() => settings.value[SETTINGS_KEYS.HOTKEY_END_BUG_CAPTURE])
+  const hotkeyOpenQuickNotepad = computed(() => settings.value[SETTINGS_KEYS.HOTKEY_OPEN_QUICK_NOTEPAD])
+  const hotkeyOpenSessionNotepad = computed(() => settings.value[SETTINGS_KEYS.HOTKEY_OPEN_SESSION_NOTEPAD])
   const defaultSavePath = computed(() => settings.value[SETTINGS_KEYS.DEFAULT_SAVE_PATH])
   const customTemplatePath = computed(() => settings.value[SETTINGS_KEYS.CUSTOM_TEMPLATE_PATH])
   const autoStartRecording = computed(() => settings.value[SETTINGS_KEYS.AUTO_START_RECORDING] === 'true')
@@ -236,6 +257,11 @@ export const useSettingsStore = defineStore('settings', () => {
     hotkeyCapture,
     hotkeyStartSession,
     hotkeyEndSession,
+    hotkeyToggleSession,
+    hotkeyStartBugCapture,
+    hotkeyEndBugCapture,
+    hotkeyOpenQuickNotepad,
+    hotkeyOpenSessionNotepad,
     defaultSavePath,
     customTemplatePath,
     autoStartRecording,
