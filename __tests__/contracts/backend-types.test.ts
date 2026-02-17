@@ -700,6 +700,7 @@ describe('CreateTicketResponse type contract', () => {
     id: 'ticket-internal-uuid',
     url: 'https://linear.app/team/issue/PROJ-123',
     identifier: 'PROJ-123',
+    attachment_results: [],
   }
 
   it('mock satisfies CreateTicketResponse interface', () => {
@@ -707,12 +708,13 @@ describe('CreateTicketResponse type contract', () => {
       id: 'string',
       url: 'string',
       identifier: 'string',
+      attachment_results: 'object',
     }
     assertShape(mockResponse as unknown as Record<string, unknown>, spec, 'CreateTicketResponse')
   })
 
-  it('has exactly 3 fields matching the Rust struct', () => {
-    expect(Object.keys(mockResponse)).toHaveLength(3)
+  it('has exactly 4 fields matching the Rust struct', () => {
+    expect(Object.keys(mockResponse)).toHaveLength(4)
   })
 })
 

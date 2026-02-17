@@ -1,6 +1,7 @@
 use super::trait_def::TicketingIntegration;
 use super::types::*;
 use serde_json::json;
+use std::io::Read;
 use std::sync::{Arc, RwLock};
 
 /// Linear integration for creating issues via GraphQL API
@@ -82,13 +83,160 @@ impl LinearIntegration {
         Ok(json_response)
     }
 
-    /// Upload an attachment to Linear
+    /// Upload a file to Linear using the three-step process:
+    /// 1. Request a pre-signed upload URL via the `fileUpload` mutation
+    /// 2. PUT the file bytes to the signed URL with the required headers
+    /// 3. Return the permanent asset URL for embedding in the issue description
+    ///
+    /// Returns the asset URL on success, or an error if upload fails.
     fn upload_attachment(&self, file_path: &str) -> TicketingResult<String> {
-        // For now, we'll return a placeholder since Linear attachment upload
-        // requires a more complex multi-step process (get upload URL, upload file, etc.)
-        // This can be implemented in a future iteration
-        let _ = file_path;
-        Ok(String::new())
+        use std::path::Path;
+
+        let path = Path::new(file_path);
+
+        // Read file bytes
+        let mut file = std::fs::File::open(path).map_err(|e| {
+            TicketingError::NetworkError(format!("Cannot open file {}: {}", file_path, e))
+        })?;
+        let mut file_bytes = Vec::new();
+        file.read_to_end(&mut file_bytes).map_err(|e| {
+            TicketingError::NetworkError(format!("Cannot read file {}: {}", file_path, e))
+        })?;
+
+        // Determine MIME type from extension
+        let content_type = match path.extension().and_then(|e| e.to_str()) {
+            Some("png") => "image/png",
+            Some("jpg") | Some("jpeg") => "image/jpeg",
+            Some("gif") => "image/gif",
+            Some("webp") => "image/webp",
+            Some("mp4") => "video/mp4",
+            Some("mov") => "video/quicktime",
+            Some("webm") => "video/webm",
+            _ => "application/octet-stream",
+        };
+
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("attachment");
+
+        let file_size = file_bytes.len() as u64;
+
+        // Step 1: Request a pre-signed upload URL from Linear
+        let creds = self.credentials.read().unwrap();
+        let credentials = creds
+            .as_ref()
+            .ok_or_else(|| TicketingError::AuthenticationFailed("Not authenticated".to_string()))?;
+
+        let upload_query = r#"
+            mutation FileUpload($contentType: String!, $filename: String!, $size: Int!) {
+                fileUpload(contentType: $contentType, filename: $filename, size: $size) {
+                    uploadFile {
+                        uploadUrl
+                        assetUrl
+                        headers {
+                            key
+                            value
+                        }
+                    }
+                }
+            }
+        "#;
+
+        let upload_variables = json!({
+            "contentType": content_type,
+            "filename": file_name,
+            "size": file_size
+        });
+
+        let client = reqwest::blocking::Client::new();
+        let graphql_response = client
+            .post(&self.api_endpoint)
+            .header("Authorization", credentials.api_key.clone())
+            .header("Content-Type", "application/json")
+            .json(&json!({
+                "query": upload_query,
+                "variables": upload_variables
+            }))
+            .send()
+            .map_err(|e| TicketingError::NetworkError(format!("fileUpload mutation failed: {}", e)))?;
+
+        if !graphql_response.status().is_success() {
+            return Err(TicketingError::NetworkError(format!(
+                "fileUpload mutation HTTP {}: {}",
+                graphql_response.status(),
+                graphql_response.text().unwrap_or_default()
+            )));
+        }
+
+        let graphql_json: serde_json::Value = graphql_response.json().map_err(|e| {
+            TicketingError::NetworkError(format!("Failed to parse fileUpload response: {}", e))
+        })?;
+
+        if let Some(errors) = graphql_json.get("errors") {
+            return Err(TicketingError::NetworkError(format!(
+                "fileUpload GraphQL errors: {}",
+                errors
+            )));
+        }
+
+        let upload_file = graphql_json
+            .get("data")
+            .and_then(|d| d.get("fileUpload"))
+            .and_then(|fu| fu.get("uploadFile"))
+            .ok_or_else(|| {
+                TicketingError::NetworkError(
+                    "fileUpload mutation returned no uploadFile".to_string(),
+                )
+            })?;
+
+        let upload_url = upload_file
+            .get("uploadUrl")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                TicketingError::NetworkError("fileUpload returned no uploadUrl".to_string())
+            })?;
+
+        let asset_url = upload_file
+            .get("assetUrl")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                TicketingError::NetworkError("fileUpload returned no assetUrl".to_string())
+            })?
+            .to_string();
+
+        // Step 2: PUT file bytes to the signed S3 URL with required headers
+        let mut put_request = client
+            .put(upload_url)
+            .header("Content-Type", content_type)
+            .header("Cache-Control", "public, max-age=31536000");
+
+        // Apply all auth headers returned by Linear
+        if let Some(headers) = upload_file.get("headers").and_then(|h| h.as_array()) {
+            for header in headers {
+                let key = header.get("key").and_then(|k| k.as_str()).unwrap_or("");
+                let value = header.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                if !key.is_empty() {
+                    put_request = put_request.header(key, value);
+                }
+            }
+        }
+
+        let put_response = put_request
+            .body(file_bytes)
+            .send()
+            .map_err(|e| TicketingError::NetworkError(format!("S3 PUT upload failed: {}", e)))?;
+
+        if !put_response.status().is_success() {
+            return Err(TicketingError::NetworkError(format!(
+                "S3 PUT upload HTTP {}: {}",
+                put_response.status(),
+                put_response.text().unwrap_or_default()
+            )));
+        }
+
+        // Step 3: Return the permanent asset URL for embedding in the description
+        Ok(asset_url)
     }
 }
 
@@ -159,14 +307,53 @@ impl TicketingIntegration for LinearIntegration {
             .as_ref()
             .ok_or_else(|| TicketingError::InvalidConfig("team_id is required".to_string()))?;
 
-        // Upload attachments first
-        let mut attachment_ids = Vec::new();
+        // Upload attachments and collect asset URLs; log failures but continue
+        let mut attachment_results: Vec<AttachmentUploadResult> = Vec::new();
+        let mut asset_urls: Vec<String> = Vec::new();
         for attachment_path in &request.attachments {
-            if let Ok(attachment_id) = self.upload_attachment(attachment_path) {
-                if !attachment_id.is_empty() {
-                    attachment_ids.push(attachment_id);
+            match self.upload_attachment(attachment_path) {
+                Ok(url) if !url.is_empty() => {
+                    attachment_results.push(AttachmentUploadResult {
+                        file_path: attachment_path.clone(),
+                        success: true,
+                        message: url.clone(),
+                    });
+                    asset_urls.push(url);
+                }
+                Ok(_) => {
+                    attachment_results.push(AttachmentUploadResult {
+                        file_path: attachment_path.clone(),
+                        success: false,
+                        message: "Upload returned empty URL".to_string(),
+                    });
+                }
+                Err(e) => {
+                    attachment_results.push(AttachmentUploadResult {
+                        file_path: attachment_path.clone(),
+                        success: false,
+                        message: e.to_string(),
+                    });
                 }
             }
+        }
+
+        // Build description with embedded screenshot images (markdown format)
+        let mut full_description = request.description.clone();
+        if !asset_urls.is_empty() {
+            full_description.push_str("\n\n## Screenshots\n\n");
+            for (i, url) in asset_urls.iter().enumerate() {
+                full_description.push_str(&format!("![Screenshot {}]({})\n\n", i + 1, url));
+            }
+        }
+        let upload_failures: Vec<&str> = attachment_results
+            .iter()
+            .filter(|r| !r.success)
+            .map(|r| r.file_path.as_str())
+            .collect();
+        if !upload_failures.is_empty() {
+            full_description.push_str("\n\n*Note: The following screenshots could not be uploaded: ");
+            full_description.push_str(&upload_failures.join(", "));
+            full_description.push('*');
         }
 
         // Create the issue
@@ -188,7 +375,7 @@ impl TicketingIntegration for LinearIntegration {
             "input": {
                 "teamId": team_id,
                 "title": request.title,
-                "description": request.description,
+                "description": full_description,
             }
         });
 
@@ -233,6 +420,7 @@ impl TicketingIntegration for LinearIntegration {
             id,
             url,
             identifier,
+            attachment_results,
         })
     }
 

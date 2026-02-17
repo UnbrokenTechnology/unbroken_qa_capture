@@ -712,6 +712,22 @@
           @click="generateAllDescriptions"
         />
         <q-btn
+          color="info"
+          icon="summarize"
+          label="Generate Session Summary"
+          :disable="!sessionStore.activeSession"
+          :loading="isSummaryGenerating"
+          @click="generateSessionSummary"
+        />
+        <q-btn
+          color="teal"
+          icon="save_alt"
+          label="Export to File"
+          :disable="finalizedBugs.length === 0"
+          :loading="isExportingToFile"
+          @click="exportToFile"
+        />
+        <q-btn
           color="positive"
           icon="upload"
           label="Export to Linear"
@@ -768,6 +784,45 @@
             color="primary"
             :disable="!refinementInstructions.trim()"
             @click="refineDescription"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Session Summary Dialog -->
+    <q-dialog v-model="showSummaryDialog">
+      <q-card style="min-width: 500px; max-width: 600px">
+        <q-card-section>
+          <div class="text-h6">
+            Session Summary Generated
+          </div>
+        </q-card-section>
+
+        <q-card-section>
+          <div class="text-body2 text-grey-8 q-mb-sm">
+            The summary has been saved to <code>session-summary.md</code> in your session folder.
+          </div>
+          <q-input
+            v-model="summaryFilePath"
+            label="File path"
+            outlined
+            readonly
+            dense
+          />
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn
+            flat
+            label="Close"
+            color="grey"
+            @click="showSummaryDialog = false"
+          />
+          <q-btn
+            label="Copy Path"
+            color="primary"
+            icon="content_copy"
+            @click="copySummaryPath"
           />
         </q-card-actions>
       </q-card>
@@ -952,6 +1007,21 @@
                 >
                   {{ result.error }}
                 </q-item-label>
+                <!-- Attachment upload results -->
+                <template v-if="result.success && result.attachmentResults && result.attachmentResults.length > 0">
+                  <q-item-label
+                    v-for="(att, idx) in result.attachmentResults"
+                    :key="idx"
+                    caption
+                    :class="att.success ? 'text-positive' : 'text-warning'"
+                  >
+                    <q-icon
+                      :name="att.success ? 'attach_file' : 'warning'"
+                      size="xs"
+                    />
+                    {{ att.success ? `Screenshot ${idx + 1} uploaded` : `Screenshot ${idx + 1} failed: ${att.message}` }}
+                  </q-item-label>
+                </template>
               </q-item-section>
               <q-item-section
                 v-if="result.success"
@@ -1063,6 +1133,7 @@ interface PushResult {
   identifier?: string
   url?: string
   error?: string
+  attachmentResults?: Array<{ file_path: string; success: boolean; message: string }>
 }
 
 interface TicketPreview {
@@ -1086,6 +1157,15 @@ const claudeAvailable = ref(false)
 const claudeStatusMessage = ref('')
 const showRefineDialog = ref(false)
 const refinementInstructions = ref('')
+
+// Session Summary State
+const showSummaryDialog = ref(false)
+const isSummaryGenerating = ref(false)
+const summaryContent = ref('')
+const summaryFilePath = ref('')
+
+// File Export State
+const isExportingToFile = ref(false)
 
 // Computed
 const bugs = computed(() => bugStore.backendBugs)
@@ -1462,7 +1542,8 @@ async function pushToLinear() {
         bugTitle: bug.title || `Bug ${bug.display_id}`,
         success: true,
         identifier: response.identifier,
-        url: response.url
+        url: response.url,
+        attachmentResults: response.attachment_results
       })
 
       Notify.create({
@@ -1628,6 +1709,71 @@ async function saveDescription() {
       message: `Failed to save description: ${err}`,
       position: 'top'
     })
+  }
+}
+
+function copySummaryPath() {
+  navigator.clipboard.writeText(summaryFilePath.value).then(() => {
+    $q.notify({ type: 'positive', message: 'Path copied to clipboard', position: 'top', timeout: 1500 })
+  }).catch(() => {
+    $q.notify({ type: 'negative', message: 'Failed to copy to clipboard', position: 'top' })
+  })
+}
+
+async function generateSessionSummary() {
+  if (!sessionStore.activeSession) return
+
+  try {
+    isSummaryGenerating.value = true
+    const filePath = await tauri.generateSessionSummary(sessionStore.activeSession.id, false)
+    summaryFilePath.value = filePath
+
+    // Read the generated file content to display in the dialog
+    // The backend returns the file path; we display a success message and show the path
+    summaryContent.value = `Session summary generated and saved to:\n${filePath}\n\nOpen the file to view the full summary.`
+    showSummaryDialog.value = true
+
+    $q.notify({
+      type: 'positive',
+      message: 'Session summary generated successfully',
+      position: 'top'
+    })
+  } catch (err) {
+    console.error('Failed to generate session summary:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to generate session summary: ${err}`,
+      position: 'top'
+    })
+  } finally {
+    isSummaryGenerating.value = false
+  }
+}
+
+async function exportToFile() {
+  if (!sessionStore.activeSession) return
+
+  try {
+    isExportingToFile.value = true
+    const folderPath = sessionStore.activeSession.folder_path
+    await tauri.formatSessionExport(folderPath)
+    await tauri.openSessionFolder(folderPath)
+
+    $q.notify({
+      type: 'positive',
+      message: `tickets-ready.md generated and saved to:\n${folderPath}`,
+      position: 'top',
+      timeout: 5000
+    })
+  } catch (err) {
+    console.error('Failed to export session to file:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to export session: ${err}`,
+      position: 'top'
+    })
+  } finally {
+    isExportingToFile.value = false
   }
 }
 

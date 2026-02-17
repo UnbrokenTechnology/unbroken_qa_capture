@@ -59,6 +59,10 @@ export async function openSessionFolder(folderPath: string): Promise<void> {
   await invoke('open_session_folder', { folderPath })
 }
 
+export async function formatSessionExport(sessionFolderPath: string): Promise<void> {
+  await invoke('format_session_export', { sessionFolderPath })
+}
+
 // ============================================================================
 // Tray Commands
 // ============================================================================
@@ -110,6 +114,10 @@ export async function getActiveSession(): Promise<Session | null> {
 
 export async function getSessionSummaries(): Promise<SessionSummary[]> {
   return await invoke<SessionSummary[]>('get_session_summaries')
+}
+
+export async function generateSessionSummary(sessionId: string, includeAiSummary: boolean): Promise<string> {
+  return await invoke<string>('generate_session_summary', { sessionId, includeAiSummary })
 }
 
 export async function updateSessionStatus(id: string, status: string): Promise<void> {
