@@ -12,6 +12,7 @@ fi
 
 RUST_OK=true
 TS_OK=true
+CMDS_OK=true
 
 # ─── Rust Backend ───────────────────────────────────────────────────────────
 
@@ -55,6 +56,12 @@ if [ -f "package.json" ]; then
         npx eslint --ext .ts,.vue src/ || TS_OK=false
     fi
 
+    # Command conventions check
+    if [ -f "scripts/check-commands.sh" ]; then
+        echo "=== Command conventions ==="
+        bash scripts/check-commands.sh || CMDS_OK=false
+    fi
+
     # Tests (Vitest)
     if grep -q '"vitest"' package.json 2>/dev/null; then
         echo "=== Vitest: unit tests ==="
@@ -69,11 +76,12 @@ fi
 
 # ─── Results ────────────────────────────────────────────────────────────────
 
-if [ "$RUST_OK" = false ] || [ "$TS_OK" = false ]; then
+if [ "$RUST_OK" = false ] || [ "$TS_OK" = false ] || [ "$CMDS_OK" = false ]; then
     echo ""
     echo "VERIFICATION FAILED"
     [ "$RUST_OK" = false ] && echo "  - Rust checks failed"
     [ "$TS_OK" = false ] && echo "  - TypeScript/Vue checks failed"
+    [ "$CMDS_OK" = false ] && echo "  - Command conventions check failed"
     exit 1
 fi
 
