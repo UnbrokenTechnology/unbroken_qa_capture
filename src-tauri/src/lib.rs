@@ -1746,7 +1746,7 @@ async fn open_annotation_window(
     .inner_size(window_width, window_height)
     .position(window_x, window_y)
     .resizable(true)
-    .decorations(true) // Use system decorations for v1, can be minimized for v2
+    .decorations(false) // Frameless window per PRD: "Frameless or minimal frame. Always on top."
     .always_on_top(true)
     .focused(true)
     .build()

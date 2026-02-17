@@ -1,6 +1,6 @@
 <template>
   <div class="annotator-content bg-grey-9 text-white">
-    <q-bar class="bg-primary">
+    <q-bar class="bg-primary" data-tauri-drag-region>
       <div class="text-h6">
         Annotate Screenshot
       </div>
