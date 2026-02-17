@@ -19,6 +19,15 @@
         <q-btn
           flat
           dense
+          icon="sticky_note_2"
+          @click="showQuickNotepad = !showQuickNotepad"
+        >
+          <q-tooltip>{{ showQuickNotepad ? 'Close' : 'Open' }} Quick Notepad (Ctrl+Alt+N)</q-tooltip>
+        </q-btn>
+
+        <q-btn
+          flat
+          dense
           :icon="showStatusWidget ? 'visibility_off' : 'visibility'"
           @click="toggleStatusWidget"
         >
@@ -59,7 +68,7 @@
       @complete="onSetupComplete"
     />
 
-    <!-- Quick Notepad (hotkey: Ctrl+Shift+N) -->
+    <!-- Quick Notepad (hotkey: Ctrl+Alt+N) -->
     <QuickNotepad
       :visible="showQuickNotepad"
       @close="showQuickNotepad = false"

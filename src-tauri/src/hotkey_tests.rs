@@ -71,19 +71,19 @@ mod integration_tests {
         let manager = HotkeyManager::new();
         let original_config = manager.get_config();
 
-        // Create a new config with different shortcuts
+        // Create a new config with different shortcuts (use values different from defaults)
         let mut new_shortcuts = HashMap::new();
-        new_shortcuts.insert(HotkeyAction::ToggleSession, "Ctrl+Alt+S".to_string());
-        new_shortcuts.insert(HotkeyAction::StartBugCapture, "Ctrl+Alt+B".to_string());
-        new_shortcuts.insert(HotkeyAction::EndBugCapture, "Ctrl+Alt+E".to_string());
-        new_shortcuts.insert(HotkeyAction::OpenQuickNotepad, "Ctrl+Alt+Q".to_string());
-        new_shortcuts.insert(HotkeyAction::OpenSessionNotepad, "Ctrl+Alt+M".to_string());
+        new_shortcuts.insert(HotkeyAction::ToggleSession, "F1".to_string());
+        new_shortcuts.insert(HotkeyAction::StartBugCapture, "F2".to_string());
+        new_shortcuts.insert(HotkeyAction::EndBugCapture, "F3".to_string());
+        new_shortcuts.insert(HotkeyAction::OpenQuickNotepad, "F4".to_string());
+        new_shortcuts.insert(HotkeyAction::OpenSessionNotepad, "F6".to_string());
 
         let new_config = HotkeyConfig {
             shortcuts: new_shortcuts,
         };
 
-        // The config should be different
+        // The config should be different from the defaults
         assert_ne!(
             original_config.shortcuts.get(&HotkeyAction::ToggleSession),
             new_config.shortcuts.get(&HotkeyAction::ToggleSession)
@@ -104,23 +104,23 @@ mod integration_tests {
 
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::ToggleSession).unwrap(),
-            "F5"
+            "Ctrl+Alt+S"
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::StartBugCapture).unwrap(),
-            "F7"
+            "Ctrl+Alt+B"
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::EndBugCapture).unwrap(),
-            "F9"
+            "Ctrl+Alt+E"
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::OpenQuickNotepad).unwrap(),
-            "Ctrl+Shift+N"
+            "Ctrl+Alt+N"
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::OpenSessionNotepad).unwrap(),
-            "Ctrl+Shift+M"
+            "Ctrl+Alt+P"
         );
     }
 

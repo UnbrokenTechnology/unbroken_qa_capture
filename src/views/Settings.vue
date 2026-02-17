@@ -113,7 +113,7 @@
             <q-input
               v-model="localSettings.hotkey_toggle_session"
               label="Start/End Session"
-              hint="Default: F5"
+              hint="Default: Ctrl+Alt+S"
               outlined
               readonly
             >
@@ -136,7 +136,7 @@
             <q-input
               v-model="localSettings.hotkey_new_bug"
               label="New Bug Capture"
-              hint="Default: F7"
+              hint="Default: Ctrl+Alt+B"
               outlined
               readonly
             >
@@ -159,7 +159,7 @@
             <q-input
               v-model="localSettings.hotkey_end_bug"
               label="End Bug Capture"
-              hint="Default: F9"
+              hint="Default: Ctrl+Alt+E"
               outlined
               readonly
             >
@@ -182,7 +182,7 @@
             <q-input
               v-model="localSettings.hotkey_quick_notepad"
               label="Quick Notepad"
-              hint="Default: Ctrl+Shift+N"
+              hint="Default: Ctrl+Alt+N"
               outlined
               readonly
             >
@@ -205,7 +205,7 @@
             <q-input
               v-model="localSettings.hotkey_session_notepad"
               label="Session Notepad"
-              hint="Default: Ctrl+Shift+M"
+              hint="Default: Ctrl+Alt+P"
               outlined
               readonly
             >
@@ -665,11 +665,11 @@ const localSettings = ref({
   minimize_to_tray: true,
 
   // Hotkeys
-  hotkey_toggle_session: 'Ctrl+Shift+Q',
-  hotkey_new_bug: 'Print Screen',
-  hotkey_end_bug: 'F4',
-  hotkey_quick_notepad: 'Ctrl+Shift+N',
-  hotkey_session_notepad: 'Ctrl+Shift+M',
+  hotkey_toggle_session: 'Ctrl+Alt+S',
+  hotkey_new_bug: 'Ctrl+Alt+B',
+  hotkey_end_bug: 'Ctrl+Alt+E',
+  hotkey_quick_notepad: 'Ctrl+Alt+N',
+  hotkey_session_notepad: 'Ctrl+Alt+P',
 
   // Annotation
   annotation_auto_open: true,
@@ -997,11 +997,11 @@ async function loadSettings(): Promise<void> {
     minimize_to_tray: settingsStore.getSetting('minimize_to_tray', 'true') === 'true',
 
     // Hotkeys - load from backend HotkeyConfig if available
-    hotkey_toggle_session: hotkeyConfig?.shortcuts?.toggle_session ?? 'F5',
-    hotkey_new_bug: hotkeyConfig?.shortcuts?.start_bug_capture ?? 'F7',
-    hotkey_end_bug: hotkeyConfig?.shortcuts?.end_bug_capture ?? 'F9',
-    hotkey_quick_notepad: hotkeyConfig?.shortcuts?.open_quick_notepad ?? 'Ctrl+Shift+N',
-    hotkey_session_notepad: hotkeyConfig?.shortcuts?.open_session_notepad ?? 'Ctrl+Shift+M',
+    hotkey_toggle_session: hotkeyConfig?.shortcuts?.toggle_session ?? 'Ctrl+Alt+S',
+    hotkey_new_bug: hotkeyConfig?.shortcuts?.start_bug_capture ?? 'Ctrl+Alt+B',
+    hotkey_end_bug: hotkeyConfig?.shortcuts?.end_bug_capture ?? 'Ctrl+Alt+E',
+    hotkey_quick_notepad: hotkeyConfig?.shortcuts?.open_quick_notepad ?? 'Ctrl+Alt+N',
+    hotkey_session_notepad: hotkeyConfig?.shortcuts?.open_session_notepad ?? 'Ctrl+Alt+P',
 
     // Annotation
     annotation_auto_open: settingsStore.getSetting('annotation_auto_open', 'true') === 'true',

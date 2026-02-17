@@ -58,17 +58,26 @@ pub struct HotkeyConfig {
 
 impl Default for HotkeyConfig {
     fn default() -> Self {
+        // Hotkey selection rationale:
+        //   Rejected: F5 (browser/Explorer refresh), F7 (Office spell check), F9 (various apps),
+        //             Ctrl+Shift+N (Windows Explorer "New Folder", Chrome "New Incognito Window"),
+        //             Ctrl+Shift+M (minor Office conflicts)
+        //   Chosen: Ctrl+Alt+<letter> combinations — rarely claimed by Windows system hotkeys
+        //   or common developer tools (VS Code, Chrome, Office, Teams, Snipping Tool).
+        //   Ctrl+Alt collides with AltGr on some EU keyboard layouts, but Ctrl+Alt+letter
+        //   combinations that are not Windows system shortcuts (like Ctrl+Alt+Del/Tab/Esc)
+        //   are safe for the majority of en-US / en-GB users.
         let mut shortcuts = HashMap::new();
-        shortcuts.insert(HotkeyAction::ToggleSession, "F5".to_string());
-        shortcuts.insert(HotkeyAction::StartBugCapture, "F7".to_string());
-        shortcuts.insert(HotkeyAction::EndBugCapture, "F9".to_string());
+        shortcuts.insert(HotkeyAction::ToggleSession, "Ctrl+Alt+S".to_string());
+        shortcuts.insert(HotkeyAction::StartBugCapture, "Ctrl+Alt+B".to_string());
+        shortcuts.insert(HotkeyAction::EndBugCapture, "Ctrl+Alt+E".to_string());
         shortcuts.insert(
             HotkeyAction::OpenQuickNotepad,
-            "Ctrl+Shift+N".to_string(),
+            "Ctrl+Alt+N".to_string(),
         );
         shortcuts.insert(
             HotkeyAction::OpenSessionNotepad,
-            "Ctrl+Shift+M".to_string(),
+            "Ctrl+Alt+P".to_string(),
         );
         Self { shortcuts }
     }
@@ -288,23 +297,23 @@ mod tests {
         let config = HotkeyConfig::default();
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::ToggleSession),
-            Some(&"F5".to_string())
+            Some(&"Ctrl+Alt+S".to_string())
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::StartBugCapture),
-            Some(&"F7".to_string())
+            Some(&"Ctrl+Alt+B".to_string())
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::EndBugCapture),
-            Some(&"F9".to_string())
+            Some(&"Ctrl+Alt+E".to_string())
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::OpenQuickNotepad),
-            Some(&"Ctrl+Shift+N".to_string())
+            Some(&"Ctrl+Alt+N".to_string())
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::OpenSessionNotepad),
-            Some(&"Ctrl+Shift+M".to_string())
+            Some(&"Ctrl+Alt+P".to_string())
         );
     }
 
@@ -332,7 +341,7 @@ mod tests {
     #[test]
     fn test_is_registered_initially_false() {
         let manager = HotkeyManager::new();
-        assert!(!manager.is_registered("F5"));
+        assert!(!manager.is_registered("Ctrl+Alt+S"));
     }
 
     #[test]
