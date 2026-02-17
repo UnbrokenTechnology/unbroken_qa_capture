@@ -28,7 +28,13 @@ impl RealClaudeInvoker {
 
     /// Spawn claude subprocess with the given request
     fn spawn_claude(&self, request: &ClaudeRequest) -> Result<Child, ClaudeError> {
-        let mut cmd = Command::new("claude");
+        // Find the Claude CLI executable (supports Windows fallback locations)
+        let claude_path = super::find_claude_executable()
+            .ok_or_else(|| ClaudeError::NotFound(
+                "Claude CLI not found. Install from https://claude.ai/download".to_string()
+            ))?;
+
+        let mut cmd = Command::new(&claude_path);
         cmd.args(["--print", "--output-format", "json"]);
 
         // Add image files if present

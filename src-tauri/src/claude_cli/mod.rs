@@ -14,6 +14,7 @@
 
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
+use std::path::PathBuf;
 
 mod types;
 mod subprocess;
@@ -29,9 +30,51 @@ pub use prompts::PromptBuilder;
 /// Global Claude CLI status
 static CLAUDE_STATUS: Mutex<Option<ClaudeStatus>> = Mutex::new(None);
 
+/// Find the Claude CLI executable
+/// Tries PATH first, then falls back to common installation locations on Windows
+pub(crate) fn find_claude_executable() -> Option<PathBuf> {
+    // Try PATH first (works when running from terminal)
+    if let Ok(output) = Command::new("claude")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .and_then(|mut child| child.wait())
+    {
+        if output.success() {
+            return Some(PathBuf::from("claude"));
+        }
+    }
+
+    // On Windows, check explicit fallback locations
+    // The GUI app may not inherit PATH that includes ~/.local/bin
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(home_dir) = dirs::home_dir() {
+            let candidates = vec![
+                home_dir.join(".local").join("bin").join("claude.exe"),
+                home_dir.join(".claude").join("local").join("claude.exe"),
+            ];
+
+            for path in candidates {
+                if path.exists() {
+                    return Some(path);
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Check if Claude CLI is installed and available on PATH
 pub fn check_cli_available() -> Result<String, ClaudeError> {
-    let output = Command::new("claude")
+    let claude_path = find_claude_executable()
+        .ok_or_else(|| ClaudeError::NotFound(
+            "Claude CLI not found. Install from https://claude.ai/download".to_string()
+        ))?;
+
+    let output = Command::new(&claude_path)
         .arg("--version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -53,7 +96,12 @@ pub fn check_cli_available() -> Result<String, ClaudeError> {
 /// Check if Claude CLI is authenticated
 /// Returns Ok(()) if authenticated, Err if not
 pub fn check_cli_authenticated() -> Result<(), ClaudeError> {
-    let output = Command::new("claude")
+    let claude_path = find_claude_executable()
+        .ok_or_else(|| ClaudeError::NotAuthenticated(
+            "Claude CLI not found".to_string()
+        ))?;
+
+    let output = Command::new(&claude_path)
         .args(["--print", "--output-format", "json"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

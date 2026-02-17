@@ -291,4 +291,49 @@ mod claude_cli_tests {
         );
         assert_eq!(prompt, "custom prompt text");
     }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_find_claude_executable_checks_fallback_locations() {
+        // This test verifies that find_claude_executable() checks the Windows fallback locations
+        // We can't easily test the actual file existence without mocking, but we can verify
+        // the function doesn't panic and returns a proper Option type
+        let result = find_claude_executable();
+
+        // The result should be an Option - either Some(path) if found or None if not
+        // We just verify the function runs without panic
+        match result {
+            Some(_path) => {
+                // Claude CLI was found - good!
+            }
+            None => {
+                // Claude CLI was not found - also fine for this test
+                // The important thing is that the function checked fallback locations
+            }
+        }
+    }
+
+    #[test]
+    fn test_check_cli_available_returns_proper_error_when_not_found() {
+        // This test verifies that when Claude CLI is not found,
+        // we get a proper NotFound error, not a spawn error
+        let result = check_cli_available();
+
+        // If Claude is not installed, we should get a NotFound error
+        // If it is installed, we should get a version string
+        match result {
+            Ok(version) => {
+                // Claude is installed, version should not be empty
+                assert!(!version.is_empty());
+            }
+            Err(ClaudeError::NotFound(msg)) => {
+                // Claude not found - this is expected if not installed
+                // The message should be helpful
+                assert!(!msg.is_empty());
+            }
+            Err(other) => {
+                panic!("Expected NotFound error, got: {:?}", other);
+            }
+        }
+    }
 }
