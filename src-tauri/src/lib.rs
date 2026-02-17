@@ -994,6 +994,17 @@ fn end_bug_capture(bug_id: String) -> Result<(), String> {
     manager.end_bug_capture(&bug_id)
 }
 
+/// Resume capturing for an existing bug — sets its status back to 'capturing' and marks it as the active bug.
+/// Used when the user wants to add more screenshots to a bug that was previously ended.
+#[tauri::command]
+fn resume_bug_capture(bug_id: String) -> Result<database::Bug, String> {
+    let manager_guard = SESSION_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Session manager not initialized")?;
+    manager.resume_bug_capture(&bug_id)
+}
+
 #[tauri::command]
 fn get_active_session_id() -> Result<Option<String>, String> {
     let manager_guard = SESSION_MANAGER.lock().unwrap();
@@ -2221,6 +2232,7 @@ pub fn run() {
             resume_session,
             start_bug_capture,
             end_bug_capture,
+            resume_bug_capture,
             get_active_session_id,
             get_active_bug_id,
             get_active_session,

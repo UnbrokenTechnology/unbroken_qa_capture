@@ -207,6 +207,19 @@ export const useBugStore = defineStore('bug', () => {
     return bug
   }
 
+  /**
+   * Resume capturing for an existing bug (sets it as activeBug without creating a new one).
+   * Useful when the user navigates to a bug detail and wants to add more screenshots.
+   */
+  async function resumeBugCapture(bugToResume: BackendBug): Promise<void> {
+    const updated = await tauri.resumeBugCapture(bugToResume.id)
+    const index = backendBugs.value.findIndex(b => b.id === bugToResume.id)
+    if (index >= 0) {
+      backendBugs.value[index] = updated
+    }
+    activeBug.value = updated
+  }
+
   async function completeBugCapture(id: string): Promise<void> {
     await updateBackendBug(id, { status: 'captured' })
     if (activeBug.value?.id === id) {
@@ -455,6 +468,7 @@ export const useBugStore = defineStore('bug', () => {
 
     // Actions - Lifecycle
     startBugCapture,
+    resumeBugCapture,
     completeBugCapture,
     updateBugStatus,
 

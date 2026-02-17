@@ -193,7 +193,7 @@ describe('BugDetail', () => {
     const wrapper = await mountComponent('1')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Screenshots (2)')
+    expect(wrapper.text()).toContain('All Captures (2)')
   })
 
   it('should display no-captures placeholder when no captures', async () => {
@@ -204,9 +204,9 @@ describe('BugDetail', () => {
     const wrapper = await mountComponent('1')
     await flushPromises()
 
-    // Should show the "no screenshots yet" placeholder, not the carousel
-    expect(wrapper.text()).toContain('No screenshots yet')
-    expect(wrapper.text()).not.toContain('Screenshots (')
+    // Should show the "no captures yet" placeholder, not the captures card
+    expect(wrapper.text()).toContain('No captures yet')
+    expect(wrapper.text()).not.toContain('All Captures (')
   })
 
   it('should navigate back when back button is clicked', async () => {

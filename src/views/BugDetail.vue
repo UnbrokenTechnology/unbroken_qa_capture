@@ -49,6 +49,16 @@
           CAPTURING
         </q-badge>
         <q-btn
+          v-if="sessionStore.activeSession && bug.status !== 'capturing'"
+          color="red"
+          icon="fiber_manual_record"
+          label="Resume Capture"
+          class="q-mr-sm"
+          @click="handleResumeCaptureForBug"
+        >
+          <q-tooltip>Resume capturing screenshots for this bug</q-tooltip>
+        </q-btn>
+        <q-btn
           color="secondary"
           icon="folder_open"
           label="Open Folder"
@@ -64,6 +74,53 @@
           :loading="copying"
           @click="copyToClipboard"
         />
+      </div>
+
+      <!-- Capture Summary Chips -->
+      <div class="row q-gutter-sm q-mb-md">
+        <q-chip
+          v-if="screenshotCaptures.length > 0"
+          icon="photo_camera"
+          color="blue-1"
+          text-color="blue-9"
+          dense
+        >
+          {{ screenshotCaptures.length }} screenshot{{ screenshotCaptures.length !== 1 ? 's' : '' }}
+        </q-chip>
+        <q-chip
+          v-if="videoCaptures.length > 0"
+          icon="videocam"
+          color="purple-1"
+          text-color="purple-9"
+          dense
+        >
+          {{ videoCaptures.length }} video{{ videoCaptures.length !== 1 ? 's' : '' }}
+        </q-chip>
+        <q-chip
+          v-if="consoleParsed"
+          icon="terminal"
+          color="orange-1"
+          text-color="orange-9"
+          dense
+        >
+          Console parsed
+        </q-chip>
+        <q-chip
+          v-if="bug.notes"
+          icon="notes"
+          color="green-1"
+          text-color="green-9"
+          dense
+        >
+          Has notes
+        </q-chip>
+        <q-chip
+          :color="getBugStatusColor(bug.status)"
+          text-color="white"
+          dense
+        >
+          {{ bug.status }}
+        </q-chip>
       </div>
 
       <!-- Bug Metadata Card -->
@@ -178,95 +235,218 @@
         </q-card-section>
       </q-card>
 
-      <!-- Screenshots Card -->
+      <!-- Captures Timeline Card -->
       <q-card
-        v-if="screenshotCaptures.length > 0"
+        v-if="allCaptures.length > 0"
         class="q-mb-md"
       >
         <q-card-section>
           <div class="row items-center q-mb-md">
-            <q-icon
-              name="photo_camera"
-              size="sm"
-              color="primary"
-              class="q-mr-sm"
-            />
-            <span class="text-h6">Screenshots ({{ screenshotCaptures.length }})</span>
+            <q-icon name="timeline" size="sm" color="primary" class="q-mr-sm" />
+            <span class="text-h6">All Captures ({{ allCaptures.length }})</span>
             <q-space />
-            <q-badge
+            <q-btn-toggle
+              v-model="captureViewMode"
+              dense
+              flat
+              :options="[
+                { label: 'Timeline', value: 'timeline' },
+                { label: 'Carousel', value: 'carousel' },
+              ]"
               color="primary"
-              outline
-            >
-              Associated with {{ bug.display_id }}
-            </q-badge>
+            />
           </div>
-          <q-carousel
-            v-model="currentSlide"
-            swipeable
-            animated
-            navigation
-            infinite
-            arrows
-            control-color="primary"
-            height="500px"
-            class="bg-grey-2 rounded-borders"
-          >
-            <q-carousel-slide
-              v-for="(capture, index) in screenshotCaptures"
-              :key="index"
-              :name="index"
-              class="q-pa-none"
+
+          <!-- Timeline view -->
+          <div v-if="captureViewMode === 'timeline'">
+            <div
+              v-for="(capture, index) in allCaptures"
+              :key="capture.id"
+              class="capture-timeline-item q-mb-sm"
             >
-              <div class="full-width full-height flex flex-center screenshot-slide">
-                <q-img
-                  :src="capture"
-                  :alt="`Screenshot ${index + 1}`"
-                  fit="contain"
-                  class="full-width full-height"
-                  :ratio="16/9"
-                >
-                  <template #error>
-                    <div class="absolute-full flex flex-center bg-grey-3">
-                      <div class="text-center">
-                        <q-icon
-                          name="broken_image"
-                          size="64px"
-                          color="grey-6"
-                        />
-                        <div class="text-grey-7 q-mt-sm">
-                          Failed to load image
-                        </div>
-                      </div>
-                    </div>
-                  </template>
-                  <template #loading>
-                    <div class="absolute-full flex flex-center">
-                      <q-spinner
-                        color="primary"
-                        size="50px"
-                      />
-                    </div>
-                  </template>
-                </q-img>
-                <div class="screenshot-slide-footer">
-                  <span class="text-caption text-grey-6">{{ index + 1 }} / {{ screenshotCaptures.length }}</span>
-                  <q-btn
-                    color="primary"
-                    icon="edit"
-                    label="Annotate"
+              <div class="row items-start q-gutter-sm">
+                <!-- Timeline indicator -->
+                <div class="col-auto flex column items-center">
+                  <q-icon
+                    :name="getCaptureIcon(capture)"
+                    :color="getCaptureColor(capture)"
                     size="sm"
-                    @click="openAnnotator(capture, index)"
+                  />
+                  <div
+                    v-if="index < allCaptures.length - 1"
+                    class="timeline-connector"
                   />
                 </div>
+
+                <!-- Capture content -->
+                <div class="col">
+                  <div class="row items-center q-gutter-xs q-mb-xs">
+                    <q-chip
+                      :color="getCaptureColor(capture)"
+                      text-color="white"
+                      dense
+                      size="sm"
+                    >
+                      {{ getCaptureLabel(capture) }}
+                    </q-chip>
+                    <span class="text-caption text-grey-6">{{ formatCaptureTime(capture.created_at) }}</span>
+                    <q-space />
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      size="xs"
+                      icon="swap_horiz"
+                      color="grey-7"
+                      @click="openReassignDialog(capture)"
+                    >
+                      <q-tooltip>Move to a different bug</q-tooltip>
+                    </q-btn>
+                  </div>
+
+                  <!-- Screenshot preview -->
+                  <div v-if="!isVideoPath(capture.file_path) && !capture.is_console_capture">
+                    <div class="capture-thumbnail-row">
+                      <q-img
+                        :src="capture.annotated_path || capture.file_path"
+                        :alt="capture.file_name"
+                        class="capture-thumbnail rounded-borders"
+                        fit="cover"
+                        @click="openAnnotator(capture.annotated_path || capture.file_path, getScreenshotIndex(capture))"
+                      >
+                        <template #error>
+                          <div class="absolute-full flex flex-center bg-grey-3">
+                            <q-icon name="broken_image" color="grey-6" />
+                          </div>
+                        </template>
+                      </q-img>
+                      <q-btn
+                        flat
+                        size="sm"
+                        icon="edit"
+                        label="Annotate"
+                        color="primary"
+                        class="q-mt-xs"
+                        @click="openAnnotator(capture.annotated_path || capture.file_path, getScreenshotIndex(capture))"
+                      />
+                      <q-badge
+                        v-if="capture.annotated_path"
+                        color="blue"
+                        class="q-ml-xs"
+                        label="Annotated"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- Video preview -->
+                  <div v-else-if="isVideoPath(capture.file_path)">
+                    <div class="text-caption text-grey-6 q-mb-xs">
+                      {{ capture.file_name }}
+                    </div>
+                    <VideoPlayer :file-path="capture.file_path" />
+                  </div>
+
+                  <!-- Console capture -->
+                  <div v-else-if="capture.is_console_capture">
+                    <div class="text-caption text-grey-6">
+                      Console screenshot: {{ capture.file_name }}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </q-carousel-slide>
-          </q-carousel>
+            </div>
+          </div>
+
+          <!-- Carousel view (screenshots only) -->
+          <div v-else>
+            <div v-if="screenshotCaptures.length === 0" class="text-body2 text-grey text-center q-py-md">
+              No screenshots to show in carousel view
+            </div>
+            <q-carousel
+              v-else
+              v-model="currentSlide"
+              swipeable
+              animated
+              navigation
+              infinite
+              arrows
+              control-color="primary"
+              height="500px"
+              class="bg-grey-2 rounded-borders"
+            >
+              <q-carousel-slide
+                v-for="(capturePath, index) in screenshotCaptures"
+                :key="index"
+                :name="index"
+                class="q-pa-none"
+              >
+                <div class="full-width full-height flex flex-center screenshot-slide">
+                  <q-img
+                    :src="capturePath"
+                    :alt="`Screenshot ${index + 1}`"
+                    fit="contain"
+                    class="full-width full-height"
+                    :ratio="16/9"
+                  >
+                    <template #error>
+                      <div class="absolute-full flex flex-center bg-grey-3">
+                        <div class="text-center">
+                          <q-icon
+                            name="broken_image"
+                            size="64px"
+                            color="grey-6"
+                          />
+                          <div class="text-grey-7 q-mt-sm">
+                            Failed to load image
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                    <template #loading>
+                      <div class="absolute-full flex flex-center">
+                        <q-spinner
+                          color="primary"
+                          size="50px"
+                        />
+                      </div>
+                    </template>
+                  </q-img>
+                  <div class="screenshot-slide-footer">
+                    <span class="text-caption text-grey-6">{{ index + 1 }} / {{ screenshotCaptures.length }}</span>
+                    <q-btn
+                      color="primary"
+                      icon="edit"
+                      label="Annotate"
+                      size="sm"
+                      @click="openAnnotator(capturePath, index)"
+                    />
+                  </div>
+                </div>
+              </q-carousel-slide>
+            </q-carousel>
+
+            <!-- Videos shown below carousel -->
+            <div v-if="videoCaptures.length > 0" class="q-mt-md">
+              <div class="text-subtitle2 q-mb-sm">Videos ({{ videoCaptures.length }})</div>
+              <div class="column q-gutter-md">
+                <div
+                  v-for="(capturePath, index) in videoCaptures"
+                  :key="index"
+                >
+                  <div class="text-caption text-grey-6 q-mb-xs">
+                    {{ capturePath.split(/[\\/]/).pop() }}
+                  </div>
+                  <VideoPlayer :file-path="capturePath" />
+                </div>
+              </div>
+            </div>
+          </div>
         </q-card-section>
       </q-card>
 
-      <!-- No captures info card (shown when bug has no screenshots yet) -->
+      <!-- No captures info card (shown when bug has no captures yet) -->
       <q-card
-        v-else-if="!loading && captures.length === 0"
+        v-else-if="!loading"
         class="q-mb-md"
       >
         <q-card-section class="text-center q-py-lg">
@@ -276,34 +456,19 @@
             color="grey-4"
           />
           <div class="text-body2 text-grey-7 q-mt-sm">
-            No screenshots yet
+            No captures yet
           </div>
           <div class="text-caption text-grey-5 q-mt-xs">
             Screenshots taken while capturing {{ bug.display_id }} will appear here
           </div>
-        </q-card-section>
-      </q-card>
-
-      <!-- Videos Card -->
-      <q-card
-        v-if="videoCaptures.length > 0"
-        class="q-mb-md"
-      >
-        <q-card-section>
-          <div class="text-h6 q-mb-md">
-            Videos ({{ videoCaptures.length }})
-          </div>
-          <div class="column q-gutter-md">
-            <div
-              v-for="(capture, index) in videoCaptures"
-              :key="index"
-            >
-              <div class="text-caption text-grey-6 q-mb-xs">
-                {{ capture.split(/[\\/]/).pop() }}
-              </div>
-              <VideoPlayer :file-path="capture" />
-            </div>
-          </div>
+          <q-btn
+            v-if="sessionStore.activeSession && bug.status !== 'capturing'"
+            color="primary"
+            icon="fiber_manual_record"
+            label="Resume Capture for This Bug"
+            class="q-mt-md"
+            @click="handleResumeCaptureForBug"
+          />
         </q-card-section>
       </q-card>
 
@@ -442,6 +607,50 @@
       :screenshot-path="selectedScreenshot"
       @saved="handleAnnotationSaved"
     />
+
+    <!-- Reassign Capture Dialog -->
+    <q-dialog
+      v-model="showReassignDialog"
+      persistent
+    >
+      <q-card style="min-width: 320px; max-width: 480px;">
+        <q-card-section class="row items-center q-pb-none">
+          <q-icon name="swap_horiz" size="md" color="primary" class="q-mr-sm" />
+          <div class="text-h6">
+            Move Capture to Another Bug
+          </div>
+        </q-card-section>
+        <q-card-section>
+          <p class="text-body2 text-grey-7">
+            Select which bug this capture should be associated with.
+          </p>
+          <q-select
+            v-model="reassignTargetBugId"
+            :options="reassignBugOptions"
+            option-label="label"
+            option-value="value"
+            emit-value
+            map-options
+            label="Move to bug"
+            outlined
+            dense
+            class="q-mt-sm"
+          />
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat label="Cancel" color="grey" @click="showReassignDialog = false" />
+          <q-btn
+            unelevated
+            label="Move"
+            color="primary"
+            icon="swap_horiz"
+            :disable="!reassignTargetBugId || reassignTargetBugId === bug?.id"
+            :loading="reassigning"
+            @click="handleReassignCapture"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -484,6 +693,13 @@ const selectedScreenshot = ref('')
 const selectedScreenshotIndex = ref(0)
 const loading = ref(false)
 const captures = ref<Capture[]>([])
+const captureViewMode = ref<'timeline' | 'carousel'>('timeline')
+
+// Reassign capture state
+const showReassignDialog = ref(false)
+const reassignCapture = ref<Capture | null>(null)
+const reassignTargetBugId = ref<string | null>(null)
+const reassigning = ref(false)
 
 // Get bug ID from route params
 const bugId = computed(() => route.params.id as string)
@@ -491,6 +707,11 @@ const bugId = computed(() => route.params.id as string)
 // Look up bug in backendBugs (the live store populated by ActiveSessionView)
 const bug = computed(() =>
   bugStore.backendBugs.find(b => b.id === bugId.value) ?? null
+)
+
+// All captures sorted chronologically
+const allCaptures = computed(() =>
+  [...captures.value].sort((a, b) => a.created_at.localeCompare(b.created_at))
 )
 
 // Parse the console_parse_json from the bug
@@ -515,12 +736,67 @@ const environment = computed((): Environment | null => {
 })
 
 const screenshotCaptures = computed(() =>
-  captures.value.filter(c => !isVideoPath(c.file_path)).map(c => c.file_path)
+  allCaptures.value
+    .filter(c => !isVideoPath(c.file_path))
+    .map(c => c.annotated_path || c.file_path)
 )
 
 const videoCaptures = computed(() =>
-  captures.value.filter(c => isVideoPath(c.file_path)).map(c => c.file_path)
+  allCaptures.value.filter(c => isVideoPath(c.file_path)).map(c => c.file_path)
 )
+
+// For the reassign dialog: list all other bugs in the session
+const reassignBugOptions = computed(() => {
+  return bugStore.backendBugs
+    .filter(b => b.id !== bug.value?.id)
+    .map(b => ({
+      label: b.display_id + (b.title ? ` — ${b.title}` : ''),
+      value: b.id,
+    }))
+})
+
+// Get the 0-based index of a screenshot capture within the screenshotCaptures list
+function getScreenshotIndex(capture: Capture): number {
+  const screenshotOnly = allCaptures.value.filter(c => !isVideoPath(c.file_path))
+  return screenshotOnly.findIndex(c => c.id === capture.id)
+}
+
+function getCaptureIcon(capture: Capture): string {
+  if (isVideoPath(capture.file_path)) return 'videocam'
+  if (capture.is_console_capture) return 'terminal'
+  return 'photo_camera'
+}
+
+function getCaptureColor(capture: Capture): string {
+  if (isVideoPath(capture.file_path)) return 'purple'
+  if (capture.is_console_capture) return 'orange'
+  return 'blue'
+}
+
+function getCaptureLabel(capture: Capture): string {
+  if (isVideoPath(capture.file_path)) return 'Video'
+  if (capture.is_console_capture) return 'Console'
+  return 'Screenshot'
+}
+
+function getBugStatusColor(status: string): string {
+  switch (status) {
+    case 'capturing': return 'red'
+    case 'captured': return 'orange'
+    case 'reviewed': return 'blue'
+    case 'ready': return 'green'
+    default: return 'grey'
+  }
+}
+
+function formatCaptureTime(isoString: string): string {
+  try {
+    const d = new Date(isoString)
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  } catch {
+    return ''
+  }
+}
 
 // Navigate back to bug list
 function goBack() {
@@ -591,6 +867,38 @@ async function copyToClipboard() {
   }
 }
 
+// Resume capturing screenshots for this bug (when a session is active but this bug is not being captured)
+async function handleResumeCaptureForBug() {
+  if (!bug.value) return
+  // If another bug is currently capturing, end it first
+  if (bugStore.isCapturing && bugStore.activeBug) {
+    try {
+      await bugStore.completeBugCapture(bugStore.activeBug.id)
+    } catch (err) {
+      console.error('Failed to complete current bug capture:', err)
+    }
+  }
+  // Set this bug as the active capturing bug
+  try {
+    await bugStore.resumeBugCapture(bug.value)
+    $q.notify({
+      type: 'positive',
+      icon: 'fiber_manual_record',
+      message: `Now capturing screenshots for ${bug.value.display_id}`,
+      caption: 'Press Print Screen to take screenshots',
+      position: 'top',
+      timeout: 4000,
+    })
+  } catch {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to resume capture',
+      position: 'bottom-right',
+      timeout: 3000,
+    })
+  }
+}
+
 // Open screenshot annotator
 function openAnnotator(screenshotPath: string, index: number) {
   selectedScreenshot.value = screenshotPath
@@ -608,6 +916,51 @@ function handleAnnotationSaved(annotatedPath: string) {
   })
 
   console.log('Annotated screenshot saved to:', annotatedPath)
+}
+
+// Open the reassign dialog for a specific capture
+function openReassignDialog(capture: Capture) {
+  if (reassignBugOptions.value.length === 0) {
+    $q.notify({
+      type: 'info',
+      message: 'No other bugs in this session to move the capture to',
+      position: 'top',
+      timeout: 3000,
+    })
+    return
+  }
+  reassignCapture.value = capture
+  reassignTargetBugId.value = null
+  showReassignDialog.value = true
+}
+
+// Execute the reassignment
+async function handleReassignCapture() {
+  if (!reassignCapture.value || !reassignTargetBugId.value) return
+  reassigning.value = true
+  try {
+    await tauri.assignCaptureToBug(reassignCapture.value.id, reassignTargetBugId.value)
+    const targetBug = bugStore.backendBugs.find(b => b.id === reassignTargetBugId.value)
+    $q.notify({
+      type: 'positive',
+      icon: 'swap_horiz',
+      message: `Capture moved to ${targetBug?.display_id ?? 'bug'}`,
+      position: 'top',
+      timeout: 3000,
+    })
+    showReassignDialog.value = false
+    await refreshCaptures()
+  } catch (err) {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to move capture',
+      caption: err instanceof Error ? err.message : String(err),
+      position: 'bottom-right',
+      timeout: 4000,
+    })
+  } finally {
+    reassigning.value = false
+  }
 }
 
 async function refreshCaptures() {
@@ -725,5 +1078,36 @@ watch(
 
 .screenshot-slide-footer .q-btn {
   color: white !important;
+}
+
+/* Timeline styles */
+.capture-timeline-item {
+  position: relative;
+}
+
+.timeline-connector {
+  width: 2px;
+  flex: 1;
+  min-height: 16px;
+  background: #e0e0e0;
+  margin: 2px 0;
+}
+
+.capture-thumbnail-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.capture-thumbnail {
+  width: 200px;
+  height: 130px;
+  cursor: pointer;
+  border: 1px solid #e0e0e0;
+  transition: opacity 0.15s ease;
+}
+
+.capture-thumbnail:hover {
+  opacity: 0.85;
 }
 </style>

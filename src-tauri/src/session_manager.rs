@@ -333,6 +333,48 @@ impl SessionManager {
         Ok(())
     }
 
+    /// Resume capturing for an existing bug (set its status back to Capturing and make it the active bug)
+    pub fn resume_bug_capture(&self, bug_id: &str) -> Result<Bug, String> {
+        let conn = Connection::open(&self.db_path)
+            .map_err(|e| format!("Failed to open database: {}", e))?;
+        let bug_repo = BugRepository::new(&conn);
+
+        let mut bug = bug_repo
+            .get(bug_id)
+            .map_err(|e| format!("Failed to get bug: {}", e))?
+            .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
+
+        // Set bug status back to capturing
+        bug.status = BugStatus::Capturing;
+        bug.updated_at = Utc::now().to_rfc3339();
+
+        bug_repo
+            .update(&bug)
+            .map_err(|e| format!("Failed to update bug: {}", e))?;
+
+        // Set as active bug
+        {
+            let mut active = self.active_bug.lock().unwrap();
+            *active = Some(bug_id.to_string());
+        }
+
+        // Emit event so the frontend knows
+        self.event_emitter.emit(
+            "bug-status-changed",
+            json!({
+                "id": bug_id,
+                "status": "capturing"
+            }),
+        )?;
+
+        // Update .session.json
+        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(&bug.session_id) {
+            eprintln!("Warning: Failed to update .session.json on bug resume: {}", e);
+        }
+
+        Ok(bug)
+    }
+
     /// Get active session ID
     pub fn get_active_session_id(&self) -> Option<String> {
         self.active_session.lock().unwrap().clone()

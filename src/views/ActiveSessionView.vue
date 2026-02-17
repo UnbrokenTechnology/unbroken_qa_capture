@@ -143,12 +143,48 @@
               </q-item-label>
             </q-item-section>
 
+            <!-- Notes / Video indicators -->
+            <q-item-section side>
+              <div class="column items-center q-gutter-xs">
+                <q-icon
+                  v-if="bug.notes"
+                  name="notes"
+                  size="xs"
+                  color="green-6"
+                >
+                  <q-tooltip>Has notes</q-tooltip>
+                </q-icon>
+                <q-icon
+                  v-if="(bugCaptureCounts.get(bug.id)?.videos ?? 0) > 0"
+                  name="videocam"
+                  size="xs"
+                  color="purple-6"
+                >
+                  <q-tooltip>Has video</q-tooltip>
+                </q-icon>
+              </div>
+            </q-item-section>
+
             <!-- Status Badge -->
             <q-item-section side>
-              <q-badge
-                :color="getBugStatusColor(bug.status)"
-                :label="bug.status === 'capturing' ? 'active' : bug.status"
-              />
+              <div class="column items-end q-gutter-xs">
+                <q-badge
+                  :color="getBugStatusColor(bug.status)"
+                  :label="bug.status === 'capturing' ? 'active' : bug.status"
+                />
+                <!-- "Add Screenshot" quick action when no bug is capturing -->
+                <q-btn
+                  v-if="!bugStore.isCapturing && bug.status !== 'capturing'"
+                  flat
+                  dense
+                  size="xs"
+                  icon="add_a_photo"
+                  color="primary"
+                  @click.stop="handleResumeCapture(bug)"
+                >
+                  <q-tooltip>Add more screenshots to this bug</q-tooltip>
+                </q-btn>
+              </div>
             </q-item-section>
 
             <q-item-section side>
@@ -479,6 +515,35 @@ async function handleEndSession() {
 function handleBugClick(bug: BackendBug) {
   // Navigate to bug detail view
   router.push({ name: 'bug-detail', params: { id: bug.id } })
+}
+
+async function handleResumeCapture(bug: BackendBug) {
+  // End any currently active capture first
+  if (bugStore.isCapturing && bugStore.activeBug) {
+    try {
+      await bugStore.completeBugCapture(bugStore.activeBug.id)
+    } catch (err) {
+      console.error('Failed to complete current bug capture:', err)
+    }
+  }
+  try {
+    await bugStore.resumeBugCapture(bug)
+    $q.notify({
+      type: 'positive',
+      icon: 'add_a_photo',
+      message: `Now capturing screenshots for ${bug.display_id}`,
+      caption: 'Press Print Screen to take screenshots, then click "End Bug Capture" when done',
+      position: 'top',
+      timeout: 5000,
+    })
+  } catch {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to resume capture for bug',
+      position: 'bottom-right',
+      timeout: 3000,
+    })
+  }
 }
 
 async function loadSessionBugs() {

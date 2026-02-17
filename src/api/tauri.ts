@@ -148,6 +148,11 @@ export async function updateBug(id: string, update: BugUpdate): Promise<void> {
   }
 }
 
+/** Resume capturing for an existing bug — sets status back to 'capturing' and marks it as the active bug. */
+export async function resumeBugCapture(bugId: string): Promise<Bug> {
+  return await invoke<Bug>('resume_bug_capture', { bugId })
+}
+
 export async function deleteBug(_id: string): Promise<void> {
   // Not implemented
 }
