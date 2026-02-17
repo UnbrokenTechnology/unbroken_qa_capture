@@ -2,6 +2,9 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 
+// currentBugId tracks the active bug capture ID so the tray menu label can
+// display it (e.g. "End Bug Capture Bug-05 (F4)") per PRD Section 13.
+
 export type TrayState = 'idle' | 'active' | 'bug' | 'review'
 
 export interface TrayStatus {
@@ -15,6 +18,7 @@ export const useTrayStore = defineStore('tray', () => {
   const state = ref<TrayState>('idle')
   const tooltip = ref<string>('Unbroken QA Capture - Idle')
   const sessionActive = ref<boolean>(false)
+  const currentBugId = ref<string | null>(null)
 
   // Getters
   const currentState = computed(() => state.value)
@@ -22,7 +26,7 @@ export const useTrayStore = defineStore('tray', () => {
   const isSessionActive = computed(() => sessionActive.value)
 
   // Actions
-  async function setState(newState: TrayState) {
+  async function setState(newState: TrayState, bugId?: string | null) {
     state.value = newState
 
     // Update tooltip based on state
@@ -35,9 +39,13 @@ export const useTrayStore = defineStore('tray', () => {
 
     tooltip.value = tooltips[newState]
 
-    // Update the tray icon via Tauri backend
+    // Rebuild tray context menu for the new state, then update tooltip.
+    // update_tray_menu replaces all menu items to match PRD Section 13.
     try {
-      await invoke('update_tray_icon', { state: newState })
+      await invoke('update_tray_menu', {
+        state: newState,
+        bugId: bugId ?? null
+      })
       await invoke('update_tray_tooltip', { tooltip: tooltip.value })
     } catch (error) {
       console.error('Failed to update tray:', error)
@@ -46,19 +54,23 @@ export const useTrayStore = defineStore('tray', () => {
 
   async function setIdle() {
     sessionActive.value = false
+    currentBugId.value = null
     await setState('idle')
   }
 
   async function setActive() {
     sessionActive.value = true
+    currentBugId.value = null
     await setState('active')
   }
 
-  async function setBugCapture() {
-    await setState('bug')
+  async function setBugCapture(bugId?: string | null) {
+    currentBugId.value = bugId ?? null
+    await setState('bug', bugId)
   }
 
   async function setReview() {
+    currentBugId.value = null
     await setState('review')
   }
 
@@ -84,6 +96,7 @@ export const useTrayStore = defineStore('tray', () => {
     state,
     tooltip,
     sessionActive,
+    currentBugId,
 
     // Getters
     currentState,

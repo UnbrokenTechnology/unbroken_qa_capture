@@ -13,6 +13,7 @@ mod hotkey_tests;
 use std::sync::{Arc, Mutex};
 use template::TemplateManager;
 use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri::image::Image;
 use tauri::menu::{Menu, MenuItemBuilder};
 use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, Emitter, AppHandle};
@@ -332,12 +333,163 @@ async fn open_session_folder(
     Ok(())
 }
 
+/// Load the embedded tray icon PNG for the given state.
+///
+/// PRD Section 14 (Iconography) specifies:
+/// - idle:   gray/neutral circle
+/// - active: green indicator
+/// - bug:    red indicator
+/// - review: blue indicator
+///
+/// Icons are 32x32 8-bit RGBA PNGs embedded at compile time.
+/// Decode a PNG byte slice into raw RGBA pixels.
+fn decode_png_rgba(png_bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
+    use std::io::Cursor;
+    let decoder = png::Decoder::new(Cursor::new(png_bytes));
+    let mut reader = decoder.read_info().map_err(|e| format!("PNG decode error: {}", e))?;
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).map_err(|e| format!("PNG frame error: {}", e))?;
+    // Ensure RGBA output
+    let rgba = match info.color_type {
+        png::ColorType::Rgba => buf[..info.buffer_size()].to_vec(),
+        png::ColorType::Rgb => {
+            // Expand RGB to RGBA by adding full-opacity alpha channel
+            let rgb = &buf[..info.buffer_size()];
+            let mut rgba = Vec::with_capacity(rgb.len() / 3 * 4);
+            for chunk in rgb.chunks(3) {
+                rgba.extend_from_slice(chunk);
+                rgba.push(255);
+            }
+            rgba
+        }
+        ct => return Err(format!("Unsupported PNG color type: {:?}", ct)),
+    };
+    Ok((rgba, info.width, info.height))
+}
+
+/// Load the embedded tray icon PNG for the given state.
+///
+/// PRD Section 14 (Iconography) specifies:
+/// - idle:   gray/neutral circle
+/// - active: green indicator
+/// - bug:    red indicator
+/// - review: blue indicator
+///
+/// Icons are 32x32 8-bit RGBA PNGs embedded at compile time.
+fn tray_icon_for_state(state: &str) -> Result<Image<'static>, String> {
+    let png_bytes: &[u8] = match state {
+        "active" => include_bytes!("../icons/tray/tray-active-32.png"),
+        "bug"    => include_bytes!("../icons/tray/tray-bug-32.png"),
+        "review" => include_bytes!("../icons/tray/tray-review-32.png"),
+        _        => include_bytes!("../icons/tray/tray-idle-32.png"),  // idle + unknown
+    };
+    let (rgba, width, height) = decode_png_rgba(png_bytes)?;
+    Ok(Image::new_owned(rgba, width, height))
+}
+
 #[tauri::command]
 async fn update_tray_icon(state: String, app_handle: tauri::AppHandle) -> Result<(), String> {
-    // Emit event to update tray icon based on state
-    // States: idle, active, bug, review
+    update_tray_menu(state, None, app_handle).await
+}
+
+/// Rebuild the tray context menu to reflect the current app state.
+///
+/// PRD Section 13 specifies different menus per state:
+/// - Idle: 'Start Session', 'Open App', 'Settings', 'Quit'
+/// - Active Session: 'End Session', 'Open App', 'Quit'
+/// - Bug Capture: 'End Bug Capture (F4)', 'End Session', 'Open App'
+/// - Review: 'Open Review', 'Quit'
+#[tauri::command]
+async fn update_tray_menu(state: String, bug_id: Option<String>, app_handle: tauri::AppHandle) -> Result<(), String> {
+    let Some(tray) = app_handle.tray_by_id("main-tray") else {
+        return Ok(());
+    };
+
+    let menu = Menu::new(&app_handle)
+        .map_err(|e| format!("Failed to create menu: {}", e))?;
+
+    match state.as_str() {
+        "idle" => {
+            let start = MenuItemBuilder::new("Start Session")
+                .id("start-session").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let open = MenuItemBuilder::new("Open App")
+                .id("open-main-window").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let settings = MenuItemBuilder::new("Settings")
+                .id("settings").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let quit = MenuItemBuilder::new("Quit")
+                .id("quit").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            menu.append_items(&[&start, &open, &settings, &quit])
+                .map_err(|e| format!("Failed to append menu items: {}", e))?;
+        }
+        "active" => {
+            let end = MenuItemBuilder::new("End Session")
+                .id("end-session").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let open = MenuItemBuilder::new("Open App")
+                .id("open-main-window").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let quit = MenuItemBuilder::new("Quit")
+                .id("quit").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            menu.append_items(&[&end, &open, &quit])
+                .map_err(|e| format!("Failed to append menu items: {}", e))?;
+        }
+        "bug" => {
+            let label = if let Some(id) = &bug_id {
+                format!("End Bug Capture {} (F4)", id)
+            } else {
+                "End Bug Capture (F4)".to_string()
+            };
+            let end_bug = MenuItemBuilder::new(&label)
+                .id("end-bug-capture").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let end_session = MenuItemBuilder::new("End Session")
+                .id("end-session").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let open = MenuItemBuilder::new("Open App")
+                .id("open-main-window").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            menu.append_items(&[&end_bug, &end_session, &open])
+                .map_err(|e| format!("Failed to append menu items: {}", e))?;
+        }
+        "review" => {
+            let open_review = MenuItemBuilder::new("Open Review")
+                .id("open-review").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let quit = MenuItemBuilder::new("Quit")
+                .id("quit").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            menu.append_items(&[&open_review, &quit])
+                .map_err(|e| format!("Failed to append menu items: {}", e))?;
+        }
+        _ => {
+            // Unknown state — fall back to idle menu
+            let open = MenuItemBuilder::new("Open App")
+                .id("open-main-window").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let quit = MenuItemBuilder::new("Quit")
+                .id("quit").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            menu.append_items(&[&open, &quit])
+                .map_err(|e| format!("Failed to append menu items: {}", e))?;
+        }
+    }
+
+    tray.set_menu(Some(menu))
+        .map_err(|e| format!("Failed to set tray menu: {}", e))?;
+
+    // Update the tray icon image to reflect the new state (PRD Section 14)
+    let icon = tray_icon_for_state(state.as_str())?;
+    tray.set_icon(Some(icon))
+        .map_err(|e| format!("Failed to set tray icon: {}", e))?;
+
+    // Also emit event so frontend can react if needed
     app_handle
-        .emit("tray-state-changed", state)
+        .emit("tray-state-changed", &state)
         .map_err(|e| format!("Failed to emit tray state event: {}", e))?;
 
     Ok(())
@@ -1628,6 +1780,27 @@ pub fn run() {
                             }
                             app_handle.emit("tray-menu-settings", ()).ok();
                         }
+                        "end-session" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
+                            app_handle.emit("tray-menu-end-session", ()).ok();
+                        }
+                        "end-bug-capture" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
+                            app_handle.emit("tray-menu-end-bug-capture", ()).ok();
+                        }
+                        "open-review" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
+                            app_handle.emit("tray-menu-open-review", ()).ok();
+                        }
                         "quit" => {
                             app_handle.exit(0);
                         }
@@ -1664,6 +1837,7 @@ pub fn run() {
             open_bug_folder,
             open_session_folder,
             update_tray_icon,
+            update_tray_menu,
             update_tray_tooltip,
             get_bug_notes,
             update_bug_notes,
@@ -2114,5 +2288,86 @@ mod tests {
 
         // Cleanup
         std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    // ------------------------------------------------------------------
+    // Tray icon tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn tray_icon_decodes_successfully_for_all_states() {
+        // Verify that each state loads a valid, decodable 32x32 RGBA icon.
+        for state in &["idle", "active", "bug", "review"] {
+            let result = tray_icon_for_state(state);
+            assert!(
+                result.is_ok(),
+                "tray_icon_for_state('{}') returned error: {:?}",
+                state,
+                result.err()
+            );
+            let icon = result.unwrap();
+            // 32x32 RGBA = 4096 bytes
+            assert_eq!(icon.width(), 32, "Icon for '{}' should be 32px wide", state);
+            assert_eq!(icon.height(), 32, "Icon for '{}' should be 32px tall", state);
+            assert_eq!(
+                icon.rgba().len(),
+                32 * 32 * 4,
+                "Icon for '{}' should have 32*32*4 RGBA bytes",
+                state
+            );
+        }
+    }
+
+    #[test]
+    fn tray_icon_unknown_state_falls_back_to_idle() {
+        // Unknown states should use the idle icon without panicking.
+        let result = tray_icon_for_state("unknown-state");
+        assert!(result.is_ok(), "tray_icon_for_state('unknown-state') should fall back to idle");
+        let icon = result.unwrap();
+        assert_eq!(icon.width(), 32);
+        assert_eq!(icon.height(), 32);
+    }
+
+    #[test]
+    fn tray_icon_states_have_distinct_colors() {
+        // Each state icon should have a visually distinct dominant color.
+        // We sample the center pixel (16,16) of each 32x32 icon.
+        let states_and_expected_channel = [
+            // (state, dominant_channel_index): 0=R, 1=G, 2=B
+            // idle: gray (R≈G≈B≈128), all channels roughly equal
+            // active: green — G channel should be highest
+            ("active", 1usize), // green channel
+            ("bug",    0usize), // red channel
+            ("review", 2usize), // blue channel
+        ];
+
+        for (state, dominant) in &states_and_expected_channel {
+            let icon = tray_icon_for_state(state).unwrap();
+            // Center pixel of 32x32 is at row 15, col 15
+            let idx = (15 * 32 + 15) * 4;
+            let rgba = icon.rgba();
+            let r = rgba[idx] as u32;
+            let g = rgba[idx + 1] as u32;
+            let b = rgba[idx + 2] as u32;
+            let channels = [r, g, b];
+            let max_ch = channels.iter().enumerate().max_by_key(|(_, &v)| v).unwrap().0;
+            assert_eq!(
+                max_ch, *dominant,
+                "State '{}': expected channel {} to dominate, got R={} G={} B={}",
+                state, dominant, r, g, b
+            );
+        }
+    }
+
+    #[test]
+    fn decode_png_rgba_handles_valid_png() {
+        // Decode a known-good embedded PNG and verify dimensions.
+        let png_bytes = include_bytes!("../icons/tray/tray-idle-32.png");
+        let result = decode_png_rgba(png_bytes);
+        assert!(result.is_ok(), "decode_png_rgba failed: {:?}", result.err());
+        let (rgba, w, h) = result.unwrap();
+        assert_eq!(w, 32);
+        assert_eq!(h, 32);
+        assert_eq!(rgba.len(), 32 * 32 * 4);
     }
 }
