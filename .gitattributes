@@ -1,3 +1,6 @@
+# Normalize all text files to LF in the repo, check out as OS-native
+* text=auto
+
 # Force LF line endings for files that will run inside Linux containers
 *.sh text eol=lf
 *.py text eol=lf
