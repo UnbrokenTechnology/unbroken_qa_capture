@@ -68,6 +68,20 @@ if [ -f "package.json" ]; then
         bash scripts/check-commands.sh || CMDS_OK=false
     fi
 
+    # CSS anti-pattern check: wildcard font-family overrides
+    # font-family on *, :deep(*), or ::v-deep(*) clobbers Material Icons rendering.
+    # The Vitest suite in __tests__/css-antipatterns.test.ts does a thorough
+    # multi-line parse; this grep is a fast early-warning for single-line patterns.
+    # Matches: * { font-family:   or  :deep(*) { font-family:
+    if find src -name '*.vue' | xargs grep -E \
+       '^\s*(\*|:deep\s*\(\s*\*\s*\)|::v-deep\s*\(\s*\*\s*\))\s*\{[^}]*font-family\s*:' \
+       2>/dev/null | grep -q .; then
+        echo "ERROR: Wildcard font-family override detected in a .vue file."
+        echo "       Using font-family on *, :deep(*), or ::v-deep(*) clobbers Material Icons."
+        echo "       Configure the app font via \$typography-font-family in quasar-variables.sass."
+        TS_OK=false
+    fi
+
     # Tests (Vitest)
     if grep -q '"vitest"' package.json 2>/dev/null; then
         # Auto-update snapshots before running tests so stale snapshots don't
@@ -80,10 +94,27 @@ if [ -f "package.json" ]; then
         npm test || TS_OK=false
     fi
 
-    # Headless browser smoke test (optional — skipped if puppeteer not available)
+    # Headless browser smoke test (optional — skipped if puppeteer or Chrome unavailable)
     if [ -f "scripts/smoke-test.mjs" ] && [ -d "node_modules/puppeteer" ]; then
-        echo "=== Smoke test: headless browser rendering ==="
-        node scripts/smoke-test.mjs || SMOKE_OK=false
+        # Verify Chrome can actually launch before running the smoke test.
+        # On some Linux environments (e.g. minimal containers) the puppeteer-managed
+        # Chrome binary exists but fails to start due to missing system libraries
+        # (e.g. libnspr4.so).  In that case, treat the smoke test as skipped
+        # rather than failing — the Vitest suite still validates the frontend.
+        CHROME_BIN=$(node -e "const p=require('puppeteer'); console.log(p.executablePath())" 2>/dev/null || true)
+        CHROME_OK=false
+        if [ -n "$CHROME_BIN" ] && [ -x "$CHROME_BIN" ]; then
+            if "$CHROME_BIN" --version >/dev/null 2>&1; then
+                CHROME_OK=true
+            fi
+        fi
+
+        if [ "$CHROME_OK" = true ]; then
+            echo "=== Smoke test: headless browser rendering ==="
+            node scripts/smoke-test.mjs || SMOKE_OK=false
+        else
+            echo "=== Smoke test: skipped (Chrome binary cannot launch — missing system libraries) ==="
+        fi
     else
         echo "=== Smoke test: skipped (puppeteer not installed) ==="
     fi
