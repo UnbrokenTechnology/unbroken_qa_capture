@@ -300,7 +300,25 @@
                       @update:model-value="(val) => updateMetadata('meeting_id', String(val || ''))"
                     >
                       <template #prepend>
-                        <q-icon name="videocam" />
+                        <q-icon
+                          :name="isMeetingUrl(selectedBug.meeting_id) ? 'link' : 'videocam'"
+                          :color="isMeetingUrl(selectedBug.meeting_id) ? 'primary' : undefined"
+                        />
+                      </template>
+                      <template
+                        v-if="isMeetingUrl(selectedBug.meeting_id)"
+                        #append
+                      >
+                        <q-btn
+                          flat
+                          dense
+                          round
+                          icon="open_in_new"
+                          size="sm"
+                          color="primary"
+                          title="Open URL in browser"
+                          @click.stop="openMeetingUrl(selectedBug.meeting_id!)"
+                        />
                       </template>
                     </q-input>
                   </div>
@@ -1101,6 +1119,7 @@ import { useSessionStore } from '@/stores/session'
 import type { BugType, BugStatus, Capture, TicketingCredentials } from '@/types/backend'
 import * as tauri from '@/api/tauri'
 import { Notify } from 'quasar'
+import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 
 const router = useRouter()
@@ -1303,6 +1322,17 @@ async function updateMetadata(field: 'meeting_id' | 'software_version', value: s
   } catch (err) {
     console.error('Failed to update metadata:', err)
   }
+}
+
+function isMeetingUrl(value: string | null | undefined): boolean {
+  if (!value) return false
+  return value.startsWith('http://') || value.startsWith('https://')
+}
+
+function openMeetingUrl(url: string) {
+  shellOpen(url).catch((err) => {
+    console.error('Failed to open URL:', err)
+  })
 }
 
 async function toggleConsoleCapture(captureId: string, isConsole: boolean) {

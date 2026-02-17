@@ -85,7 +85,23 @@
               <div class="text-caption text-grey-7">
                 Meeting ID
               </div>
-              <div class="text-body1">
+              <div
+                v-if="isMeetingUrl(bug.metadata.meeting_id)"
+                class="text-body1"
+              >
+                <a
+                  href="#"
+                  class="text-primary"
+                  style="text-decoration: none;"
+                  @click.prevent="openMeetingUrl(bug.metadata.meeting_id!)"
+                >
+                  <q-icon name="open_in_new" size="xs" class="q-mr-xs" />{{ bug.metadata.meeting_id }}
+                </a>
+              </div>
+              <div
+                v-else
+                class="text-body1"
+              >
                 {{ bug.metadata.meeting_id }}
               </div>
             </div>
@@ -380,6 +396,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBugStore } from '@/stores/bug'
 import { invoke } from '@tauri-apps/api/core'
+import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import { useQuasar } from 'quasar'
 import ScreenshotAnnotator from '@/components/ScreenshotAnnotator.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
@@ -440,6 +457,17 @@ const videoCaptures = computed(() =>
 // Navigate back to bug list
 function goBack() {
   router.back()
+}
+
+function isMeetingUrl(value: string | null | undefined): boolean {
+  if (!value) return false
+  return value.startsWith('http://') || value.startsWith('https://')
+}
+
+function openMeetingUrl(url: string) {
+  shellOpen(url).catch((err) => {
+    console.error('Failed to open URL:', err)
+  })
 }
 
 // Open bug folder in file explorer
