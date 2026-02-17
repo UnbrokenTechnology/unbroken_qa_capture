@@ -557,4 +557,104 @@ describe('SessionNotepad.vue', () => {
 
     vi.useRealTimers()
   })
+
+  it('disables always-on-top when hidden', async () => {
+    const wrapper = mountComponent({ visible: true })
+    await flushPromises()
+
+    // Initially sets always-on-top to true on mount
+    expect(mockSetAlwaysOnTop).toHaveBeenCalledWith(true)
+    mockSetAlwaysOnTop.mockClear()
+
+    // Hide the component
+    await wrapper.setProps({ visible: false })
+    await flushPromises()
+
+    expect(mockSetAlwaysOnTop).toHaveBeenCalledWith(false)
+  })
+
+  it('re-enables always-on-top when shown again', async () => {
+    const wrapper = mountComponent({ visible: false })
+    await flushPromises()
+    mockSetAlwaysOnTop.mockClear()
+
+    // Show the component
+    await wrapper.setProps({ visible: true })
+    await flushPromises()
+
+    expect(mockSetAlwaysOnTop).toHaveBeenCalledWith(true)
+  })
+
+  it('starts dragging on card mousedown', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const card = wrapper.find('.session-notepad')
+    // Mousedown at (100, 200), move to (150, 250): dx=50, dy=50
+    // Initial position is initialX=100, initialY=100 (defaults)
+    // New position: left=150, top=150
+    await card.trigger('mousedown', { clientX: 100, clientY: 200 })
+
+    // Simulate mouse move
+    const mousemoveEvent = new MouseEvent('mousemove', { clientX: 150, clientY: 250 })
+    document.dispatchEvent(mousemoveEvent)
+    await flushPromises()
+
+    // Card should have moved: initialX(100) + dx(50) = 150, initialY(100) + dy(50) = 150
+    const style = card.attributes('style')
+    expect(style).toContain('left: 150px')
+    expect(style).toContain('top: 150px')
+  })
+
+  it('stops dragging on mouseup', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const card = wrapper.find('.session-notepad')
+    await card.trigger('mousedown', { clientX: 100, clientY: 200 })
+
+    // Release mouse
+    const mouseupEvent = new MouseEvent('mouseup')
+    document.dispatchEvent(mouseupEvent)
+
+    // Simulate move after release — position should not change
+    const position1 = card.attributes('style')
+
+    const mousemoveEvent = new MouseEvent('mousemove', { clientX: 300, clientY: 400 })
+    document.dispatchEvent(mousemoveEvent)
+    await flushPromises()
+
+    const position2 = card.attributes('style')
+    expect(position1).toBe(position2)
+  })
+
+  it('textarea mousedown does not start card drag', async () => {
+    const sessionStore = useSessionStore()
+    sessionStore.activeSession = mockActiveSession
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    // Get initial position
+    const card = wrapper.find('.session-notepad')
+    const initialStyle = card.attributes('style')
+
+    // Mousedown on textarea should not propagate to card drag handler
+    const textarea = wrapper.find('textarea')
+    await textarea.trigger('mousedown', { clientX: 100, clientY: 200 })
+
+    // Move mouse
+    const mousemoveEvent = new MouseEvent('mousemove', { clientX: 200, clientY: 300 })
+    document.dispatchEvent(mousemoveEvent)
+    await flushPromises()
+
+    // Position should not have changed since textarea stops propagation
+    expect(card.attributes('style')).toBe(initialStyle)
+  })
+
+  it('header has drag-handle class for cursor styling', () => {
+    const wrapper = mountComponent()
+    const header = wrapper.find('.drag-handle')
+    expect(header.exists()).toBe(true)
+  })
 })
