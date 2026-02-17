@@ -1488,6 +1488,7 @@ async fn emit_screenshot_captured(
 #[tauri::command]
 async fn open_annotation_window(
     image_path: String,
+    capture_id: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     use std::path::Path;
@@ -1533,8 +1534,12 @@ async fn open_annotation_window(
         return Ok(());
     }
 
-    // Create annotation window
-    let url = format!("/annotate?image={}", urlencoding::encode(&image_path));
+    // Build URL, optionally including capture_id for DB update after save
+    let url = if let Some(cid) = capture_id {
+        format!("/annotate?image={}&captureId={}", urlencoding::encode(&image_path), urlencoding::encode(&cid))
+    } else {
+        format!("/annotate?image={}", urlencoding::encode(&image_path))
+    };
 
     tauri::WebviewWindowBuilder::new(
         &app,
@@ -1552,6 +1557,79 @@ async fn open_annotation_window(
     .map_err(|e| format!("Failed to create annotation window: {}", e))?;
 
     Ok(())
+}
+
+/// Save an annotated screenshot from a base64-encoded PNG data URL.
+///
+/// `image_path` is the original screenshot path (used to derive the save path).
+/// `data_url` is a data URL string like "data:image/png;base64,<base64data>".
+/// `save_mode` is either "alongside" (default, saves as filename_annotated.png) or "overwrite".
+/// `capture_id` is the optional DB capture ID — if provided, the annotated_path is stored in the DB.
+///
+/// Returns the path where the annotated file was written.
+#[tauri::command]
+fn save_annotated_image(
+    image_path: String,
+    data_url: String,
+    save_mode: String,
+    capture_id: Option<String>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    use std::path::Path;
+
+    // Decode the data URL: strip the "data:image/png;base64," prefix
+    let base64_data = data_url
+        .split_once(',')
+        .map(|x| x.1)
+        .ok_or("Invalid data URL: missing comma separator")?;
+
+    let image_bytes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        base64_data,
+    )
+    .map_err(|e| format!("Failed to decode base64 image data: {}", e))?;
+
+    // Determine save path
+    let original = Path::new(&image_path);
+    let save_path = if save_mode == "overwrite" {
+        image_path.clone()
+    } else {
+        // Save alongside original: e.g. screenshot.png -> screenshot_annotated.png
+        let stem = original.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("screenshot");
+        let ext = original.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("png");
+        let parent = original.parent().unwrap_or(Path::new("."));
+        parent.join(format!("{}_annotated.{}", stem, ext))
+            .to_string_lossy()
+            .to_string()
+    };
+
+    // Write the PNG bytes to disk
+    std::fs::write(&save_path, &image_bytes)
+        .map_err(|e| format!("Failed to write annotated image to {}: {}", save_path, e))?;
+
+    // If a capture_id was provided, update the DB record
+    if let Some(id) = capture_id {
+        use database::{Database, CaptureOps, CaptureRepository};
+
+        let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+            std::env::current_dir().unwrap().join("data")
+        });
+        let db_path = data_dir.join("qa_capture.db");
+
+        let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+        let repo = CaptureRepository::new(db.connection());
+
+        if let Ok(Some(mut capture)) = repo.get(&id) {
+            capture.annotated_path = Some(save_path.clone());
+            repo.update(&capture).map_err(|e: rusqlite::Error| e.to_string())?;
+        }
+    }
+
+    Ok(save_path)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1807,6 +1885,7 @@ pub fn run() {
             disable_startup,
             emit_screenshot_captured,
             open_annotation_window,
+            save_annotated_image,
             trigger_screenshot,
             start_file_watcher,
             stop_file_watcher

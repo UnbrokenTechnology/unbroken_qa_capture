@@ -9,6 +9,7 @@
     <q-card class="bg-grey-9 text-white">
       <AnnotatorContent
         :screenshot-path="screenshotPath"
+        :capture-id="captureId"
         @saved="handleSaved"
         @close="handleClose"
       />
@@ -17,6 +18,7 @@
   <AnnotatorContent
     v-else
     :screenshot-path="screenshotPath"
+    :capture-id="captureId"
     @saved="handleSaved"
     @close="handleClose"
   />
@@ -29,6 +31,7 @@ import AnnotatorContent from './AnnotatorContent.vue'
 interface Props {
   modelValue?: boolean
   screenshotPath: string
+  captureId?: string
   useDialog?: boolean  // New prop to control dialog vs standalone mode
 }
 

@@ -291,10 +291,24 @@ export const useSessionStore = defineStore('session', () => {
           }
 
           if (settingsStore.autoOpenAnnotation) {
-            // Import tauri API dynamically
-            const { openAnnotationWindow } = await import('../api/tauri')
+            const { openAnnotationWindow, getBugCaptures } = await import('../api/tauri')
             try {
-              await openAnnotationWindow(filePath)
+              // Look up the capture ID for the new screenshot so the annotation
+              // window can update the DB record after save
+              let captureId: string | undefined
+              if (bugStore.activeBug) {
+                try {
+                  const captures = await getBugCaptures(bugStore.activeBug.id)
+                  const matched = captures.find(c =>
+                    c.file_path === filePath ||
+                    c.file_path.endsWith(filePath.replace(/\\/g, '/').split('/').pop() ?? '')
+                  )
+                  captureId = matched?.id
+                } catch {
+                  // Non-fatal: annotation will still save the file, just won't update DB
+                }
+              }
+              await openAnnotationWindow(filePath, captureId)
             } catch (err) {
               console.error('Failed to auto-open annotation window:', err)
             }
