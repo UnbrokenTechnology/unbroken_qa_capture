@@ -58,6 +58,9 @@ export const useBugStore = defineStore('bug', () => {
   // Tracks the most recently used meeting ID within a session, for pre-populating new bugs
   const lastSessionMeetingId = ref<string | null>(null)
 
+  // Tracks the most recently used software version within a session, for pre-populating new bugs
+  const lastSessionSoftwareVersion = ref<string | null>(null)
+
   // When true, the next screenshot captured for the active bug will be tagged as a console capture
   const tagNextScreenshotAsConsole = ref(false)
 
@@ -256,6 +259,10 @@ export const useBugStore = defineStore('bug', () => {
     lastSessionMeetingId.value = meetingId
   }
 
+  function setLastSessionSoftwareVersion(softwareVersion: string | null) {
+    lastSessionSoftwareVersion.value = softwareVersion
+  }
+
   function setTagNextScreenshotAsConsole(value: boolean) {
     tagNextScreenshotAsConsole.value = value
   }
@@ -274,6 +281,7 @@ export const useBugStore = defineStore('bug', () => {
     activeBug.value = null
     error.value = null
     lastSessionMeetingId.value = null
+    lastSessionSoftwareVersion.value = null
     tagNextScreenshotAsConsole.value = false
   }
 
@@ -430,6 +438,7 @@ export const useBugStore = defineStore('bug', () => {
     loading,
     error,
     lastSessionMeetingId,
+    lastSessionSoftwareVersion,
     tagNextScreenshotAsConsole,
 
     // Getters
@@ -460,6 +469,7 @@ export const useBugStore = defineStore('bug', () => {
     loadSampleData,
     clearError,
     setLastSessionMeetingId,
+    setLastSessionSoftwareVersion,
     setTagNextScreenshotAsConsole,
     consumeConsoleTag,
 

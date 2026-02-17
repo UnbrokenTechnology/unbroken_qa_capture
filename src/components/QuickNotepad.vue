@@ -273,7 +273,14 @@ async function loadNotes() {
       localMeetingId.value = ''
     }
 
-    localSoftwareVersion.value = activeBug.value.software_version || ''
+    // Pre-populate software version: use this bug's value if set, else carry over from store's lastSoftwareVersion
+    if (activeBug.value.software_version) {
+      localSoftwareVersion.value = activeBug.value.software_version
+    } else if (bugStore.lastSessionSoftwareVersion) {
+      localSoftwareVersion.value = bugStore.lastSessionSoftwareVersion
+    } else {
+      localSoftwareVersion.value = ''
+    }
   } catch (error) {
     console.error('Failed to load notes:', error)
     localNotes.value = ''
@@ -340,6 +347,9 @@ async function saveMetadata(field: 'meeting_id' | 'software_version', value: str
     // Track meeting ID for pre-population on next bug
     if (field === 'meeting_id' && value) {
       bugStore.setLastSessionMeetingId(value)
+    }
+    if (field === 'software_version' && value) {
+      bugStore.setLastSessionSoftwareVersion(value)
     }
     saveStatus.value = 'saved'
 

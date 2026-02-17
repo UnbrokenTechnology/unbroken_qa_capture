@@ -509,6 +509,28 @@ describe('Bug Store', () => {
     })
   })
 
+  describe('Software version pre-population', () => {
+    it('initializes lastSessionSoftwareVersion as null', () => {
+      const store = useBugStore()
+      expect(store.lastSessionSoftwareVersion).toBeNull()
+    })
+
+    it('sets and clears lastSessionSoftwareVersion', () => {
+      const store = useBugStore()
+      store.setLastSessionSoftwareVersion('2.0.0')
+      expect(store.lastSessionSoftwareVersion).toBe('2.0.0')
+      store.setLastSessionSoftwareVersion(null)
+      expect(store.lastSessionSoftwareVersion).toBeNull()
+    })
+
+    it('clears lastSessionSoftwareVersion when clearBugs is called', () => {
+      const store = useBugStore()
+      store.setLastSessionSoftwareVersion('2.0.0')
+      store.clearBugs()
+      expect(store.lastSessionSoftwareVersion).toBeNull()
+    })
+  })
+
   describe('Console tag toggle', () => {
     it('initializes tagNextScreenshotAsConsole as false', () => {
       const store = useBugStore()
