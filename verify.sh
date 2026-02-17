@@ -13,6 +13,7 @@ fi
 RUST_OK=true
 TS_OK=true
 CMDS_OK=true
+SMOKE_OK=true
 
 # ─── Rust Backend ───────────────────────────────────────────────────────────
 
@@ -70,18 +71,27 @@ if [ -f "package.json" ]; then
         echo "=== npm test ==="
         npm test || TS_OK=false
     fi
+
+    # Headless browser smoke test (optional — skipped if puppeteer not available)
+    if [ -f "scripts/smoke-test.mjs" ] && [ -d "node_modules/puppeteer" ]; then
+        echo "=== Smoke test: headless browser rendering ==="
+        node scripts/smoke-test.mjs || SMOKE_OK=false
+    else
+        echo "=== Smoke test: skipped (puppeteer not installed) ==="
+    fi
 else
     echo "No package.json found — skipping frontend checks"
 fi
 
 # ─── Results ────────────────────────────────────────────────────────────────
 
-if [ "$RUST_OK" = false ] || [ "$TS_OK" = false ] || [ "$CMDS_OK" = false ]; then
+if [ "$RUST_OK" = false ] || [ "$TS_OK" = false ] || [ "$CMDS_OK" = false ] || [ "$SMOKE_OK" = false ]; then
     echo ""
     echo "VERIFICATION FAILED"
     [ "$RUST_OK" = false ] && echo "  - Rust checks failed"
     [ "$TS_OK" = false ] && echo "  - TypeScript/Vue checks failed"
     [ "$CMDS_OK" = false ] && echo "  - Command conventions check failed"
+    [ "$SMOKE_OK" = false ] && echo "  - Headless browser smoke test failed"
     exit 1
 fi
 
