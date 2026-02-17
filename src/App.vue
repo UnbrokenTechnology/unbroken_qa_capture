@@ -19,8 +19,8 @@
         </q-btn>
       </q-toolbar>
 
-      <!-- Session Toolbar -->
-      <SessionToolbar />
+      <!-- Session Toolbar (hidden during first-run wizard) -->
+      <SessionToolbar v-if="!showFirstRunWizard" />
     </q-header>
 
     <q-page-container>
