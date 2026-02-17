@@ -167,7 +167,17 @@ onMounted(async () => {
     router.push({ name: 'settings' })
   })
 
-  unlistenHandlers = [unlistenStartSession, unlistenNewBug, unlistenSettings]
+  // When the window is restored from tray (icon click or "Open Main Window"),
+  // navigate back to the correct screen — never leave the user stranded on Settings.
+  const unlistenWindowShown = await listen('tray-window-shown', () => {
+    if (sessionStore.isSessionActive) {
+      router.push({ name: 'active-session' })
+    } else {
+      router.push({ name: 'home' })
+    }
+  })
+
+  unlistenHandlers = [unlistenStartSession, unlistenNewBug, unlistenSettings, unlistenWindowShown]
 })
 
 onUnmounted(() => {

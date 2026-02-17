@@ -1366,6 +1366,7 @@ pub fn run() {
                                 window.show().ok();
                                 window.set_focus().ok();
                             }
+                            app_handle.emit("tray-window-shown", ()).ok();
                         }
                         "settings" => {
                             if let Some(window) = app_handle.get_webview_window("main") {
@@ -1382,10 +1383,12 @@ pub fn run() {
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
-                        if let Some(app) = tray.app_handle().get_webview_window("main") {
-                            app.show().ok();
-                            app.set_focus().ok();
+                        let app_handle = tray.app_handle();
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            window.show().ok();
+                            window.set_focus().ok();
                         }
+                        app_handle.emit("tray-window-shown", ()).ok();
                     }
                 })
                 .build(app)?;
