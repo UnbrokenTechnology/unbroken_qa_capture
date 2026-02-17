@@ -451,6 +451,169 @@ describe('Session Lifecycle Integration', () => {
     })
   })
 
+  // ============================================================================
+  // Regression: New Capture flow (ticket #113)
+  //
+  // These tests guard against regressions in the "New Capture" user-facing flow:
+  //   1. User starts a session
+  //   2. User initiates a new bug capture → bug enters 'capturing' state
+  //   3. Capture is completed → bug transitions to 'captured', activeBug cleared
+  //   4. Bug appears in the session review (loadBugsBySession returns it)
+  //
+  // This flow was confirmed working and must continue to pass as other
+  // Settings/UI fixes are applied.
+  // ============================================================================
+  describe('Regression: New Capture flow', () => {
+    it('startBugCapture sets activeBug with capturing status', async () => {
+      const bugStore = useBugStore()
+
+      const capturingBug = makeBug({ status: 'capturing' })
+      vi.mocked(tauri.createBug).mockResolvedValue(capturingBug)
+
+      const result = await bugStore.startBugCapture({ session_id: 'session-1' })
+
+      expect(result.status).toBe('capturing')
+      expect(bugStore.activeBug).toEqual(capturingBug)
+      expect(bugStore.isCapturing).toBe(true)
+      expect(bugStore.backendBugs).toHaveLength(1)
+    })
+
+    it('completeBugCapture transitions bug to captured and clears activeBug', async () => {
+      const bugStore = useBugStore()
+
+      const capturingBug = makeBug({ status: 'capturing' })
+      vi.mocked(tauri.createBug).mockResolvedValue(capturingBug)
+      await bugStore.startBugCapture({ session_id: 'session-1' })
+
+      vi.mocked(tauri.updateBug).mockResolvedValue(undefined)
+      await bugStore.completeBugCapture('bug-1')
+
+      expect(bugStore.backendBugs[0]?.status).toBe('captured')
+      expect(bugStore.activeBug).toBeNull()
+      expect(bugStore.isCapturing).toBe(false)
+    })
+
+    it('full New Capture flow: session start → capture → complete → appears in review', async () => {
+      const sessionStore = useSessionStore()
+      const bugStore = useBugStore()
+
+      // 1. Start session
+      const mockSession = makeSession()
+      vi.mocked(tauri.createSession).mockResolvedValue(mockSession)
+      await sessionStore.createSession({ folder_path: '/qa/sessions' })
+
+      expect(sessionStore.isSessionActive).toBe(true)
+
+      // 2. Initiate New Capture
+      const capturingBug = makeBug({ status: 'capturing' })
+      vi.mocked(tauri.createBug).mockResolvedValue(capturingBug)
+
+      await bugStore.startBugCapture({ session_id: 'session-1' })
+
+      expect(bugStore.isCapturing).toBe(true)
+      expect(bugStore.activeBug?.id).toBe('bug-1')
+
+      // 3. Complete the capture
+      vi.mocked(tauri.updateBug).mockResolvedValue(undefined)
+      await bugStore.completeBugCapture('bug-1')
+
+      expect(bugStore.activeBug).toBeNull()
+      expect(bugStore.isCapturing).toBe(false)
+      expect(bugStore.backendBugs[0]?.status).toBe('captured')
+
+      // 4. Bug appears in session review
+      const capturedBug = makeBug({ status: 'captured' })
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([capturedBug])
+
+      await bugStore.loadBugsBySession('session-1')
+
+      expect(bugStore.backendBugs).toHaveLength(1)
+      expect(bugStore.backendBugs[0]?.status).toBe('captured')
+      expect(bugStore.backendBugs[0]?.session_id).toBe('session-1')
+      expect(tauri.getBugsBySession).toHaveBeenCalledWith('session-1')
+    })
+
+    it('multiple sequential captures all appear in session review', async () => {
+      const sessionStore = useSessionStore()
+      const bugStore = useBugStore()
+
+      const mockSession = makeSession()
+      vi.mocked(tauri.createSession).mockResolvedValue(mockSession)
+      await sessionStore.createSession({ folder_path: '/qa/sessions' })
+
+      // Capture 3 bugs sequentially using the full startBugCapture/completeBugCapture cycle
+      for (let i = 1; i <= 3; i++) {
+        const capturingBug = makeBug({
+          id: `bug-${i}`,
+          bug_number: i,
+          display_id: `BUG-00${i}`,
+          status: 'capturing',
+        })
+        vi.mocked(tauri.createBug).mockResolvedValue(capturingBug)
+        await bugStore.startBugCapture({ session_id: 'session-1' })
+
+        vi.mocked(tauri.updateBug).mockResolvedValue(undefined)
+        await bugStore.completeBugCapture(`bug-${i}`)
+      }
+
+      // All 3 should be in the store as captured
+      expect(bugStore.backendBugs).toHaveLength(3)
+      expect(bugStore.backendBugs.every(b => b.status === 'captured')).toBe(true)
+
+      // Simulate session review load
+      const reviewBugs = [1, 2, 3].map(i =>
+        makeBug({ id: `bug-${i}`, bug_number: i, display_id: `BUG-00${i}`, status: 'captured' })
+      )
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue(reviewBugs)
+
+      await bugStore.loadBugsBySession('session-1')
+
+      expect(bugStore.backendBugs).toHaveLength(3)
+      bugStore.backendBugs.forEach((bug, idx) => {
+        expect(bug.bug_number).toBe(idx + 1)
+        expect(bug.status).toBe('captured')
+      })
+    })
+
+    it('second capture can start immediately after first is completed', async () => {
+      const bugStore = useBugStore()
+
+      // First capture cycle
+      const bug1 = makeBug({ id: 'bug-1', bug_number: 1, status: 'capturing' })
+      vi.mocked(tauri.createBug).mockResolvedValue(bug1)
+      await bugStore.startBugCapture({ session_id: 'session-1' })
+      expect(bugStore.isCapturing).toBe(true)
+
+      vi.mocked(tauri.updateBug).mockResolvedValue(undefined)
+      await bugStore.completeBugCapture('bug-1')
+      expect(bugStore.isCapturing).toBe(false)
+
+      // Second capture starts immediately
+      const bug2 = makeBug({ id: 'bug-2', bug_number: 2, status: 'capturing' })
+      vi.mocked(tauri.createBug).mockResolvedValue(bug2)
+      await bugStore.startBugCapture({ session_id: 'session-1' })
+
+      expect(bugStore.isCapturing).toBe(true)
+      expect(bugStore.activeBug?.id).toBe('bug-2')
+      expect(bugStore.backendBugs).toHaveLength(2)
+    })
+
+    it('capture failure does not leave a dangling activeBug', async () => {
+      const bugStore = useBugStore()
+
+      vi.mocked(tauri.createBug).mockRejectedValue(new Error('Backend unavailable'))
+
+      await expect(bugStore.startBugCapture({ session_id: 'session-1' })).rejects.toThrow(
+        'Backend unavailable',
+      )
+
+      // activeBug must not be set if creation failed
+      expect(bugStore.activeBug).toBeNull()
+      expect(bugStore.isCapturing).toBe(false)
+      expect(bugStore.backendBugs).toHaveLength(0)
+    })
+  })
+
   describe('State cleanup and isolation', () => {
     it('each test starts with a clean pinia state', () => {
       const sessionStore = useSessionStore()
