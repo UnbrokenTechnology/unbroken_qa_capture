@@ -188,6 +188,21 @@ export async function updateCaptureConsoleFlag(captureId: string, isConsoleCaptu
   await invoke('update_capture_console_flag', { captureId, isConsoleCapture })
 }
 
+export async function parseConsoleScreenshot(screenshotPath: string): Promise<{ errors: string[], warnings: string[], logs: string[] }> {
+  const result = await invoke<{ content: string, task: string, bug_id: string | null }>('parse_console_screenshot', { screenshotPath })
+  return JSON.parse(result.content)
+}
+
+export async function updateBugConsoleParse(bugId: string, consoleParsed: { errors: string[], warnings: string[], logs: string[] }): Promise<void> {
+  await invoke('update_bug_console_parse', { bugId, consoleParsedJson: JSON.stringify(consoleParsed) })
+}
+
+export interface ConsoleParsed {
+  errors: string[]
+  warnings: string[]
+  logs: string[]
+}
+
 // Settings operations
 export async function getSetting(key: string): Promise<string | null> {
   return await invoke<string | null>('get_setting', { key })

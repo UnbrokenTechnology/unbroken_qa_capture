@@ -240,6 +240,72 @@
         </q-card-section>
       </q-card>
 
+      <!-- Parsed Console Output Card -->
+      <q-card
+        v-if="consoleParsed"
+        class="q-mb-md"
+      >
+        <q-card-section>
+          <div class="text-h6 q-mb-md">
+            Parsed Console Output
+          </div>
+
+          <!-- Errors -->
+          <div
+            v-if="consoleParsed.errors.length > 0"
+            class="q-mb-md"
+          >
+            <div class="text-subtitle2 text-negative q-mb-sm">
+              Errors ({{ consoleParsed.errors.length }})
+            </div>
+            <div class="console-block bg-red-1 rounded-borders q-pa-sm">
+              <div
+                v-for="(err, i) in consoleParsed.errors"
+                :key="i"
+                class="console-line text-negative"
+              >
+                {{ err }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Warnings -->
+          <div
+            v-if="consoleParsed.warnings.length > 0"
+            class="q-mb-md"
+          >
+            <div class="text-subtitle2 text-warning q-mb-sm">
+              Warnings ({{ consoleParsed.warnings.length }})
+            </div>
+            <div class="console-block bg-yellow-1 rounded-borders q-pa-sm">
+              <div
+                v-for="(warn, i) in consoleParsed.warnings"
+                :key="i"
+                class="console-line text-warning"
+              >
+                {{ warn }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Logs -->
+          <div v-if="consoleParsed.logs.length > 0">
+            <div class="text-subtitle2 text-grey-7 q-mb-sm">
+              Logs ({{ consoleParsed.logs.length }})
+            </div>
+            <div class="console-block bg-grey-2 rounded-borders q-pa-sm">
+              <div
+                v-for="(log, i) in consoleParsed.logs"
+                :key="i"
+                class="console-line text-grey-8"
+              >
+                {{ log }}
+              </div>
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+
       <!-- Environment Information Card -->
       <q-card class="q-mb-md">
         <q-card-section>
@@ -318,6 +384,12 @@ import { useQuasar } from 'quasar'
 import ScreenshotAnnotator from '@/components/ScreenshotAnnotator.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 
+interface ConsoleParsed {
+  errors: string[]
+  warnings: string[]
+  logs: string[]
+}
+
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi']
 
 function isVideoPath(path: string): boolean {
@@ -341,6 +413,21 @@ const bugId = computed(() => route.params.id as string)
 
 // Get the bug data from the store
 const bug = computed(() => bugStore.getBugById(bugId.value))
+
+// Get the corresponding backend bug (has console_parse_json)
+const backendBug = computed(() =>
+  bugStore.backendBugs.find(b => b.id === bugId.value) || null
+)
+
+// Parse the console_parse_json from the backend bug
+const consoleParsed = computed((): ConsoleParsed | null => {
+  if (!backendBug.value?.console_parse_json) return null
+  try {
+    return JSON.parse(backendBug.value.console_parse_json) as ConsoleParsed
+  } catch {
+    return null
+  }
+})
 
 const screenshotCaptures = computed(() =>
   bug.value ? bug.value.captures.filter(c => !isVideoPath(c)) : []
@@ -465,5 +552,18 @@ onMounted(() => {
   bottom: 16px;
   right: 16px;
   z-index: 10;
+}
+
+.console-block {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.console-line {
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.4;
 }
 </style>

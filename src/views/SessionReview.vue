@@ -494,6 +494,70 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Parsed Console Output -->
+              <div
+                v-if="selectedBugConsoleParse"
+                class="q-mt-md"
+              >
+                <div class="text-caption text-grey-7 q-mb-xs">
+                  Parsed Console Output
+                </div>
+
+                <!-- Errors -->
+                <div
+                  v-if="selectedBugConsoleParse.errors.length > 0"
+                  class="q-mb-sm"
+                >
+                  <div class="text-caption text-negative q-mb-xs">
+                    Errors ({{ selectedBugConsoleParse.errors.length }})
+                  </div>
+                  <div class="console-output-block bg-red-1">
+                    <div
+                      v-for="(err, i) in selectedBugConsoleParse.errors"
+                      :key="i"
+                      class="console-line text-negative"
+                    >
+                      {{ err }}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Warnings -->
+                <div
+                  v-if="selectedBugConsoleParse.warnings.length > 0"
+                  class="q-mb-sm"
+                >
+                  <div class="text-caption text-warning q-mb-xs">
+                    Warnings ({{ selectedBugConsoleParse.warnings.length }})
+                  </div>
+                  <div class="console-output-block bg-yellow-1">
+                    <div
+                      v-for="(warn, i) in selectedBugConsoleParse.warnings"
+                      :key="i"
+                      class="console-line text-warning"
+                    >
+                      {{ warn }}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Logs -->
+                <div v-if="selectedBugConsoleParse.logs.length > 0">
+                  <div class="text-caption text-grey-7 q-mb-xs">
+                    Logs ({{ selectedBugConsoleParse.logs.length }})
+                  </div>
+                  <div class="console-output-block bg-grey-2">
+                    <div
+                      v-for="(log, i) in selectedBugConsoleParse.logs"
+                      :key="i"
+                      class="console-line text-grey-8"
+                    >
+                      {{ log }}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </q-card-section>
           </q-card>
 
@@ -922,6 +986,16 @@ const finalizedBugs = computed(() => {
   return bugs.value.filter(b => b.status === 'ready' || b.status === 'reviewed')
 })
 
+// Parsed console data for the selected bug
+const selectedBugConsoleParse = computed((): tauri.ConsoleParsed | null => {
+  if (!selectedBug.value?.console_parse_json) return null
+  try {
+    return JSON.parse(selectedBug.value.console_parse_json) as tauri.ConsoleParsed
+  } catch {
+    return null
+  }
+})
+
 // Methods
 function goBack() {
   router.back()
@@ -985,6 +1059,63 @@ async function toggleConsoleCapture(captureId: string, isConsole: boolean) {
     if (selectedBugId.value) {
       const captures = await tauri.getBugCaptures(selectedBugId.value)
       bugCaptures.value[selectedBugId.value] = captures
+
+      // If marking as console, parse the screenshot and save results to the bug
+      if (isConsole && claudeAvailable.value && selectedBug.value) {
+        const markedCapture = captures.find(c => c.id === captureId)
+        if (markedCapture) {
+          try {
+            // Use annotated_path if available, otherwise file_path
+            const pathToParse = markedCapture.annotated_path || markedCapture.file_path
+
+            $q.notify({
+              type: 'info',
+              message: 'Parsing console screenshot with Claude...',
+              position: 'top',
+              timeout: 2000
+            })
+
+            const parsedResult = await tauri.parseConsoleScreenshot(pathToParse)
+
+            // Merge with any existing parses for this bug
+            const existingJson = selectedBug.value.console_parse_json
+            const merged: tauri.ConsoleParsed = existingJson
+              ? (() => {
+                  const existing = JSON.parse(existingJson) as tauri.ConsoleParsed
+                  return {
+                    errors: [...existing.errors, ...parsedResult.errors],
+                    warnings: [...existing.warnings, ...parsedResult.warnings],
+                    logs: [...existing.logs, ...parsedResult.logs]
+                  }
+                })()
+              : parsedResult
+
+            // Persist to database
+            await tauri.updateBugConsoleParse(selectedBug.value.id, merged)
+
+            // Update local state
+            const bug = bugStore.backendBugs.find(b => b.id === selectedBug.value!.id)
+            if (bug) {
+              bug.console_parse_json = JSON.stringify(merged)
+            }
+
+            $q.notify({
+              type: 'positive',
+              message: `Parsed: ${parsedResult.errors.length} error(s), ${parsedResult.warnings.length} warning(s), ${parsedResult.logs.length} log(s)`,
+              position: 'top',
+              timeout: 3000
+            })
+          } catch (parseErr) {
+            console.error('Failed to parse console screenshot:', parseErr)
+            $q.notify({
+              type: 'warning',
+              message: 'Console marked but parsing failed (Claude may be unavailable)',
+              position: 'top',
+              timeout: 3000
+            })
+          }
+        }
+      }
     }
 
     $q.notify({
@@ -1669,6 +1800,21 @@ onMounted(async () => {
 .description-editor {
   font-family: monospace;
   font-size: 14px;
+}
+
+.console-output-block {
+  border-radius: 4px;
+  padding: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.console-line {
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.4;
 }
 
 .rounded {

@@ -1350,6 +1350,35 @@ fn disable_startup() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn update_bug_console_parse(
+    bug_id: String,
+    console_parsed_json: String,
+    app: tauri::AppHandle
+) -> Result<(), String> {
+    use database::{Database, BugOps, BugRepository};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = BugRepository::new(db.connection());
+
+    // Get the bug
+    let mut bug = repo.get(&bug_id)
+        .map_err(|e: rusqlite::Error| e.to_string())?
+        .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
+
+    // Update the console_parse_json field
+    bug.console_parse_json = Some(console_parsed_json);
+
+    // Save back to database
+    repo.update(&bug)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
 fn update_capture_console_flag(
     capture_id: String,
     is_console_capture: bool,
@@ -1879,6 +1908,7 @@ pub fn run() {
             mark_setup_complete,
             reset_setup,
             get_bug_captures,
+            update_bug_console_parse,
             update_capture_console_flag,
             get_app_version,
             enable_startup,
