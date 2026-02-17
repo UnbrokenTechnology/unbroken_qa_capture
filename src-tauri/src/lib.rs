@@ -1324,6 +1324,13 @@ pub fn run() {
             emit_screenshot_captured,
             open_annotation_window
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Instead of closing the app, hide the window to system tray
+                window.hide().unwrap();
+                api.prevent_close();
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
