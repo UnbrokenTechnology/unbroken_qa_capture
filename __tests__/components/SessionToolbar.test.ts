@@ -30,6 +30,25 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }))
 
+// Mock Tauri invoke
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn()
+}))
+
+// Create a mock notify function
+const mockNotify = vi.fn()
+
+// Mock useQuasar
+vi.mock('quasar', async () => {
+  const actual = await vi.importActual('quasar')
+  return {
+    ...actual,
+    useQuasar: () => ({
+      notify: mockNotify
+    })
+  }
+})
+
 const mockActiveSession: Session = {
   id: 'session-abc123-def456-ghi789',
   started_at: new Date().toISOString(),
@@ -81,6 +100,7 @@ describe('SessionToolbar', () => {
     pinia = createPinia()
     setActivePinia(pinia)
     vi.clearAllMocks()
+    mockNotify.mockClear()
     vi.useFakeTimers()
   })
 
@@ -366,8 +386,8 @@ describe('SessionToolbar', () => {
       // Tooltip content may not be rendered in test environment, just verify it exists
     })
 
-    it('should log folder path when clicked', async () => {
-      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    it('should call open_session_folder command when clicked', async () => {
+      const { invoke } = await import('@tauri-apps/api/core')
 
       const wrapper = mountComponent()
       await flushPromises()
@@ -382,19 +402,21 @@ describe('SessionToolbar', () => {
       )
 
       await openFolderBtn?.trigger('click')
-      await wrapper.vm.$nextTick()
+      await flushPromises()
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        'Opening session folder:',
-        '/test/sessions/session1'
-      )
+      expect(invoke).toHaveBeenCalledWith('open_session_folder', {
+        folderPath: mockActiveSession.folder_path
+      })
 
-      consoleLogSpy.mockRestore()
+      expect(mockNotify).toHaveBeenCalledWith({
+        type: 'positive',
+        message: 'Session folder opened',
+        position: 'top',
+        timeout: 2000
+      })
     })
 
     it('should handle missing folder path gracefully', async () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
       const wrapper = mountComponent()
       await flushPromises()
 
@@ -411,13 +433,14 @@ describe('SessionToolbar', () => {
       )
 
       await openFolderBtn?.trigger('click')
-      await wrapper.vm.$nextTick()
+      await flushPromises()
 
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        'No folder path available for active session'
-      )
-
-      consoleWarnSpy.mockRestore()
+      expect(mockNotify).toHaveBeenCalledWith({
+        type: 'warning',
+        message: 'No folder path available for active session',
+        position: 'top',
+        timeout: 2000
+      })
     })
   })
 

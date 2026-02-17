@@ -65,10 +65,13 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useSessionStore } from '../stores/session'
 import { useBugStore } from '../stores/bug'
+import { invoke } from '@tauri-apps/api/core'
+import { useQuasar } from 'quasar'
 
 // Stores
 const sessionStore = useSessionStore()
 const bugStore = useBugStore()
+const $q = useQuasar()
 
 // State
 const sessionStartTime = ref<Date | null>(null)
@@ -135,16 +138,33 @@ function stopTimer() {
 
 async function openSessionFolder() {
   if (!sessionStore.activeSession?.folder_path) {
-    console.warn('No folder path available for active session')
+    $q.notify({
+      type: 'warning',
+      message: 'No folder path available for active session',
+      position: 'top',
+      timeout: 2000
+    })
     return
   }
 
   try {
-    // TODO: Implement Tauri command to open folder in system file explorer
-    // This is a placeholder that will need proper Tauri integration
-    console.log('Opening session folder:', sessionStore.activeSession.folder_path)
+    await invoke('open_session_folder', {
+      folderPath: sessionStore.activeSession.folder_path
+    })
+
+    $q.notify({
+      type: 'positive',
+      message: 'Session folder opened',
+      position: 'top',
+      timeout: 2000
+    })
   } catch (error) {
-    console.error('Failed to open session folder:', error)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to open session folder: ${error}`,
+      position: 'top',
+      timeout: 3000
+    })
   }
 }
 
