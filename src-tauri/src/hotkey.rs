@@ -59,9 +59,9 @@ pub struct HotkeyConfig {
 impl Default for HotkeyConfig {
     fn default() -> Self {
         let mut shortcuts = HashMap::new();
-        shortcuts.insert(HotkeyAction::ToggleSession, "Ctrl+Shift+Q".to_string());
-        shortcuts.insert(HotkeyAction::StartBugCapture, "PrintScreen".to_string());
-        shortcuts.insert(HotkeyAction::EndBugCapture, "F4".to_string());
+        shortcuts.insert(HotkeyAction::ToggleSession, "F5".to_string());
+        shortcuts.insert(HotkeyAction::StartBugCapture, "F7".to_string());
+        shortcuts.insert(HotkeyAction::EndBugCapture, "F9".to_string());
         shortcuts.insert(
             HotkeyAction::OpenQuickNotepad,
             "Ctrl+Shift+N".to_string(),
@@ -288,15 +288,15 @@ mod tests {
         let config = HotkeyConfig::default();
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::ToggleSession),
-            Some(&"Ctrl+Shift+Q".to_string())
+            Some(&"F5".to_string())
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::StartBugCapture),
-            Some(&"PrintScreen".to_string())
+            Some(&"F7".to_string())
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::EndBugCapture),
-            Some(&"F4".to_string())
+            Some(&"F9".to_string())
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::OpenQuickNotepad),
@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn test_is_registered_initially_false() {
         let manager = HotkeyManager::new();
-        assert!(!manager.is_registered("Ctrl+Shift+Q"));
+        assert!(!manager.is_registered("F5"));
     }
 
     #[test]
