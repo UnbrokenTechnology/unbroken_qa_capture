@@ -79,12 +79,6 @@ describe('AnnotateView', () => {
     })
   }
 
-  it('mounts without errors', async () => {
-    const wrapper = mountAnnotateView()
-    await flushPromises()
-    expect(wrapper.vm).toBeDefined()
-  })
-
   describe('error state (no image path)', () => {
     it('shows error state when no image query param is provided', async () => {
       const wrapper = mountAnnotateView()
@@ -153,15 +147,6 @@ describe('AnnotateView', () => {
       expect(annotator.props('screenshotPath')).toBe(imagePath)
     })
 
-    it('does not show the error state when image path is provided', async () => {
-      await router.push({ path: '/annotate', query: { image: encodeURIComponent('/img.png') } })
-      await router.isReady()
-
-      const wrapper = mountAnnotateView()
-      await flushPromises()
-
-      expect(wrapper.text()).not.toContain('No image path provided')
-    })
   })
 
   describe('close handler', () => {

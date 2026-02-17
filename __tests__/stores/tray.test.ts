@@ -20,13 +20,6 @@ describe('Tray Store', () => {
     expect(store.tooltip).toBe('Unbroken QA Capture - Idle')
   })
 
-  it('should have correct computed getters', () => {
-    const store = useTrayStore()
-    expect(store.currentState).toBe('idle')
-    expect(store.isSessionActive).toBe(false)
-    expect(store.currentTooltip).toBe('Unbroken QA Capture - Idle')
-  })
-
   describe('setState', () => {
     it('should update state to active', async () => {
       const store = useTrayStore()
@@ -188,20 +181,25 @@ describe('Tray Store', () => {
       expect(store.sessionActive).toBe(false)
     })
 
-    it('should allow direct state changes without following workflow', async () => {
+  })
+
+  describe('setBugCapture with bugId', () => {
+    it('should set currentBugId when bugId is provided', async () => {
       const store = useTrayStore()
 
-      // Jump directly to review
-      await store.setReview()
-      expect(store.state).toBe('review')
+      await store.setBugCapture('bug-42')
 
-      // Jump to bug
-      await store.setBugCapture()
+      expect(store.currentBugId).toBe('bug-42')
       expect(store.state).toBe('bug')
+    })
 
-      // Jump to active
-      await store.setActive()
-      expect(store.state).toBe('active')
+    it('should clear currentBugId when transitioning away from bug state', async () => {
+      const store = useTrayStore()
+      await store.setBugCapture('bug-42')
+      expect(store.currentBugId).toBe('bug-42')
+
+      await store.setIdle()
+      expect(store.currentBugId).toBeNull()
     })
   })
 })

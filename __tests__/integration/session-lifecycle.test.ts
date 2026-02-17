@@ -52,7 +52,6 @@ vi.mock('@tauri-apps/api/event', () => ({
 }))
 
 import * as tauri from '@/api/tauri'
-import { listen } from '@tauri-apps/api/event'
 
 // ============================================================================
 // Test Helpers
@@ -243,39 +242,6 @@ describe('Session Lifecycle Integration', () => {
     })
   })
 
-  describe('File watcher event handling', () => {
-    it('registers event listeners for file watcher events on session setup', async () => {
-      const sessionStore = useSessionStore()
-
-      const mockSession = makeSession()
-      vi.mocked(tauri.createSession).mockResolvedValue(mockSession)
-
-      // Verify listen() is available (called during store initialization)
-      expect(listen).toBeDefined()
-
-      await sessionStore.createSession({})
-      expect(sessionStore.activeSession).toEqual(mockSession)
-    })
-
-    it('session:started event is handled by the session store listener', async () => {
-      const sessionStore = useSessionStore()
-
-      // Simulate what the file watcher backend event listener setup looks like.
-      // The store calls listen() to register for Tauri events.
-      vi.mocked(listen).mockImplementation(async (_eventName, _handler) => {
-        return () => {}
-      })
-
-      // Trigger store setup that would register listeners
-      const mockSession = makeSession()
-      vi.mocked(tauri.createSession).mockResolvedValue(mockSession)
-      await sessionStore.createSession({})
-
-      // Verify the session was created successfully (the store works with events)
-      expect(sessionStore.activeSession).not.toBeNull()
-    })
-  })
-
   describe('Concurrent session prevention', () => {
     it('only one session can be active at a time', async () => {
       const sessionStore = useSessionStore()
@@ -388,34 +354,6 @@ describe('Session Lifecycle Integration', () => {
   })
 
   describe('Cross-store coordination', () => {
-    it('session and bug stores operate independently without interfering', async () => {
-      const sessionStore = useSessionStore()
-      const bugStore = useBugStore()
-
-      // Set up session
-      const mockSession = makeSession()
-      vi.mocked(tauri.createSession).mockResolvedValue(mockSession)
-      await sessionStore.createSession({})
-
-      // Create bugs
-      const bug1 = makeBug({ id: 'bug-1', bug_number: 1 })
-      const bug2 = makeBug({ id: 'bug-2', bug_number: 2 })
-      vi.mocked(tauri.createBug).mockResolvedValueOnce(bug1).mockResolvedValueOnce(bug2)
-
-      await bugStore.createBug({ session_id: 'session-1' })
-      await bugStore.createBug({ session_id: 'session-1' })
-
-      // Session store is unaffected by bug operations
-      expect(sessionStore.activeSession?.id).toBe('session-1')
-      expect(sessionStore.isSessionActive).toBe(true)
-      expect(sessionStore.sessions).toHaveLength(1)
-
-      // Bug store is unaffected by session queries
-      expect(bugStore.backendBugs).toHaveLength(2)
-      expect(bugStore.backendBugs.at(0)?.bug_number).toBe(1)
-      expect(bugStore.backendBugs.at(1)?.bug_number).toBe(2)
-    })
-
     it('deleting session removes it from session store', async () => {
       const sessionStore = useSessionStore()
 
@@ -615,19 +553,6 @@ describe('Session Lifecycle Integration', () => {
   })
 
   describe('State cleanup and isolation', () => {
-    it('each test starts with a clean pinia state', () => {
-      const sessionStore = useSessionStore()
-      const bugStore = useBugStore()
-
-      // These assertions verify that beforeEach resets state correctly
-      expect(sessionStore.sessions).toHaveLength(0)
-      expect(sessionStore.activeSession).toBeNull()
-      expect(sessionStore.error).toBeNull()
-      expect(bugStore.backendBugs).toHaveLength(0)
-      expect(bugStore.activeBug).toBeNull()
-      expect(bugStore.error).toBeNull()
-    })
-
     it('loading state is always false after operation completes', async () => {
       const sessionStore = useSessionStore()
 

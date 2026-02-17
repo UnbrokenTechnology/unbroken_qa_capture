@@ -63,12 +63,6 @@ describe('Home View', () => {
     })
   }
 
-  it('mounts without errors', async () => {
-    const wrapper = mountHome()
-    await flushPromises()
-    expect(wrapper.vm).toBeDefined()
-  })
-
   it('renders the app title', async () => {
     const wrapper = mountHome()
     await flushPromises()

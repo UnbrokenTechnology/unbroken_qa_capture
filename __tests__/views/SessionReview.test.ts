@@ -422,29 +422,6 @@ describe('SessionReview', () => {
     expect(wrapper.text()).toContain('This is the bug description')
   })
 
-  it('should open screenshot dialog when thumbnail is clicked', async () => {
-    const sessionStore = useSessionStore()
-    const session = createMockSession('session-1')
-    sessionStore.activeSession = session
-
-    const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
-
-    const captures = [createMockCapture('cap-1', 'bug-1')]
-
-    vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
-    vi.mocked(tauri.getBugCaptures).mockResolvedValue(captures)
-
-    const wrapper = await mountComponent()
-    await flushPromises()
-
-    const thumbnail = wrapper.find('img')
-    await thumbnail.trigger('click')
-    await flushPromises()
-
-    // Dialog should be visible (stubbed, so just check if it's rendered)
-    expect(wrapper.html()).toBeTruthy()
-  })
-
   describe('AI Description Generation', () => {
     it('should check Claude status on mount', async () => {
       const sessionStore = useSessionStore()

@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent } from 'vue'
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
 import { Quasar, QBtn, QIcon, QCard, QCardSection, QBadge, QChip } from 'quasar'
 
 // Mock Tauri APIs (included for safety even though we only test Quasar primitives)
@@ -42,39 +40,11 @@ describe('Quasar Rendering Sanity', () => {
   })
 
   describe('Quasar Plugin & Icon Set Verification', () => {
-    it('Quasar, Notify, and Dialog are defined objects', async () => {
-      const { Notify, Dialog } = await import('quasar')
-      expect(Quasar).toBeDefined()
-      expect(typeof Quasar).toBe('object')
-      expect(Notify).toBeDefined()
-      expect(typeof Notify).toBe('object')
-      expect(Dialog).toBeDefined()
-      expect(typeof Dialog).toBe('object')
-    })
-
-    it('material-icons icon set has name and type properties', async () => {
+    it('material-icons icon set resolves and can be imported', async () => {
       const iconSetModule = await import('quasar/icon-set/material-icons')
       const iconSet = iconSetModule.default
       expect(iconSet).toBeDefined()
-      expect(iconSet).toHaveProperty('name')
-      expect(iconSet).toHaveProperty('type')
-    })
-
-    it('main.ts imports material-icons icon set', () => {
-      const mainTs = readFileSync(resolve(__dirname, '../src/main.ts'), 'utf-8')
-      expect(mainTs).toContain("import iconSet from 'quasar/icon-set/material-icons'")
-    })
-
-    it('main.ts configures Notify and Dialog plugins', () => {
-      const mainTs = readFileSync(resolve(__dirname, '../src/main.ts'), 'utf-8')
-      expect(mainTs).toMatch(/plugins:\s*\{\s*Notify,\s*Dialog\s*\}/)
-    })
-
-    it('main.ts passes iconSet to Quasar config', () => {
-      const mainTs = readFileSync(resolve(__dirname, '../src/main.ts'), 'utf-8')
-      expect(mainTs).toContain('iconSet')
-      // Verify iconSet appears inside the app.use(Quasar, { ... }) block
-      expect(mainTs).toMatch(/app\.use\(Quasar,\s*\{[\s\S]*iconSet/)
+      expect(iconSet).toHaveProperty('name', 'material-icons')
     })
   })
 

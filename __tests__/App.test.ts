@@ -8,6 +8,7 @@ import SessionToolbar from '@/components/SessionToolbar.vue'
 import FirstRunWizard from '@/components/FirstRunWizard.vue'
 import * as tauri from '@/api/tauri'
 import { invoke } from '@tauri-apps/api/core'
+import { useSessionStore } from '@/stores/session'
 
 // Mock Tauri API
 vi.mock('@/api/tauri', () => ({
@@ -82,6 +83,8 @@ describe('App.vue', () => {
         { path: '/', name: 'home', component: { template: '<div>Home</div>' } },
         { path: '/active-session', name: 'active-session', component: { template: '<div>Active Session</div>' } },
         { path: '/settings', name: 'settings', component: { template: '<div>Settings</div>' } },
+        { path: '/bug/:id', name: 'bug-detail', component: { template: '<div>Bug Detail</div>' }, props: true },
+        { path: '/session-review', name: 'session-review', component: { template: '<div>Session Review</div>' } },
       ],
     })
 
@@ -301,6 +304,114 @@ describe('App.vue', () => {
 
       // Should remain on home route (not navigate to active-session)
       expect(router.currentRoute.value.name).toBe('home')
+    })
+  })
+
+  describe('Back Navigation', () => {
+    const makeSession = (id: string): import('@/types/backend').Session => ({
+      id,
+      status: 'active' as const,
+      started_at: new Date().toISOString(),
+      ended_at: null,
+      folder_path: `/tmp/${id}`,
+      session_notes: null,
+      environment_json: null,
+      original_snip_path: null,
+      created_at: new Date().toISOString(),
+    })
+
+    it('should not redirect from bug-detail when session is updated (not started)', async () => {
+      vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
+
+      mountComponent()
+      await flushPromises()
+
+      const sessionStore = useSessionStore()
+
+      // Set initial session so watcher has oldId = 'session-nav-1'
+      sessionStore.activeSession = makeSession('session-nav-1')
+      await flushPromises()
+
+      // Navigate to bug-detail (simulating user clicking a bug)
+      await router.push({ name: 'bug-detail', params: { id: 'bug-123' } })
+      await flushPromises()
+
+      expect(router.currentRoute.value.name).toBe('bug-detail')
+
+      // Simulate a session-updated backend event (same session id, just updated metadata)
+      // Should NOT redirect because the session id hasn't changed (null→active transition already happened)
+      sessionStore.activeSession = { ...makeSession('session-nav-1'), session_notes: 'updated' }
+      await flushPromises()
+
+      // User should still be on bug-detail, not redirected to active-session
+      expect(router.currentRoute.value.name).toBe('bug-detail')
+    })
+
+    it('should navigate to active-session when a new session starts from home', async () => {
+      vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
+
+      mountComponent()
+      await flushPromises()
+
+      const sessionStore = useSessionStore()
+
+      // Start on home
+      expect(router.currentRoute.value.name).toBe('home')
+
+      // Simulate session starting (null → active)
+      sessionStore.activeSession = makeSession('session-new-1')
+      await flushPromises()
+
+      // Should navigate to active-session
+      expect(router.currentRoute.value.name).toBe('active-session')
+    })
+
+    it('should navigate home when session ends while on active-session', async () => {
+      vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
+
+      mountComponent()
+      await flushPromises()
+
+      const sessionStore = useSessionStore()
+
+      // Set up active session first (null → active)
+      sessionStore.activeSession = makeSession('session-end-1')
+      await flushPromises()
+
+      // User is now on active-session
+      await router.push({ name: 'active-session' })
+      await flushPromises()
+
+      // Session ends (active → null)
+      sessionStore.activeSession = null
+      await flushPromises()
+
+      // Should navigate home
+      expect(router.currentRoute.value.name).toBe('home')
+    })
+
+    it('should not navigate away from session-review when session ends', async () => {
+      vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
+
+      mountComponent()
+      await flushPromises()
+
+      const sessionStore = useSessionStore()
+
+      // Set up active session
+      sessionStore.activeSession = makeSession('session-review-1')
+      await flushPromises()
+
+      // Navigate to session-review
+      await router.push({ name: 'session-review' })
+      await flushPromises()
+
+      // Session ends
+      sessionStore.activeSession = null
+      await flushPromises()
+
+      // Should stay on session-review (explicitly exempt from home redirect)
+      expect(router.currentRoute.value.name).toBe('session-review')
     })
   })
 })
