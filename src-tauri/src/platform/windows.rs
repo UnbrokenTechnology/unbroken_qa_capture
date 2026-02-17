@@ -154,7 +154,7 @@ impl WindowsCaptureBridge {
         {
             use windows::Win32::UI::Input::KeyboardAndMouse::{
                 SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
-                KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_LWIN, VK_SHIFT, VK_S,
+                KEYEVENTF_KEYUP, VK_LWIN, VK_SHIFT, VK_S,
             };
 
             unsafe {
@@ -514,9 +514,6 @@ impl WindowsRegistryBridge {
     /// Expands environment variables in a registry value (e.g., %USERPROFILE%).
     #[cfg(windows)]
     fn expand_env_vars(path: &str) -> String {
-        use std::os::windows::ffi::OsStringExt;
-        use std::ffi::OsString;
-
         // Simple expansion for common variables
         let mut expanded = path.to_string();
 
@@ -754,6 +751,73 @@ impl Drop for WindowsRegistryBridge {
                 let _ = self.restore_screenshot_folder(original);
             }
         }
+    }
+}
+
+/// Windows platform implementation for startup and other OS-specific operations
+pub struct WindowsPlatform;
+
+impl super::Platform for WindowsPlatform {
+    #[cfg(windows)]
+    fn enable_startup(&self) -> Result<()> {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let (key, _) = hkcu
+            .create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+            .map_err(|e| PlatformError::RegistryError {
+                key: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run".to_string(),
+                operation: "open".to_string(),
+                message: format!("Failed to open Run registry key: {}", e),
+            })?;
+
+        // Get the current executable path
+        let exe_path = std::env::current_exe()
+            .map_err(|e| PlatformError::InvalidArgument {
+                parameter: "exe_path".to_string(),
+                message: format!("Failed to get current executable path: {}", e),
+            })?;
+
+        // Set the registry value to the executable path
+        key.set_value("UnbrokenQACapture", &exe_path.to_string_lossy().to_string())
+            .map_err(|e| PlatformError::RegistryError {
+                key: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\UnbrokenQACapture".to_string(),
+                operation: "write".to_string(),
+                message: format!("Failed to write startup registry value: {}", e),
+            })?;
+
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    fn enable_startup(&self) -> Result<()> {
+        Err(PlatformError::NotImplemented {
+            operation: "enable_startup".to_string(),
+            platform: "Non-Windows platform".to_string(),
+        })
+    }
+
+    #[cfg(windows)]
+    fn disable_startup(&self) -> Result<()> {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let key = hkcu
+            .open_subkey_with_flags("Software\\Microsoft\\Windows\\CurrentVersion\\Run", KEY_WRITE)
+            .map_err(|e| PlatformError::RegistryError {
+                key: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run".to_string(),
+                operation: "open".to_string(),
+                message: format!("Failed to open Run registry key: {}", e),
+            })?;
+
+        // Delete the registry value (ignore error if it doesn't exist)
+        let _ = key.delete_value("UnbrokenQACapture");
+
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    fn disable_startup(&self) -> Result<()> {
+        Err(PlatformError::NotImplemented {
+            operation: "disable_startup".to_string(),
+            platform: "Non-Windows platform".to_string(),
+        })
     }
 }
 
@@ -1237,72 +1301,5 @@ mod tests {
 
         // Cleanup
         fs::remove_dir_all(&temp_dir).unwrap();
-    }
-}
-
-/// Windows platform implementation for startup and other OS-specific operations
-pub struct WindowsPlatform;
-
-impl super::Platform for WindowsPlatform {
-    #[cfg(windows)]
-    fn enable_startup(&self) -> Result<()> {
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let (key, _) = hkcu
-            .create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
-            .map_err(|e| PlatformError::RegistryError {
-                key: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run".to_string(),
-                operation: "open".to_string(),
-                message: format!("Failed to open Run registry key: {}", e),
-            })?;
-
-        // Get the current executable path
-        let exe_path = std::env::current_exe()
-            .map_err(|e| PlatformError::InvalidArgument {
-                parameter: "exe_path".to_string(),
-                message: format!("Failed to get current executable path: {}", e),
-            })?;
-
-        // Set the registry value to the executable path
-        key.set_value("UnbrokenQACapture", &exe_path.to_string_lossy().to_string())
-            .map_err(|e| PlatformError::RegistryError {
-                key: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\UnbrokenQACapture".to_string(),
-                operation: "write".to_string(),
-                message: format!("Failed to write startup registry value: {}", e),
-            })?;
-
-        Ok(())
-    }
-
-    #[cfg(not(windows))]
-    fn enable_startup(&self) -> Result<()> {
-        Err(PlatformError::NotImplemented {
-            operation: "enable_startup".to_string(),
-            platform: "Non-Windows platform".to_string(),
-        })
-    }
-
-    #[cfg(windows)]
-    fn disable_startup(&self) -> Result<()> {
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let key = hkcu
-            .open_subkey_with_flags("Software\\Microsoft\\Windows\\CurrentVersion\\Run", KEY_WRITE)
-            .map_err(|e| PlatformError::RegistryError {
-                key: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run".to_string(),
-                operation: "open".to_string(),
-                message: format!("Failed to open Run registry key: {}", e),
-            })?;
-
-        // Delete the registry value (ignore error if it doesn't exist)
-        let _ = key.delete_value("UnbrokenQACapture");
-
-        Ok(())
-    }
-
-    #[cfg(not(windows))]
-    fn disable_startup(&self) -> Result<()> {
-        Err(PlatformError::NotImplemented {
-            operation: "disable_startup".to_string(),
-            platform: "Non-Windows platform".to_string(),
-        })
     }
 }
