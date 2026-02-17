@@ -304,6 +304,147 @@ describe('Settings Store', () => {
     })
   })
 
+  describe('getAllSettings with malformed backend response', () => {
+    it('should handle backend returning an entry with a null value', async () => {
+      const store = useSettingsStore()
+      // Simulate a response where value field is null (type mismatch from backend)
+      const malformedSettings = [
+        { key: SETTINGS_KEYS.THEME, value: null as unknown as string, updated_at: '2024-01-01T10:00:00Z' },
+      ]
+      vi.mocked(tauri.getAllSettings).mockResolvedValue(malformedSettings)
+
+      await store.loadAllSettings()
+
+      // null overrides the default — the store stores whatever backend sends
+      expect(store.settings[SETTINGS_KEYS.THEME]).toBeNull()
+    })
+
+    it('should handle backend returning an empty array (no settings stored)', async () => {
+      const store = useSettingsStore()
+      vi.mocked(tauri.getAllSettings).mockResolvedValue([])
+
+      await store.loadAllSettings()
+
+      // All settings should fall back to defaults
+      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('light')
+      expect(store.settings[SETTINGS_KEYS.HOTKEY_CAPTURE]).toBe('Ctrl+Shift+B')
+      expect(store.isDirty).toBe(false)
+    })
+
+    it('should handle backend returning duplicate keys (last one wins)', async () => {
+      const store = useSettingsStore()
+      const duplicateSettings = [
+        { key: SETTINGS_KEYS.THEME, value: 'dark', updated_at: '2024-01-01T09:00:00Z' },
+        { key: SETTINGS_KEYS.THEME, value: 'solarized', updated_at: '2024-01-01T10:00:00Z' },
+      ]
+      vi.mocked(tauri.getAllSettings).mockResolvedValue(duplicateSettings)
+
+      await store.loadAllSettings()
+
+      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('solarized')
+    })
+
+    it('should handle backend returning unknown keys without crashing', async () => {
+      const store = useSettingsStore()
+      const settingsWithUnknown = [
+        { key: 'unknown_future_setting', value: 'some_value', updated_at: '2024-01-01T10:00:00Z' },
+        { key: SETTINGS_KEYS.THEME, value: 'dark', updated_at: '2024-01-01T10:00:00Z' },
+      ]
+      vi.mocked(tauri.getAllSettings).mockResolvedValue(settingsWithUnknown)
+
+      await expect(store.loadAllSettings()).resolves.toBeUndefined()
+
+      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('dark')
+      expect(store.settings['unknown_future_setting']).toBe('some_value')
+    })
+  })
+
+  describe('setSetting with network failure', () => {
+    it('should set error and rethrow on network failure', async () => {
+      const store = useSettingsStore()
+      vi.mocked(tauri.setSetting).mockRejectedValue(new Error('Network timeout'))
+
+      await expect(
+        store.saveSetting(SETTINGS_KEYS.THEME, 'dark')
+      ).rejects.toThrow('Network timeout')
+
+      expect(store.error).toBe('Network timeout')
+    })
+
+    it('should not update local settings value when backend save fails', async () => {
+      const store = useSettingsStore()
+      vi.mocked(tauri.setSetting).mockRejectedValue(new Error('Save failed'))
+
+      const originalValue = store.settings[SETTINGS_KEYS.THEME]
+      await expect(
+        store.saveSetting(SETTINGS_KEYS.THEME, 'dark')
+      ).rejects.toThrow()
+
+      // The store only updates the local value AFTER backend succeeds, so it should remain unchanged
+      // Note: looking at the implementation, it updates local state AFTER await, so it won't be updated
+      expect(store.settings[SETTINGS_KEYS.THEME]).toBe(originalValue)
+    })
+
+    it('should reset loading state after network failure', async () => {
+      const store = useSettingsStore()
+      vi.mocked(tauri.setSetting).mockRejectedValue(new Error('Connection refused'))
+
+      await expect(
+        store.saveSetting(SETTINGS_KEYS.HOTKEY_CAPTURE, 'Ctrl+Alt+Z')
+      ).rejects.toThrow()
+
+      expect(store.loading).toBe(false)
+    })
+  })
+
+  describe('settings defaults when backend is unavailable', () => {
+    it('should keep default settings when backend returns error and no localStorage', async () => {
+      const store = useSettingsStore()
+      vi.mocked(tauri.getAllSettings).mockRejectedValue(new Error('Backend offline'))
+
+      await expect(store.loadAllSettings()).rejects.toThrow('Backend offline')
+
+      // All settings remain at defaults
+      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('light')
+      expect(store.settings[SETTINGS_KEYS.HOTKEY_CAPTURE]).toBe('Ctrl+Shift+B')
+      expect(store.settings[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION]).toBe('true')
+    })
+
+    it('should use localStorage values when backend is unavailable', async () => {
+      const savedSettings = {
+        [SETTINGS_KEYS.THEME]: 'dark',
+        [SETTINGS_KEYS.HOTKEY_CAPTURE]: 'Ctrl+Alt+X',
+      }
+      localStorageMock.setItem('unbroken-qa-settings', JSON.stringify(savedSettings))
+
+      const store = useSettingsStore()
+      store.loadFromLocalStorage()
+
+      vi.mocked(tauri.getAllSettings).mockRejectedValue(new Error('Backend offline'))
+
+      await expect(store.loadAllSettings()).rejects.toThrow('Backend offline')
+
+      // Should still have the localStorage values loaded earlier
+      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('dark')
+      expect(store.settings[SETTINGS_KEYS.HOTKEY_CAPTURE]).toBe('Ctrl+Alt+X')
+    })
+
+    it('should return defaults from getSetting when backend has never responded', () => {
+      const store = useSettingsStore()
+
+      expect(store.getSetting(SETTINGS_KEYS.THEME)).toBe('light')
+      expect(store.getSetting(SETTINGS_KEYS.HOTKEY_CAPTURE)).toBe('Ctrl+Shift+B')
+      expect(store.getSetting('nonexistent_key', 'my-fallback')).toBe('my-fallback')
+    })
+
+    it('should preserve autoOpenAnnotation default true when backend unavailable', () => {
+      const store = useSettingsStore()
+      // No backend call made — defaults only
+      expect(store.autoOpenAnnotation).toBe(true)
+      expect(store.settings[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION]).toBe('true')
+    })
+  })
+
   describe('initialize', () => {
     it('should load from localStorage and then backend', async () => {
       const localSettings = { [SETTINGS_KEYS.THEME]: 'dark' }

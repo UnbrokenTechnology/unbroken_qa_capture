@@ -322,6 +322,151 @@ describe('Bug Store', () => {
     })
   })
 
+  describe('startBugCapture - no active session', () => {
+    it('should still create a bug even when no session is set (session_id is caller responsibility)', async () => {
+      const store = useBugStore()
+      const mockBug = { ...createMockBackendBug('bug-1', 'Test'), status: 'capturing' as const }
+      vi.mocked(tauri.createBug).mockResolvedValue(mockBug)
+
+      // startBugCapture does not check for an active session — that's the session store's job
+      const result = await store.startBugCapture({})
+
+      expect(result).toEqual(mockBug)
+      expect(store.activeBug).toEqual(mockBug)
+      expect(store.isCapturing).toBe(true)
+    })
+
+    it('should propagate backend error when createBug fails during startBugCapture', async () => {
+      const store = useBugStore()
+      vi.mocked(tauri.createBug).mockRejectedValue(new Error('No active session'))
+
+      await expect(store.startBugCapture({})).rejects.toThrow('No active session')
+
+      expect(store.activeBug).toBeNull()
+      expect(store.isCapturing).toBe(false)
+      expect(store.error).toBe('No active session')
+    })
+  })
+
+  describe('completeBugCapture edge cases', () => {
+    it('should complete a bug capture for the active bug and clear activeBug', async () => {
+      const store = useBugStore()
+      const mockBug = createMockBackendBug('bug-1', 'Test')
+      store.activeBug = mockBug
+      store.backendBugs.push(mockBug)
+      vi.mocked(tauri.updateBug).mockResolvedValue()
+
+      await store.completeBugCapture('bug-1')
+
+      expect(store.backendBugs[0]?.status).toBe('captured')
+      expect(store.activeBug).toBeNull()
+    })
+
+    it('should handle completeBugCapture when capture was never started (no activeBug)', async () => {
+      const store = useBugStore()
+      const mockBug = createMockBackendBug('bug-1', 'Orphan bug')
+      store.backendBugs.push(mockBug)
+      vi.mocked(tauri.updateBug).mockResolvedValue()
+
+      // activeBug is null — this should still succeed for the given id
+      await store.completeBugCapture('bug-1')
+
+      expect(store.backendBugs[0]?.status).toBe('captured')
+      // activeBug was already null and should remain null
+      expect(store.activeBug).toBeNull()
+    })
+
+    it('should propagate error when backend fails during completeBugCapture', async () => {
+      const store = useBugStore()
+      const mockBug = createMockBackendBug('bug-1', 'Test')
+      store.activeBug = mockBug
+      store.backendBugs.push(mockBug)
+      vi.mocked(tauri.updateBug).mockRejectedValue(new Error('Update failed'))
+
+      await expect(store.completeBugCapture('bug-1')).rejects.toThrow('Update failed')
+
+      expect(store.error).toBe('Update failed')
+    })
+  })
+
+  describe('deleteBug with captures', () => {
+    it('should delete a bug that has associated legacy captures', async () => {
+      const store = useBugStore()
+      const legacyBug = createMockBug('bug-1', 'Bug with captures')
+      legacyBug.captures = ['/path/cap1.png', '/path/cap2.png']
+      store.addBug(legacyBug)
+
+      const backendBug = createMockBackendBug('bug-1', 'Bug with captures')
+      store.backendBugs.push(backendBug)
+      vi.mocked(tauri.deleteBug).mockResolvedValue()
+
+      await store.deleteBug('bug-1')
+
+      expect(store.backendBugs).toHaveLength(0)
+      expect(store.bugs).toHaveLength(0)
+      expect(tauri.deleteBug).toHaveBeenCalledWith('bug-1')
+    })
+
+    it('should clear activeBug when deleting the currently active bug', async () => {
+      const store = useBugStore()
+      const mockBug = createMockBackendBug('bug-1', 'Active bug')
+      store.backendBugs.push(mockBug)
+      store.activeBug = mockBug
+      vi.mocked(tauri.deleteBug).mockResolvedValue()
+
+      await store.deleteBug('bug-1')
+
+      expect(store.activeBug).toBeNull()
+    })
+
+    it('should clear currentBugId when deleting the current bug', async () => {
+      const store = useBugStore()
+      const legacyBug = createMockBug('bug-1', 'Current bug')
+      store.addBug(legacyBug)
+      store.setCurrentBug('bug-1')
+
+      const backendBug = createMockBackendBug('bug-1', 'Current bug')
+      store.backendBugs.push(backendBug)
+      vi.mocked(tauri.deleteBug).mockResolvedValue()
+
+      await store.deleteBug('bug-1')
+
+      expect(store.currentBug).toBeNull()
+    })
+  })
+
+  describe('getBugsBySession returning empty array', () => {
+    it('should handle backend returning empty array for a session with no bugs', async () => {
+      const store = useBugStore()
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([])
+
+      await store.loadBugsBySession('session-empty')
+
+      expect(store.backendBugs).toEqual([])
+      expect(tauri.getBugsBySession).toHaveBeenCalledWith('session-empty')
+    })
+
+    it('should clear existing backendBugs when session has no bugs', async () => {
+      const store = useBugStore()
+      store.backendBugs.push(createMockBackendBug('old-bug', 'Old'))
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([])
+
+      await store.loadBugsBySession('session-empty')
+
+      expect(store.backendBugs).toHaveLength(0)
+    })
+
+    it('should handle error when loading bugs by session', async () => {
+      const store = useBugStore()
+      vi.mocked(tauri.getBugsBySession).mockRejectedValue(new Error('Session not found'))
+
+      await expect(store.loadBugsBySession('bad-session')).rejects.toThrow('Session not found')
+
+      expect(store.error).toBe('Session not found')
+      expect(store.loading).toBe(false)
+    })
+  })
+
   describe('Computed Properties', () => {
     it('should compute hasError', () => {
       const store = useBugStore()

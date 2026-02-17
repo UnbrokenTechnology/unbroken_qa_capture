@@ -360,6 +360,130 @@ describe('Session Store', () => {
     })
   })
 
+  describe('createSession error paths', () => {
+    it('should reset loading state after backend failure', async () => {
+      const store = useSessionStore()
+      vi.mocked(tauri.createSession).mockRejectedValue(new Error('Network error'))
+
+      await expect(store.createSession({})).rejects.toThrow('Network error')
+
+      expect(store.loading).toBe(false)
+      expect(store.error).toBe('Network error')
+      expect(store.sessions).toHaveLength(0)
+    })
+
+    it('should not add session to list when backend call fails', async () => {
+      const store = useSessionStore()
+      vi.mocked(tauri.createSession).mockRejectedValue(new Error('Server error'))
+
+      await expect(store.createSession({ folder_path: '/test' })).rejects.toThrow()
+
+      expect(store.sessions).toHaveLength(0)
+      expect(store.activeSession).toBeNull()
+    })
+
+    it('should handle concurrent session creation - second call waits independently', async () => {
+      const store = useSessionStore()
+      const session1 = { ...mockSession, id: 'session-A' }
+      const session2 = { ...mockSession, id: 'session-B' }
+
+      let resolve1!: (v: typeof session1) => void
+      let resolve2!: (v: typeof session2) => void
+
+      vi.mocked(tauri.createSession)
+        .mockImplementationOnce(() => new Promise(r => { resolve1 = r }))
+        .mockImplementationOnce(() => new Promise(r => { resolve2 = r }))
+
+      const p1 = store.createSession({})
+      const p2 = store.createSession({})
+
+      resolve2(session2)
+      resolve1(session1)
+
+      const [r1, r2] = await Promise.all([p1, p2])
+
+      expect(r1.id).toBe('session-A')
+      expect(r2.id).toBe('session-B')
+      expect(store.sessions).toHaveLength(2)
+    })
+  })
+
+  describe('getActiveSession edge cases', () => {
+    it('should return null when no session is active (backend returns null)', async () => {
+      const store = useSessionStore()
+      vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
+
+      await store.loadActiveSession()
+
+      expect(store.activeSession).toBeNull()
+      expect(store.activeSessionId).toBeNull()
+      expect(store.isSessionActive).toBe(false)
+    })
+
+    it('should handle error from getActiveSession gracefully', async () => {
+      const store = useSessionStore()
+      vi.mocked(tauri.getActiveSession).mockRejectedValue(new Error('Backend unavailable'))
+
+      await expect(store.loadActiveSession()).rejects.toThrow('Backend unavailable')
+
+      expect(store.error).toBe('Backend unavailable')
+      expect(store.activeSession).toBeNull()
+      expect(store.initializing).toBe(false)
+      expect(store.loading).toBe(false)
+    })
+
+    it('should reflect no active session in computed properties when activeSession is null', () => {
+      const store = useSessionStore()
+      store.activeSession = null
+
+      expect(store.isSessionActive).toBe(false)
+      expect(store.activeSessionId).toBeNull()
+      expect(store.hasError).toBe(false)
+    })
+  })
+
+  describe('resumeSession - session no longer exists in backend', () => {
+    it('should return null when loading a session that no longer exists', async () => {
+      const store = useSessionStore()
+      vi.mocked(tauri.getSession).mockResolvedValue(null)
+
+      const result = await store.loadSession('deleted-session-id')
+
+      expect(result).toBeNull()
+      expect(store.sessions).toHaveLength(0)
+    })
+
+    it('should keep loading=false after failed session load', async () => {
+      const store = useSessionStore()
+      vi.mocked(tauri.getSession).mockResolvedValue(null)
+
+      await store.loadSession('nonexistent')
+
+      expect(store.loading).toBe(false)
+    })
+  })
+
+  describe('startSession error paths', () => {
+    it('should reset starting state when backend call fails', async () => {
+      const store = useSessionStore()
+      vi.mocked(tauri.createSession).mockRejectedValue(new Error('Failed to create'))
+
+      await expect(store.startSession()).rejects.toThrow('Failed to create')
+
+      expect(store.starting).toBe(false)
+      expect(store.isStartingSession).toBe(false)
+    })
+
+    it('should set error when startSession fails', async () => {
+      const store = useSessionStore()
+      vi.mocked(tauri.createSession).mockRejectedValue(new Error('Session creation failed'))
+
+      await expect(store.startSession()).rejects.toThrow()
+
+      expect(store.error).toBe('Session creation failed')
+    })
+  })
+
   describe('Screenshot captured auto-open', () => {
     it('should auto-open annotation window when screenshot captured and setting enabled', async () => {
       // Mock settings store
