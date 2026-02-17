@@ -146,9 +146,21 @@
 
               <div class="q-gutter-md">
                 <q-input
-                  v-model="hotkeys.capture"
-                  label="Capture Bug Hotkey"
-                  hint="Default: Ctrl+Shift+B"
+                  v-model="hotkeys.toggleSession"
+                  label="Toggle Session (Start/Stop)"
+                  hint="Default: Ctrl+Shift+Q"
+                  outlined
+                  readonly
+                >
+                  <template #prepend>
+                    <q-icon name="toggle_on" />
+                  </template>
+                </q-input>
+
+                <q-input
+                  v-model="hotkeys.startBugCapture"
+                  label="Start Bug Capture"
+                  hint="Default: PrintScreen"
                   outlined
                   readonly
                 >
@@ -158,26 +170,38 @@
                 </q-input>
 
                 <q-input
-                  v-model="hotkeys.startSession"
-                  label="Start Session Hotkey"
-                  hint="Default: Ctrl+Shift+S"
-                  outlined
-                  readonly
-                >
-                  <template #prepend>
-                    <q-icon name="play_arrow" />
-                  </template>
-                </q-input>
-
-                <q-input
-                  v-model="hotkeys.endSession"
-                  label="End Session Hotkey"
-                  hint="Default: Ctrl+Shift+E"
+                  v-model="hotkeys.endBugCapture"
+                  label="End Bug Capture"
+                  hint="Default: F4"
                   outlined
                   readonly
                 >
                   <template #prepend>
                     <q-icon name="stop" />
+                  </template>
+                </q-input>
+
+                <q-input
+                  v-model="hotkeys.openQuickNotepad"
+                  label="Open Quick Notepad"
+                  hint="Default: Ctrl+Shift+N"
+                  outlined
+                  readonly
+                >
+                  <template #prepend>
+                    <q-icon name="note_add" />
+                  </template>
+                </q-input>
+
+                <q-input
+                  v-model="hotkeys.openSessionNotepad"
+                  label="Open Session Notepad"
+                  hint="Default: Ctrl+Shift+M"
+                  outlined
+                  readonly
+                >
+                  <template #prepend>
+                    <q-icon name="description" />
                   </template>
                 </q-input>
               </div>
@@ -457,11 +481,13 @@ const saving = ref(false)
 // Step 2: Sessions folder
 const sessionsFolderPath = ref('')
 
-// Step 3: Hotkeys (use defaults)
+// Step 3: Hotkeys (use actual defaults from hotkey.rs)
 const hotkeys = ref({
-  capture: 'Ctrl+Shift+B',
-  startSession: 'Ctrl+Shift+S',
-  endSession: 'Ctrl+Shift+E',
+  toggleSession: 'Ctrl+Shift+Q',
+  startBugCapture: 'PrintScreen',
+  endBugCapture: 'F4',
+  openQuickNotepad: 'Ctrl+Shift+N',
+  openSessionNotepad: 'Ctrl+Shift+M',
 })
 
 // Step 4: Linear setup
@@ -592,9 +618,8 @@ async function completeSetup() {
   try {
     // Save all settings
     await settingsStore.saveSetting(SETTINGS_KEYS.DEFAULT_SAVE_PATH, sessionsFolderPath.value)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_CAPTURE, hotkeys.value.capture)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_START_SESSION, hotkeys.value.startSession)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_END_SESSION, hotkeys.value.endSession)
+    // Note: Hotkeys are read-only in wizard - backend uses hardcoded defaults from hotkey.rs
+    // User can customize them later in Settings which will update the backend HotkeyConfig
     await settingsStore.saveSetting(SETTINGS_KEYS.AI_ENABLED, aiEnabled.value.toString())
 
     // Save Linear settings if enabled
@@ -631,15 +656,7 @@ onMounted(() => {
   if (settingsStore.defaultSavePath) {
     sessionsFolderPath.value = settingsStore.defaultSavePath
   }
-  if (settingsStore.hotkeyCapture) {
-    hotkeys.value.capture = settingsStore.hotkeyCapture
-  }
-  if (settingsStore.hotkeyStartSession) {
-    hotkeys.value.startSession = settingsStore.hotkeyStartSession
-  }
-  if (settingsStore.hotkeyEndSession) {
-    hotkeys.value.endSession = settingsStore.hotkeyEndSession
-  }
+  // Hotkeys always show defaults - they're read-only in wizard
 })
 </script>
 
