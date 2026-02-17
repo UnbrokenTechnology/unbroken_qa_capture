@@ -146,21 +146,9 @@
 
               <div class="q-gutter-md">
                 <q-input
-                  v-model="hotkeys.capture"
-                  label="Capture Bug Hotkey"
-                  hint="Default: Ctrl+Shift+B"
-                  outlined
-                  readonly
-                >
-                  <template #prepend>
-                    <q-icon name="camera" />
-                  </template>
-                </q-input>
-
-                <q-input
-                  v-model="hotkeys.startSession"
-                  label="Start Session Hotkey"
-                  hint="Default: Ctrl+Shift+S"
+                  v-model="hotkeys.toggleSession"
+                  label="Toggle Session"
+                  hint="Default: Ctrl+Shift+Q"
                   outlined
                   readonly
                 >
@@ -170,14 +158,50 @@
                 </q-input>
 
                 <q-input
-                  v-model="hotkeys.endSession"
-                  label="End Session Hotkey"
-                  hint="Default: Ctrl+Shift+E"
+                  v-model="hotkeys.startBugCapture"
+                  label="Start Bug Capture"
+                  hint="Default: PrintScreen"
+                  outlined
+                  readonly
+                >
+                  <template #prepend>
+                    <q-icon name="camera" />
+                  </template>
+                </q-input>
+
+                <q-input
+                  v-model="hotkeys.endBugCapture"
+                  label="End Bug Capture"
+                  hint="Default: F4"
                   outlined
                   readonly
                 >
                   <template #prepend>
                     <q-icon name="stop" />
+                  </template>
+                </q-input>
+
+                <q-input
+                  v-model="hotkeys.openQuickNotepad"
+                  label="Open Quick Notepad"
+                  hint="Default: Ctrl+Shift+N"
+                  outlined
+                  readonly
+                >
+                  <template #prepend>
+                    <q-icon name="note" />
+                  </template>
+                </q-input>
+
+                <q-input
+                  v-model="hotkeys.openSessionNotepad"
+                  label="Open Session Notepad"
+                  hint="Default: Ctrl+Shift+M"
+                  outlined
+                  readonly
+                >
+                  <template #prepend>
+                    <q-icon name="description" />
                   </template>
                 </q-input>
               </div>
@@ -457,11 +481,13 @@ const saving = ref(false)
 // Step 2: Sessions folder
 const sessionsFolderPath = ref('')
 
-// Step 3: Hotkeys (use defaults)
+// Step 3: Hotkeys (use defaults from hotkey.rs)
 const hotkeys = ref({
-  capture: 'Ctrl+Shift+B',
-  startSession: 'Ctrl+Shift+S',
-  endSession: 'Ctrl+Shift+E',
+  toggleSession: 'Ctrl+Shift+Q',
+  startBugCapture: 'PrintScreen',
+  endBugCapture: 'F4',
+  openQuickNotepad: 'Ctrl+Shift+N',
+  openSessionNotepad: 'Ctrl+Shift+M',
 })
 
 // Step 4: Linear setup
@@ -592,9 +618,12 @@ async function completeSetup() {
   try {
     // Save all settings
     await settingsStore.saveSetting(SETTINGS_KEYS.DEFAULT_SAVE_PATH, sessionsFolderPath.value)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_CAPTURE, hotkeys.value.capture)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_START_SESSION, hotkeys.value.startSession)
-    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_END_SESSION, hotkeys.value.endSession)
+    // Save new hotkey settings (matching hotkey.rs HotkeyAction enum)
+    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_TOGGLE_SESSION, hotkeys.value.toggleSession)
+    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_START_BUG_CAPTURE, hotkeys.value.startBugCapture)
+    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_END_BUG_CAPTURE, hotkeys.value.endBugCapture)
+    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_OPEN_QUICK_NOTEPAD, hotkeys.value.openQuickNotepad)
+    await settingsStore.saveSetting(SETTINGS_KEYS.HOTKEY_OPEN_SESSION_NOTEPAD, hotkeys.value.openSessionNotepad)
     await settingsStore.saveSetting(SETTINGS_KEYS.AI_ENABLED, aiEnabled.value.toString())
 
     // Save Linear settings if enabled
@@ -631,14 +660,21 @@ onMounted(() => {
   if (settingsStore.defaultSavePath) {
     sessionsFolderPath.value = settingsStore.defaultSavePath
   }
-  if (settingsStore.hotkeyCapture) {
-    hotkeys.value.capture = settingsStore.hotkeyCapture
+  // Load new hotkey settings
+  if (settingsStore.hotkeyToggleSession) {
+    hotkeys.value.toggleSession = settingsStore.hotkeyToggleSession
   }
-  if (settingsStore.hotkeyStartSession) {
-    hotkeys.value.startSession = settingsStore.hotkeyStartSession
+  if (settingsStore.hotkeyStartBugCapture) {
+    hotkeys.value.startBugCapture = settingsStore.hotkeyStartBugCapture
   }
-  if (settingsStore.hotkeyEndSession) {
-    hotkeys.value.endSession = settingsStore.hotkeyEndSession
+  if (settingsStore.hotkeyEndBugCapture) {
+    hotkeys.value.endBugCapture = settingsStore.hotkeyEndBugCapture
+  }
+  if (settingsStore.hotkeyOpenQuickNotepad) {
+    hotkeys.value.openQuickNotepad = settingsStore.hotkeyOpenQuickNotepad
+  }
+  if (settingsStore.hotkeyOpenSessionNotepad) {
+    hotkeys.value.openSessionNotepad = settingsStore.hotkeyOpenSessionNotepad
   }
 })
 </script>

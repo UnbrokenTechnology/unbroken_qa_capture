@@ -208,9 +208,12 @@ describe('FirstRunWizard', () => {
 
       const bodyText = document.body.textContent || ''
       expect(bodyText).toContain('Current Keyboard Shortcuts')
-      expect(bodyText).toContain('Ctrl+Shift+B')
-      expect(bodyText).toContain('Ctrl+Shift+S')
-      expect(bodyText).toContain('Ctrl+Shift+E')
+      // Check for new default hotkeys matching hotkey.rs
+      expect(bodyText).toContain('Ctrl+Shift+Q')  // Toggle Session
+      expect(bodyText).toContain('PrintScreen')   // Start Bug Capture
+      expect(bodyText).toContain('F4')            // End Bug Capture
+      expect(bodyText).toContain('Ctrl+Shift+N')  // Open Quick Notepad
+      expect(bodyText).toContain('Ctrl+Shift+M')  // Open Session Notepad
     })
   })
 
@@ -347,7 +350,12 @@ describe('FirstRunWizard', () => {
       await flushPromises()
 
       expect(vi.mocked(tauri.setSetting)).toHaveBeenCalledWith('default_save_path', '/test/sessions')
-      expect(vi.mocked(tauri.setSetting)).toHaveBeenCalledWith('hotkey_capture', 'Ctrl+Shift+B')
+      // Check for new hotkey settings
+      expect(vi.mocked(tauri.setSetting)).toHaveBeenCalledWith('hotkey_toggle_session', 'Ctrl+Shift+Q')
+      expect(vi.mocked(tauri.setSetting)).toHaveBeenCalledWith('hotkey_start_bug_capture', 'PrintScreen')
+      expect(vi.mocked(tauri.setSetting)).toHaveBeenCalledWith('hotkey_end_bug_capture', 'F4')
+      expect(vi.mocked(tauri.setSetting)).toHaveBeenCalledWith('hotkey_open_quick_notepad', 'Ctrl+Shift+N')
+      expect(vi.mocked(tauri.setSetting)).toHaveBeenCalledWith('hotkey_open_session_notepad', 'Ctrl+Shift+M')
       expect(vi.mocked(tauri.markSetupComplete)).toHaveBeenCalled()
     })
 
