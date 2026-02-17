@@ -392,6 +392,13 @@ impl SessionManager {
     pub fn get_active_bug_id(&self) -> Option<String> {
         self.active_bug.lock().unwrap().clone()
     }
+
+    /// Return a shared reference to the active-bug Arc so callers (e.g. the
+    /// capture watcher) can observe live changes without going through the
+    /// SessionManager lock.
+    pub fn active_bug_arc(&self) -> Arc<Mutex<Option<String>>> {
+        Arc::clone(&self.active_bug)
+    }
 }
 
 #[cfg(test)]
