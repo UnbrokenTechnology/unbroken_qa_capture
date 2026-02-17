@@ -15,17 +15,12 @@
           </div>
 
           <div
-            v-if="bugStore.bugCount === 0"
+            v-if="bugStore.backendBugs.length === 0"
             class="text-center q-pa-md"
           >
             <p class="text-grey-7">
               No bugs available
             </p>
-            <q-btn
-              color="primary"
-              label="Load Sample Data"
-              @click="loadSamples"
-            />
           </div>
 
           <q-list
@@ -33,7 +28,7 @@
             separator
           >
             <q-item
-              v-for="bug in bugStore.bugs"
+              v-for="bug in bugStore.backendBugs"
               :key="bug.id"
               clickable
               class="q-pa-md"
@@ -41,10 +36,10 @@
             >
               <q-item-section>
                 <q-item-label class="text-h6">
-                  {{ bug.title }}
+                  {{ bug.title ?? bug.display_id }}
                 </q-item-label>
                 <q-item-label caption>
-                  Type: {{ bug.bug_type }} | {{ bug.captures.length }} screenshot(s)
+                  Type: {{ bug.type }}
                 </q-item-label>
               </q-item-section>
               <q-item-section side>
@@ -67,10 +62,6 @@ const router = useRouter()
 
 function viewBug(id: string) {
   router.push({ name: 'bug-detail', params: { id } })
-}
-
-function loadSamples() {
-  bugStore.loadSampleData()
 }
 </script>
 
