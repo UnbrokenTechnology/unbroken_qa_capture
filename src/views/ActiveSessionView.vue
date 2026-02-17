@@ -206,7 +206,9 @@
           label="New Bug Capture"
           class="full-width q-mb-sm"
           @click="handleNewBugCapture"
-        />
+        >
+          <q-tooltip>Start capturing a new bug (Ctrl+Alt+B)</q-tooltip>
+        </q-btn>
         <q-btn
           unelevated
           color="secondary"
@@ -215,7 +217,9 @@
           class="full-width q-mb-sm"
           :disable="!bugStore.isCapturing"
           @click="handleEndBugCapture"
-        />
+        >
+          <q-tooltip>End the current bug capture (Ctrl+Alt+E)</q-tooltip>
+        </q-btn>
         <q-btn
           unelevated
           color="orange"
