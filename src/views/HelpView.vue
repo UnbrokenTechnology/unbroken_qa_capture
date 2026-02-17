@@ -56,7 +56,7 @@
               color="positive"
             >
               <p>
-                Press <kbd>F3</kbd> (or your configured hotkey) to start a QA session.
+                Press <kbd>{{ settingsStore.hotkeyToggleSession }}</kbd> to start a QA session.
                 You can also click <strong>Start Session</strong> from the system tray
                 menu or the home screen. A session tracks all bugs you capture until you
                 end it.
@@ -69,10 +69,10 @@
               color="negative"
             >
               <p>
-                When you spot a bug, press <kbd>Print Screen</kbd> to begin a bug
+                When you spot a bug, press <kbd>{{ settingsStore.hotkeyStartBugCapture }}</kbd> to begin a bug
                 capture. The app automatically records a screenshot. You can take
                 multiple screenshots during a single bug capture — each press of
-                <kbd>Print Screen</kbd> adds another screenshot to the current bug.
+                <kbd>{{ settingsStore.hotkeyStartBugCapture }}</kbd> adds another screenshot to the current bug.
               </p>
             </q-timeline-entry>
 
@@ -96,7 +96,7 @@
               color="primary"
             >
               <p>
-                Press <kbd>F4</kbd> (or your configured hotkey) to end the current
+                Press <kbd>{{ settingsStore.hotkeyEndBugCapture }}</kbd> to end the current
                 bug capture. The bug is saved with all its screenshots. You can
                 also end a bug capture from the system tray menu.
               </p>
@@ -119,7 +119,7 @@
               color="purple"
             >
               <p>
-                Press <kbd>F3</kbd> again to end the session, or use the system
+                Press <kbd>{{ settingsStore.hotkeyToggleSession }}</kbd> again to end the session, or use the system
                 tray menu. The app navigates to the Session Review page where
                 you can see all captured bugs, read AI-drafted descriptions, and
                 copy formatted bug reports to your clipboard for pasting into
@@ -145,12 +145,12 @@
             at the time they are taken:
           </p>
           <ul class="text-body2">
-            <li>Start a bug capture (Print Screen or tray menu)</li>
+            <li>Start a bug capture ({{ settingsStore.hotkeyStartBugCapture }} or tray menu)</li>
             <li>
               Every screenshot taken while the bug is active is saved into that
               bug's folder
             </li>
-            <li>End the bug capture (F4) before starting the next one</li>
+            <li>End the bug capture ({{ settingsStore.hotkeyEndBugCapture }}) before starting the next one</li>
             <li>
               Screenshots taken <em>outside</em> an active bug capture are not
               associated with any bug — start a capture first
@@ -199,27 +199,27 @@
             <tbody>
               <tr>
                 <td>Toggle Session</td>
-                <td><kbd>F3</kbd></td>
+                <td><kbd>{{ settingsStore.hotkeyToggleSession }}</kbd></td>
                 <td>Start a new session, or end the active session</td>
               </tr>
               <tr>
                 <td>Start Bug Capture</td>
-                <td><kbd>Print Screen</kbd></td>
+                <td><kbd>{{ settingsStore.hotkeyStartBugCapture }}</kbd></td>
                 <td>Begin a new bug capture and take the first screenshot</td>
               </tr>
               <tr>
                 <td>End Bug Capture</td>
-                <td><kbd>F4</kbd></td>
+                <td><kbd>{{ settingsStore.hotkeyEndBugCapture }}</kbd></td>
                 <td>Finish the current bug capture</td>
               </tr>
               <tr>
                 <td>Quick Notepad</td>
-                <td><kbd>Ctrl+Shift+N</kbd></td>
+                <td><kbd>{{ settingsStore.hotkeyOpenQuickNotepad }}</kbd></td>
                 <td>Open a floating notepad for quick notes (not tied to a session)</td>
               </tr>
               <tr>
                 <td>Session Notepad</td>
-                <td><kbd>Ctrl+Shift+M</kbd></td>
+                <td><kbd>{{ settingsStore.hotkeyOpenSessionNotepad }}</kbd></td>
                 <td>Open the session notepad for notes associated with the current session</td>
               </tr>
             </tbody>
@@ -484,8 +484,10 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useSettingsStore } from '../stores/settings'
 
 const router = useRouter()
+const settingsStore = useSettingsStore()
 
 function goBack() {
   router.back()
@@ -503,6 +505,7 @@ function onKeyDown(event: KeyboardEvent) {
 
 onMounted(() => {
   document.addEventListener('keydown', onKeyDown)
+  settingsStore.loadAllSettings().catch(() => {/* uses defaults if backend unavailable */})
 })
 
 onUnmounted(() => {

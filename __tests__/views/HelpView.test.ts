@@ -4,6 +4,15 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { Quasar } from 'quasar'
 import HelpView from '@/views/HelpView.vue'
+import { useSettingsStore } from '@/stores/settings'
+
+// Mock Tauri API so loadAllSettings() doesn't fail in tests
+vi.mock('@/api/tauri', () => ({
+  getSetting: vi.fn().mockResolvedValue(null),
+  setSetting: vi.fn().mockResolvedValue(undefined),
+  getAllSettings: vi.fn().mockResolvedValue([]),
+  deleteSetting: vi.fn().mockResolvedValue(undefined),
+}))
 
 // Stubs that allow slot content to be rendered
 const quasarStubs = {
@@ -82,15 +91,37 @@ describe('HelpView', () => {
     expect(wrapper.text()).toContain('Hotkey Reference')
   })
 
-  it('renders key hotkeys in the reference table', async () => {
+  it('renders key hotkeys in the reference table with default values from settings store', async () => {
     const wrapper = mountHelp()
     await flushPromises()
     const text = wrapper.text()
     expect(text).toContain('Toggle Session')
+    expect(text).toContain('F5')
+    expect(text).toContain('F7')
+    expect(text).toContain('F9')
+    expect(text).toContain('Ctrl+Shift+N')
+    expect(text).toContain('Ctrl+Shift+M')
+  })
+
+  it('shows updated hotkeys when settings store is changed', async () => {
+    const wrapper = mountHelp()
+    await flushPromises()
+
+    const store = useSettingsStore()
+    store.setSetting('hotkey_toggle_session', 'F2')
+    store.setSetting('hotkey_start_bug_capture', 'F3')
+    store.setSetting('hotkey_end_bug_capture', 'F4')
+
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('F2')
     expect(text).toContain('F3')
     expect(text).toContain('F4')
-    expect(text).toContain('Print Screen')
-    expect(text).toContain('Ctrl+Shift+N')
+    // Old defaults should no longer appear for these keys
+    expect(text).not.toContain('F5')
+    expect(text).not.toContain('F7')
+    expect(text).not.toContain('F9')
   })
 
   it('renders screenshot association section', async () => {
