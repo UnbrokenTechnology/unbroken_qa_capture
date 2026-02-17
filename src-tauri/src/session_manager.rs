@@ -58,6 +58,14 @@ impl SessionManager {
 
     /// Start a new QA session
     pub fn start_session(&self) -> Result<Session, String> {
+        // Guard: reject if a session is already active
+        {
+            let active = self.active_session.lock().unwrap();
+            if active.is_some() {
+                return Err("A session is already active. End the current session before starting a new one.".to_string());
+            }
+        }
+
         // Generate session ID and folder name
         let session_id = Uuid::new_v4().to_string();
         let now = Utc::now();
