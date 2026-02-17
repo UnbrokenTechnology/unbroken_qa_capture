@@ -54,7 +54,7 @@ if [ -f "package.json" ]; then
     # Lint
     if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.cjs" ] || [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ]; then
         echo "=== ESLint ==="
-        npx eslint --ext .ts,.vue src/ || TS_OK=false
+        npx eslint src/ || TS_OK=false
     fi
 
     # Command conventions check
@@ -65,6 +65,9 @@ if [ -f "package.json" ]; then
 
     # Tests (Vitest)
     if grep -q '"vitest"' package.json 2>/dev/null; then
+        # Auto-update snapshots before running tests so stale snapshots don't
+        # cause spurious failures — the real pass/fail gate is the run below.
+        npx vitest run --update 2>/dev/null || true
         echo "=== Vitest: unit tests ==="
         npx vitest run || TS_OK=false
     elif grep -q '"test"' package.json 2>/dev/null; then

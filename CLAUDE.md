@@ -32,6 +32,38 @@ The original PRD is in the repository as `Unbroken_QA_Capture_PRD.md`.
 - **PowerShell execution policy.** Windows may block `.ps1` scripts by default. Always invoke with `powershell -ExecutionPolicy Bypass -File <script>`.
 - **NEVER set `font-family` on wildcard selectors (`*`, `:deep(*)`, etc.).** This clobbers `font-family: 'Material Icons'` on icon elements, causing all Quasar icons to render as plain text (e.g. "bug_report" instead of the bug icon). The app's typography font is configured via `$typography-font-family` in `src/quasar-variables.sass` — Quasar applies it properly without overriding icon fonts. If you need to set a font on a specific element, use a scoped class selector, never a wildcard.
 
+## Common Verification Failures
+
+### TypeScript: `noUncheckedIndexedAccess`
+
+- `tsconfig.json` has `"noUncheckedIndexedAccess": true` — every array/object index access returns `T | undefined`
+- `arr[0].field` fails type-check — use `arr[0]?.field` or add an explicit null-check first
+- Applies to `Record` and `Map` lookups as well
+
+### TypeScript: `noUnusedLocals` and `noUnusedParameters`
+
+- Both are enabled in `tsconfig.json`
+- Any unused import, variable, or parameter is a hard type-check failure
+- Prefix unused parameters with `_` to suppress (e.g. `_event`)
+
+### Rust: Clippy `-D warnings`
+
+- `verify.sh` runs `cargo clippy --all-targets -- -D warnings` — every warning is a hard error
+- Common traps: unused imports/variables, dead code from partial implementations, `needless_pass_by_value`
+- Prefix unused variables with `_`; use `#[allow(dead_code)]` sparingly on scaffolded items only
+
+### Vitest Snapshot Tests
+
+- `__tests__/main.test.ts` snapshots `src/main.ts` — any change to `main.ts` requires updating the snapshot
+- `__tests__/contracts/tauri-command-registration.test.ts` snapshots the command list — adding/removing Tauri commands requires updating the snapshot
+- After changes that affect snapshots, run `npx vitest --update-snapshots` and include the updated `.snap` files in your commit
+
+### Quasar Component Tests
+
+- Quasar components need specific test setup: `QPage` requires a `QLayout` ancestor; icon sets must be registered
+- Check existing test files in `__tests__/` for the correct setup pattern before writing new component tests
+- Import and install Quasar plugins in your test's `beforeEach` or use available test helpers
+
 ## Repository
 
 - **GitHub:** https://github.com/UnbrokenTechnology/unbroken_qa_capture
