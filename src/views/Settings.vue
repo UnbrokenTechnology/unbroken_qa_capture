@@ -969,19 +969,27 @@ function openLink(url: string): void {
 }
 
 // Load settings from store
-function loadSettings(): void {
+async function loadSettings(): Promise<void> {
+  // Load hotkey config from backend
+  let hotkeyConfig: any = null
+  try {
+    hotkeyConfig = await invoke('get_hotkey_config')
+  } catch (err) {
+    console.warn('Failed to load hotkey config from backend:', err)
+  }
+
   localSettings.value = {
     // General
     default_save_path: settingsStore.getSetting('default_save_path', ''),
     launch_on_startup: settingsStore.getSetting('launch_on_startup', 'false') === 'true',
     minimize_to_tray: settingsStore.getSetting('minimize_to_tray', 'true') === 'true',
 
-    // Hotkeys
-    hotkey_toggle_session: settingsStore.getSetting('hotkey_toggle_session', 'Ctrl+Shift+Q'),
-    hotkey_new_bug: settingsStore.getSetting('hotkey_new_bug', 'Print Screen'),
-    hotkey_end_bug: settingsStore.getSetting('hotkey_end_bug', 'F4'),
-    hotkey_quick_notepad: settingsStore.getSetting('hotkey_quick_notepad', 'Ctrl+Shift+N'),
-    hotkey_session_notepad: settingsStore.getSetting('hotkey_session_notepad', 'Ctrl+Shift+M'),
+    // Hotkeys - load from backend HotkeyConfig if available
+    hotkey_toggle_session: hotkeyConfig?.shortcuts?.toggle_session ?? 'Ctrl+Shift+Q',
+    hotkey_new_bug: hotkeyConfig?.shortcuts?.start_bug_capture ?? 'PrintScreen',
+    hotkey_end_bug: hotkeyConfig?.shortcuts?.end_bug_capture ?? 'F4',
+    hotkey_quick_notepad: hotkeyConfig?.shortcuts?.open_quick_notepad ?? 'Ctrl+Shift+N',
+    hotkey_session_notepad: hotkeyConfig?.shortcuts?.open_session_notepad ?? 'Ctrl+Shift+M',
 
     // Annotation
     annotation_auto_open: settingsStore.getSetting('annotation_auto_open', 'true') === 'true',
@@ -1004,19 +1012,33 @@ function loadSettings(): void {
 // Save settings
 async function saveSettings(): Promise<void> {
   try {
-    // Save all settings to backend
+    // Save hotkey config to backend
+    const hotkeyConfig = {
+      shortcuts: {
+        toggle_session: localSettings.value.hotkey_toggle_session,
+        start_bug_capture: localSettings.value.hotkey_new_bug,
+        end_bug_capture: localSettings.value.hotkey_end_bug,
+        open_quick_notepad: localSettings.value.hotkey_quick_notepad,
+        open_session_notepad: localSettings.value.hotkey_session_notepad,
+      }
+    }
+
+    const hotkeyErrors = await invoke<string[]>('update_hotkey_config', { config: hotkeyConfig })
+    if (hotkeyErrors && Array.isArray(hotkeyErrors) && hotkeyErrors.length > 0) {
+      console.warn('Some hotkeys failed to register:', hotkeyErrors)
+      $q.notify({
+        type: 'warning',
+        message: 'Some hotkeys could not be registered',
+        caption: hotkeyErrors.join(', '),
+      })
+    }
+
+    // Save all other settings to backend
     const settingsToSave: Record<string, string> = {
       // General
       default_save_path: localSettings.value.default_save_path,
       launch_on_startup: localSettings.value.launch_on_startup.toString(),
       minimize_to_tray: localSettings.value.minimize_to_tray.toString(),
-
-      // Hotkeys
-      hotkey_toggle_session: localSettings.value.hotkey_toggle_session,
-      hotkey_new_bug: localSettings.value.hotkey_new_bug,
-      hotkey_end_bug: localSettings.value.hotkey_end_bug,
-      hotkey_quick_notepad: localSettings.value.hotkey_quick_notepad,
-      hotkey_session_notepad: localSettings.value.hotkey_session_notepad,
 
       // Annotation
       annotation_auto_open: localSettings.value.annotation_auto_open.toString(),
@@ -1086,8 +1108,8 @@ async function saveSettings(): Promise<void> {
 }
 
 // Cancel changes
-function cancelChanges(): void {
-  loadSettings()
+async function cancelChanges(): Promise<void> {
+  await loadSettings()
   $q.notify({
     type: 'info',
     message: 'Changes cancelled',
@@ -1101,9 +1123,9 @@ function confirmReset(): void {
     message: 'Are you sure you want to reset all settings to their default values?',
     cancel: true,
     persistent: true,
-  }).onOk(() => {
+  }).onOk(async () => {
     settingsStore.resetToDefaults()
-    loadSettings()
+    await loadSettings()
     $q.notify({
       type: 'info',
       message: 'Settings reset to defaults',
@@ -1114,7 +1136,7 @@ function confirmReset(): void {
 // Initialize
 onMounted(async () => {
   await settingsStore.initialize()
-  loadSettings()
+  await loadSettings()
   await checkClaudeStatus()
   await loadTemplateInfo()
 

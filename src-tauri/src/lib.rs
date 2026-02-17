@@ -534,11 +534,26 @@ fn update_hotkey_config(
     config: HotkeyConfig,
     app_handle: tauri::AppHandle,
 ) -> Result<Vec<String>, String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
     let manager_guard = HOTKEY_MANAGER.lock().unwrap();
     let manager = manager_guard
         .as_ref()
         .ok_or("Hotkey manager not initialized")?;
 
+    // Save config to database settings
+    let data_dir = app_handle.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    manager.save_to_settings(&config, |key, value| {
+        let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+        let repo = SettingsRepository::new(db.connection());
+        repo.set(key, value).map_err(|e: rusqlite::Error| e.to_string())
+    })?;
+
+    // Update the runtime config and re-register hotkeys
     let results = manager.update_config(&app_handle, config);
 
     // Collect error messages
@@ -1168,8 +1183,29 @@ pub fn run() {
 
             *SESSION_MANAGER.lock().unwrap() = Some(manager);
 
-            // Initialize hotkey manager
+            // Initialize hotkey manager and load config from settings
             let hotkey_manager = Arc::new(HotkeyManager::new());
+
+            // Load hotkey config from database settings
+            let app_handle_for_settings = app.handle().clone();
+            let loaded_config = hotkey_manager.load_from_settings(|key| {
+                use database::{Database, SettingsRepository, SettingsOps};
+                let data_dir = app_handle_for_settings.path().app_data_dir().unwrap_or_else(|_| {
+                    std::env::current_dir().unwrap().join("data")
+                });
+                let db_path = data_dir.join("qa_capture.db");
+
+                if let Ok(db) = Database::open(&db_path) {
+                    let repo = SettingsRepository::new(db.connection());
+                    repo.get(key).ok().flatten()
+                } else {
+                    None
+                }
+            });
+
+            // Update the manager's config with loaded settings
+            let _ = hotkey_manager.update_config(app.handle(), loaded_config);
+
             let registration_results = hotkey_manager.register_all(app.handle());
 
             // Check for registration failures and notify via tray

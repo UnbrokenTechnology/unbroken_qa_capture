@@ -37,6 +37,17 @@ impl HotkeyAction {
             HotkeyAction::OpenSessionNotepad => "Open Session Notepad",
         }
     }
+
+    /// Get the settings key name for this action
+    pub fn settings_key(&self) -> &'static str {
+        match self {
+            HotkeyAction::ToggleSession => "hotkey.toggle_session",
+            HotkeyAction::StartBugCapture => "hotkey.start_bug_capture",
+            HotkeyAction::EndBugCapture => "hotkey.end_bug_capture",
+            HotkeyAction::OpenQuickNotepad => "hotkey.open_quick_notepad",
+            HotkeyAction::OpenSessionNotepad => "hotkey.open_session_notepad",
+        }
+    }
 }
 
 /// Configuration for hotkeys
@@ -175,6 +186,48 @@ impl HotkeyManager {
             .lock()
             .unwrap()
             .contains(&shortcut.to_string())
+    }
+
+    /// Load hotkey configuration from database settings
+    pub fn load_from_settings<F>(&self, get_setting: F) -> HotkeyConfig
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let mut shortcuts = HashMap::new();
+        let actions = [
+            HotkeyAction::ToggleSession,
+            HotkeyAction::StartBugCapture,
+            HotkeyAction::EndBugCapture,
+            HotkeyAction::OpenQuickNotepad,
+            HotkeyAction::OpenSessionNotepad,
+        ];
+
+        for action in &actions {
+            let key = action.settings_key();
+            if let Some(shortcut) = get_setting(key) {
+                shortcuts.insert(action.clone(), shortcut);
+            } else {
+                // Fall back to default for this action
+                let default_config = HotkeyConfig::default();
+                if let Some(default_shortcut) = default_config.shortcuts.get(action) {
+                    shortcuts.insert(action.clone(), default_shortcut.clone());
+                }
+            }
+        }
+
+        HotkeyConfig { shortcuts }
+    }
+
+    /// Save hotkey configuration to database settings
+    pub fn save_to_settings<F>(&self, config: &HotkeyConfig, set_setting: F) -> Result<(), String>
+    where
+        F: Fn(&str, &str) -> Result<(), String>,
+    {
+        for (action, shortcut) in &config.shortcuts {
+            let key = action.settings_key();
+            set_setting(key, shortcut)?;
+        }
+        Ok(())
     }
 }
 
