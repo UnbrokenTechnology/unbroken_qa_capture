@@ -405,8 +405,13 @@
                 label="Finish Setup"
                 icon-right="check"
                 :loading="saving"
+                :disable="!sessionsFolderPath"
                 @click="completeSetup"
-              />
+              >
+                <q-tooltip v-if="!sessionsFolderPath">
+                  Please select a sessions folder first (Step 2)
+                </q-tooltip>
+              </q-btn>
             </q-stepper-navigation>
           </template>
         </q-stepper>
@@ -554,6 +559,16 @@ async function checkClaudeStatus() {
 
 // Complete setup
 async function completeSetup() {
+  // Validate required fields before saving
+  if (!sessionsFolderPath.value) {
+    $q.notify({
+      type: 'negative',
+      message: 'Please select a sessions folder before completing setup',
+      position: 'top',
+    })
+    return
+  }
+
   saving.value = true
   try {
     // Save all settings

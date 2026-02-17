@@ -412,4 +412,65 @@ describe('FirstRunWizard', () => {
       expect(backButton).toBeDefined()
     })
   })
+
+  describe('Validation', () => {
+    it('should disable Finish Setup button when folder is not selected', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      // Can't proceed to step 2 without completing step 1, but step 1 doesn't require folder
+      // Step 2 requires folder to proceed to step 3
+      // So we test by being on step 2 without selecting folder
+
+      // Navigate to step 2
+      const nextButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Next'
+      )
+      await nextButton!.trigger('click')
+      await flushPromises()
+
+      // Next button on step 2 should be disabled without folder selection
+      const nextButtonStep2 = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Next'
+      )
+      expect(nextButtonStep2).toBeDefined()
+      expect(nextButtonStep2!.props('disable')).toBe(true)
+    })
+
+    it('should enable Finish Setup button when folder is selected', async () => {
+      mockOpen.mockResolvedValue('/test/sessions')
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      // Navigate to step 2 and select folder
+      let nextButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Next'
+      )
+      await nextButton!.trigger('click')
+      await flushPromises()
+
+      const browseButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('icon') === 'folder_open'
+      )
+      await browseButton!.trigger('click')
+      await flushPromises()
+
+      // Navigate to step 5
+      for (let i = 0; i < 3; i++) {
+        nextButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+          btn.props('label') === 'Next'
+        )
+        await nextButton!.trigger('click')
+        await flushPromises()
+      }
+
+      // Find Finish Setup button - should be enabled
+      const finishButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('label') === 'Finish Setup'
+      )
+      expect(finishButton).toBeDefined()
+      expect(finishButton!.props('disable')).toBe(false)
+    })
+  })
 })
