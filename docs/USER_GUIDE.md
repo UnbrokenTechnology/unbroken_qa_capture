@@ -80,7 +80,67 @@ This is where all your QA session data will be saved.
 
 Click **"Next"** to continue.
 
-#### Step 3: Claude AI Setup (Optional)
+#### Step 3: Hotkeys
+
+Unbroken QA Capture uses global hotkeys to keep the tool out of your way during active testing. This step shows the default hotkey assignments and allows you to customize them.
+
+**Default Hotkeys:**
+
+| Hotkey | Action | When Available |
+|--------|--------|----------------|
+| `Ctrl+Shift+Q` | Start/end QA session | Always (when app is running) |
+| `Print Screen` | Start bug capture + trigger screenshot | During active session |
+| `F4` | End current bug capture | During bug capture mode |
+| `Ctrl+Shift+N` | Toggle quick notepad for current bug | During bug capture mode |
+| `Ctrl+Shift+M` | Toggle session notepad | During active session |
+
+**Within the Annotation Window:**
+
+| Hotkey | Action |
+|--------|--------|
+| `T` | Text tool |
+| `R` | Rectangle tool |
+| `O` | Circle tool |
+| `D` | Freehand draw tool |
+| `Ctrl+Z` | Undo |
+| `Ctrl+Shift+Z` | Redo |
+| `Ctrl+S` | Save and close |
+| `Escape` | Cancel (discard annotations) |
+| `Delete` or `Backspace` | Delete selected annotation |
+
+**To customize hotkeys:**
+1. Click on any hotkey to edit it
+2. Press your desired key combination
+3. The wizard will check for conflicts with other registered global hotkeys
+4. If a conflict is detected, you'll see a warning and can choose a different combination
+
+**Best practices:**
+- Avoid hotkeys used by applications you frequently test (VS Code, Chrome, Slack, Teams, etc.)
+- Keep Print Screen as-is if possible — it's the most intuitive trigger for QA testers
+- F4 is chosen because it's rarely used by applications and is easy to reach
+
+Click **"Next"** to continue.
+
+#### Step 4: Linear Setup (Optional)
+
+This step allows you to connect to Linear for automatic issue creation and syncing.
+
+**To enable Linear integration:**
+1. Toggle **"Enable Linear Integration"** to on
+2. Enter your **Linear API Key**
+   - Get your API key from Linear settings (https://linear.app/settings/api)
+   - The key should start with `lin_api_`
+3. Enter your **Team ID**
+   - Your Linear team identifier (found in your team's settings)
+
+**If you skip this step:**
+- You can enable Linear integration later through Settings
+- The application will function fully without Linear
+- You can manually copy bug reports to Linear using the clipboard
+
+Click **"Next"** to continue.
+
+#### Step 5: AI Setup (Optional)
 
 This step checks if Claude Code CLI is installed and authenticated on your system.
 
@@ -123,48 +183,7 @@ This step checks if Claude Code CLI is installed and authenticated on your syste
 
 Click **"Next"** to continue (or **"Skip for now"** to proceed without AI features).
 
-#### Step 4: Hotkeys
-
-Unbroken QA Capture uses global hotkeys to keep the tool out of your way during active testing. This step shows the default hotkey assignments and allows you to customize them.
-
-**Default Hotkeys:**
-
-| Hotkey | Action | When Available |
-|--------|--------|----------------|
-| `Ctrl+Shift+Q` | Start/end QA session | Always (when app is running) |
-| `Print Screen` | Start bug capture + trigger screenshot | During active session |
-| `F4` | End current bug capture | During bug capture mode |
-| `Ctrl+Shift+N` | Toggle quick notepad for current bug | During bug capture mode |
-| `Ctrl+Shift+M` | Toggle session notepad | During active session |
-
-**Within the Annotation Window:**
-
-| Hotkey | Action |
-|--------|--------|
-| `T` | Text tool |
-| `R` | Rectangle tool |
-| `O` | Oval tool |
-| `D` | Freehand draw tool |
-| `Ctrl+Z` | Undo |
-| `Ctrl+Shift+Z` | Redo |
-| `Ctrl+S` | Save and close |
-| `Escape` | Cancel (discard annotations) |
-| `Delete` or `Backspace` | Delete selected annotation |
-
-**To customize hotkeys:**
-1. Click on any hotkey to edit it
-2. Press your desired key combination
-3. The wizard will check for conflicts with other registered global hotkeys
-4. If a conflict is detected, you'll see a warning and can choose a different combination
-
-**Best practices:**
-- Avoid hotkeys used by applications you frequently test (VS Code, Chrome, Slack, Teams, etc.)
-- Keep Print Screen as-is if possible — it's the most intuitive trigger for QA testers
-- F4 is chosen because it's rarely used by applications and is easy to reach
-
-Click **"Next"** to continue.
-
-#### Step 5: You're All Set!
+#### Step 6: You're All Set!
 
 The setup is complete. You'll see a summary:
 
@@ -199,7 +218,7 @@ Once you've completed the wizard, here's how to capture your first bug:
 2. **Find a Bug:** Use the application you're testing as normal
 
 3. **Capture Evidence:** When you encounter something worth reporting, press `Print Screen`
-   - This starts a new bug capture (Bug-01, Bug-02, etc.)
+   - This starts a new bug capture (displayed as BUG-001, BUG-002, etc. in the UI)
    - The Windows Snipping Tool appears — capture your screenshot as usual
    - The screenshot automatically saves to the current bug's folder
    - The tray icon changes color to indicate bug capture mode (red)
@@ -283,7 +302,7 @@ When you encounter something worth reporting during testing, start capturing evi
 **Press `Print Screen` to start a new bug capture.**
 
 **What happens:**
-1. A new bug is created (Bug-01, Bug-02, etc.)
+1. A new bug is created (displayed as BUG-001, BUG-002, etc. in the UI)
 2. The application enters **Bug Capture Mode**
 3. The system tray icon changes to red
 4. The session status bar updates to show "Capturing Bug-XX"
@@ -293,9 +312,9 @@ When you encounter something worth reporting during testing, start capturing evi
 **The bug folder structure:**
 ```
 2026-02-17_a3f2/
-└── Bug-01/
-    ├── screenshot_001.png    ← your first screenshot
-    ├── screenshot_002.png    ← additional screenshots for this bug
+└── bug_001/                  ← folder for first bug (displayed as "BUG-001" in UI)
+    ├── capture-001.png    ← your first screenshot
+    ├── capture-002.png    ← additional screenshots for this bug
     └── metadata.json         ← bug metadata (timestamps, status, etc.)
 ```
 
@@ -306,7 +325,7 @@ While in **Bug Capture Mode**, all screenshots you take are automatically associ
 **Taking Additional Screenshots:**
 - Press `Print Screen` again
 - The Snipping Tool opens
-- The screenshot is saved to the same bug folder (screenshot_002.png, screenshot_003.png, etc.)
+- The screenshot is saved to the same bug folder (capture-002.png, capture-003.png, etc.)
 
 **Adding Notes:**
 - The main window displays the active session view where you can see all captured bugs
@@ -350,16 +369,16 @@ Each bug gets its own folder with its own screenshots and metadata. The session 
 ```
 2026-02-17_a3f2/
 ├── Bug-01/
-│   ├── screenshot_001.png
-│   ├── screenshot_002.png
+│   ├── capture-001.png
+│   ├── capture-002.png
 │   └── metadata.json
 ├── Bug-02/
-│   ├── screenshot_001.png
+│   ├── capture-001.png
 │   └── metadata.json
 ├── Bug-03/
-│   ├── screenshot_001.png
-│   ├── screenshot_002.png
-│   ├── screenshot_003.png
+│   ├── capture-001.png
+│   ├── capture-002.png
+│   ├── capture-003.png
 │   └── metadata.json
 └── session.json
 ```
@@ -388,7 +407,7 @@ The Session Review interface is where you prepare bugs for ticketing. It uses a 
 
 - Displays all bugs captured in the session as clickable cards
 - Each card shows:
-  - **Bug ID badge** (Bug-01, Bug-02, etc.) with color-coded type
+  - **Bug ID badge** (BUG-001, BUG-002, etc.) with color-coded type
   - **Bug type chip** (bug, feature, or feedback)
   - **Title** (editable via the right panel)
   - **Notes snippet** (first 2 lines)
@@ -681,8 +700,8 @@ When you're done annotating, save your changes with the **"Save Annotated Screen
 **Save modes** (configured in Settings → Annotation → Save Mode):
 
 1. **Alongside (default)** — Creates a new file with `_annotated` suffix
-   - Original: `screenshot_001.png`
-   - Annotated: `screenshot_001_annotated.png`
+   - Original: `capture-001.png`
+   - Annotated: `capture-001_annotated.png`
    - **Use case:** Keep both original and annotated versions
 
 2. **Overwrite** — Replaces the original file with the annotated version
@@ -1053,7 +1072,7 @@ UnbrokenQACapture/
     ├── session-summary.md               # AI-generated session summary (after review)
     ├── tickets-ready.md                 # All bugs formatted for ticket creation
     ├── _captures/                       # Temporary landing zone (auto-sorted)
-    ├── Bug-01/
+    ├── bug_001/                         # Displayed as "BUG-001" in UI
     │   ├── screenshots/
     │   │   ├── capture-001.png
     │   │   ├── capture-001_annotated.png
@@ -1062,12 +1081,12 @@ UnbrokenQACapture/
     │   │   └── recording-001.mp4
     │   ├── notes.md                     # Quick notes for this bug
     │   └── description.md               # Final formatted bug description
-    ├── Bug-02/
+    ├── bug_002/                         # Displayed as "BUG-002" in UI
     │   ├── screenshots/
     │   │   └── capture-001.png
     │   ├── notes.md
     │   └── description.md
-    ├── Bug-03/
+    ├── bug_003/                         # Displayed as "BUG-003" in UI
     │   └── ...
     └── _unsorted/                       # Screenshots taken outside bug capture
         └── (rarely used)
@@ -1084,7 +1103,7 @@ UnbrokenQACapture/
 
 **Bug-Level Folders:**
 
-- **`Bug-01/`, `Bug-02/`, etc.** — Each bug gets its own folder with a sequential ID (Bug-01 through Bug-99, extending to three digits if needed).
+- **`bug_001/`, `bug_002/`, etc.** — Each bug gets its own folder with a sequential three-digit ID. The UI displays these as "BUG-001", "BUG-002", etc., but the actual folder names use lowercase with underscores.
 - **`screenshots/`** — All screenshots for this bug, named sequentially (`capture-001.png`, `capture-002.png`, etc.). Annotated versions have an `_annotated` suffix.
 - **`video/`** — Screen recordings associated with this bug (if captured via external tool during the session).
 - **`notes.md`** — Quick notes captured with `Ctrl+Shift+N` during bug capture. This is where you paste meeting URLs, error messages, or context that supplements the screenshots.
@@ -1100,13 +1119,13 @@ UnbrokenQACapture/
 - **Screenshots:** `capture-{NNN}.png` where `NNN` is zero-padded and sequential within the bug (001, 002, 003...).
 - **Annotated screenshots:** `capture-{NNN}_annotated.png` — same base name with `_annotated` suffix.
 - **Videos:** `recording-{NNN}.mp4` (or `.webm`, `.mkv` depending on capture source).
-- **Bug folders:** `Bug-{NN}` with zero-padded two-digit numbers (Bug-01, Bug-02... Bug-99, then Bug-100 if needed).
+- **Bug folders:** `bug_{NNN}` with zero-padded three-digit numbers (bug_001, bug_002, bug_003, etc.). Displayed in the UI as "BUG-001", "BUG-002", etc.
 - **Session folders:** `YYYY-MM-DD_{ID}` where `ID` is a short unique identifier (e.g., `2026-02-16_a3f2`).
 
 This consistent naming makes it easy to:
 - Sort bugs chronologically
 - Reference specific screenshots in ticket descriptions
-- Script bulk operations (e.g., "attach all screenshots from Bug-05")
+- Script bulk operations (e.g., "attach all screenshots from bug_005")
 
 ---
 
@@ -1192,7 +1211,7 @@ TypeError: Cannot read property 'track' of undefined
   at CallController.handleJoin (call-controller.js:89)
 
 ## Attachments
-Screenshots are in: Bug-03/screenshots/
+Screenshots are in: bug_003/screenshots/
 - capture-001.png (frozen video feed)
 - capture-002.png (console error)
 - capture-003_annotated.png (annotated UI state)
@@ -1494,7 +1513,7 @@ All global hotkeys can be customized to avoid conflicts with other applications 
 
 #### Start Bug Capture + Screenshot
 
-**What it does:** Starts a new bug capture (Bug-01, Bug-02, etc.) and immediately triggers the Windows Snipping Tool for screenshot capture.
+**What it does:** Starts a new bug capture (displayed as BUG-001, BUG-002, etc. in the UI) and immediately triggers the Windows Snipping Tool for screenshot capture.
 
 **Default:** `Print Screen`
 
@@ -1644,7 +1663,7 @@ These settings control the behavior and defaults of the annotation tool.
 
 #### Default Annotation Color
 
-**What it does:** Sets the default color for text labels, rectangles, ovals, and freehand drawing when you open the annotation tool.
+**What it does:** Sets the default color for text labels, rectangles, circles, and freehand drawing when you open the annotation tool.
 
 **Default:** Red (`#FF3B30`)
 
@@ -1665,7 +1684,7 @@ These settings control the behavior and defaults of the annotation tool.
 
 #### Default Stroke Width
 
-**What it does:** Sets the default line thickness for rectangles, ovals, and freehand drawing.
+**What it does:** Sets the default line thickness for rectangles, circles, and freehand drawing.
 
 **Default:** 3 pixels
 
@@ -2521,7 +2540,7 @@ These hotkeys work system-wide, even when the application is not in focus. They 
 | Hotkey | Action | Available In | Description |
 |--------|--------|--------------|-------------|
 | **Ctrl+Shift+Q** | Start / End Session | All states | Toggle a QA session on/off. Press once to start a session, press again to end it and enter Review Mode. |
-| **Print Screen** | Start Bug Capture + Screenshot | Active Session, Bug Capture | Starts a new bug capture (Bug-01, Bug-02, etc.) and triggers the Windows Snipping Tool for screenshot capture. If already in bug capture mode, adds another screenshot to the current bug. |
+| **Print Screen** | Start Bug Capture + Screenshot | Active Session, Bug Capture | Starts a new bug capture (displayed as BUG-001, BUG-002, etc. in the UI) and triggers the Windows Snipping Tool for screenshot capture. If already in bug capture mode, adds another screenshot to the current bug. |
 | **F4** | End Bug Capture | Bug Capture Mode | Ends the current bug capture and returns to Active Session mode. All screenshots, notes, and metadata are saved to the bug's folder. |
 | **Ctrl+Shift+N** | Toggle Quick Notepad | Bug Capture Mode | Opens or closes the quick notepad for the current bug. Use this to paste meeting URLs, jot context notes, or add any text information related to the bug. The notepad content is saved with the bug. |
 | **Ctrl+Shift+M** | Toggle Session Notepad | Active Session, Bug Capture | Opens or closes the session notepad. Use this for session-wide notes that aren't specific to a single bug (e.g., test environment details, general observations). |
@@ -2544,7 +2563,7 @@ These keyboard shortcuts are available when the annotation window is open. They 
 |--------|------|-------------|
 | **T** | Text Tool | Add text labels and annotations to screenshots. Click to place text, then type your annotation. |
 | **R** | Rectangle Tool | Draw rectangular outlines around UI elements. Click and drag to create a rectangle. |
-| **O** | Oval Tool | Draw oval/circular outlines around UI elements. Click and drag to create an oval. |
+| **O** | Circle Tool | Draw circular outlines around UI elements. Click and drag to create a circle. |
 | **D** | Freehand Draw Tool | Draw freehand lines and arrows. Click and drag to draw freely. |
 
 **Tips:**
@@ -2651,7 +2670,7 @@ Print or save this quick reference for easy access during testing sessions:
 │ ANNOTATION TOOLS                                            │
 │   T ..................... Text Tool                         │
 │   R ..................... Rectangle Tool                    │
-│   O ..................... Oval Tool                         │
+│   O ..................... Circle Tool                       │
 │   D ..................... Freehand Draw Tool                │
 │                                                              │
 │ ANNOTATION ACTIONS                                          │
