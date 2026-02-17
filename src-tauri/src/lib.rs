@@ -334,6 +334,14 @@ async fn open_session_folder(
     Ok(())
 }
 
+#[tauri::command]
+fn get_capture_folder_path(session_folder_path: String) -> Result<String, String> {
+    use std::path::Path;
+
+    let captures_path = Path::new(&session_folder_path).join("_captures");
+    Ok(captures_path.to_string_lossy().to_string())
+}
+
 /// Load the embedded tray icon PNG for the given state.
 ///
 /// PRD Section 14 (Iconography) specifies:
@@ -2281,6 +2289,7 @@ pub fn run() {
             copy_bug_to_clipboard,
             open_bug_folder,
             open_session_folder,
+            get_capture_folder_path,
             update_tray_icon,
             update_tray_menu,
             update_tray_tooltip,

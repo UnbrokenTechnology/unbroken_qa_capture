@@ -59,6 +59,10 @@ export async function openSessionFolder(folderPath: string): Promise<void> {
   await invoke('open_session_folder', { folderPath })
 }
 
+export async function getCaptureFolderPath(sessionFolderPath: string): Promise<string> {
+  return await invoke<string>('get_capture_folder_path', { sessionFolderPath })
+}
+
 export async function formatSessionExport(sessionFolderPath: string): Promise<void> {
   await invoke('format_session_export', { sessionFolderPath })
 }
