@@ -60,6 +60,8 @@ vi.mock('fabric', () => {
     }),
     IText: vi.fn(function (this: any, text: string, options: any) {
       this.set = vi.fn()
+      this.enterEditing = vi.fn()
+      this.selectAll = vi.fn()
       this.text = text
       this.left = options.left
       this.top = options.top

@@ -324,6 +324,9 @@ function handleMouseDown(event: any) {
     })
     canvas.value.add(text)
     canvas.value.setActiveObject(text)
+    // Enter editing mode so user can type immediately
+    text.enterEditing()
+    text.selectAll()
     canvas.value.renderAll()
   } else if (currentTool.value === 'rectangle' || currentTool.value === 'circle') {
     isDrawing = true
