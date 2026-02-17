@@ -47,6 +47,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useRouter } from 'vue-router'
 import { useTrayStore } from './stores/tray'
 import { useSessionStore } from './stores/session'
+import { useBugStore } from './stores/bug'
 import { useSettingsStore } from './stores/settings'
 import SessionStatusWidget from './components/SessionStatusWidget.vue'
 import SessionToolbar from './components/SessionToolbar.vue'
@@ -56,6 +57,7 @@ import * as tauri from './api/tauri'
 const router = useRouter()
 const trayStore = useTrayStore()
 const sessionStore = useSessionStore()
+const bugStore = useBugStore()
 const settingsStore = useSettingsStore()
 const showStatusWidget = ref(true)
 const showFirstRunWizard = ref(false)
@@ -95,14 +97,34 @@ onMounted(async () => {
   await sessionStore.setupEventListeners()
 
   // Listen for tray menu events
-  const unlistenStartSession = await listen('tray-menu-start-session', () => {
-    trayStore.toggleSession()
+  const unlistenStartSession = await listen('tray-menu-start-session', async () => {
+    if (sessionStore.isSessionActive) {
+      // Session already running — just bring the window to the session view
+      router.push({ name: 'active-session' })
+    } else {
+      // Start a new session; the activeSession watcher will navigate automatically
+      try {
+        await sessionStore.startSession()
+      } catch (err) {
+        console.error('Failed to start session from tray:', err)
+      }
+    }
   })
 
-  const unlistenNewBug = await listen('tray-menu-new-bug', () => {
-    // Navigate to bug capture view (when implemented)
-    console.log('New bug capture requested from tray')
-    trayStore.setBugCapture()
+  const unlistenNewBug = await listen('tray-menu-new-bug', async () => {
+    if (sessionStore.isSessionActive && sessionStore.activeSessionId) {
+      // Start bug capture in the current session and navigate to it
+      try {
+        await bugStore.startBugCapture({ session_id: sessionStore.activeSessionId, status: 'capturing' })
+        await trayStore.setBugCapture()
+        router.push({ name: 'active-session' })
+      } catch (err) {
+        console.error('Failed to start bug capture from tray:', err)
+      }
+    } else {
+      // No active session — navigate home so user can start one
+      router.push({ name: 'home' })
+    }
   })
 
   const unlistenSettings = await listen('tray-menu-settings', () => {

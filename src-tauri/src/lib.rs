@@ -1272,9 +1272,17 @@ pub fn run() {
                 .on_menu_event(|app_handle, event| {
                     match event.id().as_ref() {
                         "start-session" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
                             app_handle.emit("tray-menu-start-session", ()).ok();
                         }
                         "new-bug-capture" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
                             app_handle.emit("tray-menu-new-bug", ()).ok();
                         }
                         "open-main-window" => {
@@ -1284,6 +1292,10 @@ pub fn run() {
                             }
                         }
                         "settings" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
                             app_handle.emit("tray-menu-settings", ()).ok();
                         }
                         "quit" => {
