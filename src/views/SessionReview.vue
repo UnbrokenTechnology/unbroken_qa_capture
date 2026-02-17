@@ -594,6 +594,14 @@
           @click="generateSessionSummary"
         />
         <q-btn
+          color="teal"
+          icon="save_alt"
+          label="Export to File"
+          :disable="finalizedBugs.length === 0"
+          :loading="isExportingToFile"
+          @click="exportToFile"
+        />
+        <q-btn
           color="positive"
           icon="upload"
           label="Export to Linear"
@@ -1028,6 +1036,9 @@ const showSummaryDialog = ref(false)
 const isSummaryGenerating = ref(false)
 const summaryContent = ref('')
 const summaryFilePath = ref('')
+
+// File Export State
+const isExportingToFile = ref(false)
 
 // Computed
 const bugs = computed(() => bugStore.backendBugs)
@@ -1562,6 +1573,33 @@ async function generateSessionSummary() {
     })
   } finally {
     isSummaryGenerating.value = false
+  }
+}
+
+async function exportToFile() {
+  if (!sessionStore.activeSession) return
+
+  try {
+    isExportingToFile.value = true
+    const folderPath = sessionStore.activeSession.folder_path
+    await tauri.formatSessionExport(folderPath)
+    await tauri.openSessionFolder(folderPath)
+
+    $q.notify({
+      type: 'positive',
+      message: `tickets-ready.md generated and saved to:\n${folderPath}`,
+      position: 'top',
+      timeout: 5000
+    })
+  } catch (err) {
+    console.error('Failed to export session to file:', err)
+    $q.notify({
+      type: 'negative',
+      message: `Failed to export session: ${err}`,
+      position: 'top'
+    })
+  } finally {
+    isExportingToFile.value = false
   }
 }
 

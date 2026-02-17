@@ -76,6 +76,7 @@ exports[`Tauri command registration contract > parsed frontend commands snapshot
   "copy_bug_to_clipboard",
   "delete_setting",
   "end_bug_capture",
+  "format_session_export",
   "generate_bug_description",
   "generate_session_summary",
   "get_active_session",

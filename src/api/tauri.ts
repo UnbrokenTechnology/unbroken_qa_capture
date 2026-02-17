@@ -59,6 +59,10 @@ export async function openSessionFolder(folderPath: string): Promise<void> {
   await invoke('open_session_folder', { folderPath })
 }
 
+export async function formatSessionExport(sessionFolderPath: string): Promise<void> {
+  await invoke('format_session_export', { sessionFolderPath })
+}
+
 // ============================================================================
 // Tray Commands
 // ============================================================================
