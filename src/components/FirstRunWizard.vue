@@ -451,6 +451,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useQuasar } from 'quasar'
 import { useSettingsStore, SETTINGS_KEYS } from '@/stores/settings'
@@ -630,6 +631,19 @@ async function completeSetup() {
     if (linearSetup.value.enabled) {
       await settingsStore.saveSetting('linear_api_key', linearSetup.value.apiKey)
       await settingsStore.saveSetting('linear_team_id', linearSetup.value.teamId)
+      await settingsStore.saveSetting('ticketing_provider', 'linear')
+      // Also persist to ticketing credentials table so backend can find them
+      try {
+        await invoke('ticketing_save_credentials', {
+          credentials: {
+            api_key: linearSetup.value.apiKey,
+            team_id: linearSetup.value.teamId || null,
+            workspace_id: null,
+          },
+        })
+      } catch (err) {
+        console.warn('Failed to save Linear credentials to ticketing store:', err)
+      }
     }
 
     // Mark setup as complete

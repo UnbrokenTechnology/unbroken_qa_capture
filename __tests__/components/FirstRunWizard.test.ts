@@ -23,6 +23,11 @@ vi.mock('quasar', async () => {
   }
 })
 
+// Mock Tauri core (for direct invoke calls)
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn().mockResolvedValue(undefined),
+}))
+
 // Mock Tauri dialog API
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn(),

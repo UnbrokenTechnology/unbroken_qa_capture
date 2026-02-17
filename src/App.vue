@@ -47,6 +47,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useRouter } from 'vue-router'
 import { useTrayStore } from './stores/tray'
 import { useSessionStore } from './stores/session'
+import { useSettingsStore } from './stores/settings'
 import SessionStatusWidget from './components/SessionStatusWidget.vue'
 import SessionToolbar from './components/SessionToolbar.vue'
 import FirstRunWizard from './components/FirstRunWizard.vue'
@@ -55,6 +56,7 @@ import * as tauri from './api/tauri'
 const router = useRouter()
 const trayStore = useTrayStore()
 const sessionStore = useSessionStore()
+const settingsStore = useSettingsStore()
 const showStatusWidget = ref(true)
 const showFirstRunWizard = ref(false)
 provide('showFirstRunWizard', showFirstRunWizard)
@@ -65,8 +67,11 @@ function toggleStatusWidget() {
   showStatusWidget.value = !showStatusWidget.value
 }
 
-function onSetupComplete() {
-  console.log('First-run setup completed')
+async function onSetupComplete() {
+  // Reload settings store so the app reflects the wizard-configured values
+  await settingsStore.loadAllSettings()
+  // Navigate to home view after setup
+  router.push({ name: 'home' })
 }
 
 onMounted(async () => {
