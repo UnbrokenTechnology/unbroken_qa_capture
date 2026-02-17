@@ -45,10 +45,11 @@ struct ActiveWatcher {
 /// This implementation provides:
 /// - File watching with automatic file type detection and exponential backoff retry
 /// - Screenshot trigger via multiple fallback methods (URI, process, key simulation)
-/// - Registry redirect (pending implementation)
+/// - Registry redirect for Snipping Tool output folder via `WindowsRegistryBridge`
 pub struct WindowsCaptureBridge {
     active_watchers: Arc<Mutex<HashMap<usize, ActiveWatcher>>>,
     next_watcher_id: Arc<Mutex<usize>>,
+    registry_bridge: WindowsRegistryBridge,
 }
 
 impl WindowsCaptureBridge {
@@ -57,6 +58,7 @@ impl WindowsCaptureBridge {
         Self {
             active_watchers: Arc::new(Mutex::new(HashMap::new())),
             next_watcher_id: Arc::new(Mutex::new(1)),
+            registry_bridge: WindowsRegistryBridge::new(),
         }
     }
 
@@ -262,18 +264,16 @@ impl Default for WindowsCaptureBridge {
 }
 
 impl CaptureBridge for WindowsCaptureBridge {
-    fn redirect_screenshot_output(&self, _target_folder: &Path) -> Result<PathBuf> {
-        Err(PlatformError::NotImplemented {
-            operation: "redirect_screenshot_output".to_string(),
-            platform: "Windows (pending implementation)".to_string(),
-        })
+    fn redirect_screenshot_output(&self, target_folder: &Path) -> Result<PathBuf> {
+        // Read the current (original) screenshot folder before redirecting
+        let original = self.registry_bridge.read_screenshot_folder()?;
+        // Write the new target folder to the registry
+        self.registry_bridge.write_screenshot_folder(target_folder)?;
+        Ok(original)
     }
 
-    fn restore_screenshot_output(&self, _original_path: &Path) -> Result<()> {
-        Err(PlatformError::NotImplemented {
-            operation: "restore_screenshot_output".to_string(),
-            platform: "Windows (pending implementation)".to_string(),
-        })
+    fn restore_screenshot_output(&self, original_path: &Path) -> Result<()> {
+        self.registry_bridge.restore_screenshot_folder(original_path)
     }
 
     fn trigger_screenshot(&self) -> Result<()> {
@@ -768,30 +768,18 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn test_screenshot_redirect_returns_not_implemented() {
+    #[cfg(not(windows))]
+    fn test_screenshot_redirect_fails_on_non_windows() {
         let bridge = WindowsCaptureBridge::new();
-        let temp_path = PathBuf::from("C:\\temp");
+        let temp_path = PathBuf::from("/tmp/test");
 
-        // Test redirect_screenshot_output
+        // On non-Windows, redirect_screenshot_output fails because the registry is unavailable
         let result = bridge.redirect_screenshot_output(&temp_path);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            PlatformError::NotImplemented { operation, platform } => {
-                assert_eq!(operation, "redirect_screenshot_output");
-                assert!(platform.contains("Windows"));
-            }
-            _ => panic!("Expected NotImplemented error"),
-        }
+        assert!(result.is_err(), "redirect_screenshot_output should fail on non-Windows");
 
-        // Test restore_screenshot_output
+        // On non-Windows, restore_screenshot_output also fails (no registry)
         let result = bridge.restore_screenshot_output(&temp_path);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            PlatformError::NotImplemented { operation, .. } => {
-                assert_eq!(operation, "restore_screenshot_output");
-            }
-            _ => panic!("Expected NotImplemented error"),
-        }
+        assert!(result.is_err(), "restore_screenshot_output should fail on non-Windows");
     }
 
     #[test]

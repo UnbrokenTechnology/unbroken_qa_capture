@@ -23,6 +23,18 @@
           :loading="isPushing"
           @click="showPushDialog = true"
         />
+        <q-btn
+          v-if="sessionStore.activeSession"
+          flat
+          round
+          dense
+          icon="refresh"
+          class="q-mr-sm"
+          :loading="refreshingCaptures"
+          @click="refreshAllCaptures"
+        >
+          <q-tooltip>Refresh all captures</q-tooltip>
+        </q-btn>
         <div
           v-if="sessionStore.activeSession"
           class="text-caption text-grey-7"
@@ -205,6 +217,13 @@
                   label="Open Folder"
                   outline
                   @click="openBugFolder"
+                />
+                <q-btn
+                  icon="refresh"
+                  label="Refresh Captures"
+                  outline
+                  :loading="refreshingCaptures"
+                  @click="refreshSelectedBugCaptures"
                 />
                 <q-btn
                   color="negative"
@@ -450,11 +469,25 @@
 
               <!-- Screenshots -->
               <div
-                v-if="selectedBugScreenshots.length > 0"
+                v-if="selectedBugScreenshots.length > 0 || selectedBugVideos.length > 0"
                 class="q-mb-md"
               >
-                <div class="text-caption text-grey-7 q-mb-xs">
-                  Screenshots ({{ selectedBugScreenshots.length }})
+                <div class="row items-center q-mb-xs">
+                  <div class="text-caption text-grey-7">
+                    Screenshots ({{ selectedBugScreenshots.length }})
+                  </div>
+                  <q-space />
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="refresh"
+                    size="sm"
+                    :loading="refreshingCaptures"
+                    @click="refreshSelectedBugCaptures"
+                  >
+                    <q-tooltip>Refresh captures</q-tooltip>
+                  </q-btn>
                 </div>
                 <div class="row q-gutter-md">
                   <div
@@ -1242,6 +1275,33 @@ async function loadBugCaptures(bugId: string) {
   } catch (err) {
     console.error('Failed to load bug captures:', err)
     bugCaptures.value[bugId] = []
+  }
+}
+
+const refreshingCaptures = ref(false)
+
+async function refreshSelectedBugCaptures() {
+  if (!selectedBugId.value) return
+  refreshingCaptures.value = true
+  try {
+    delete bugCaptures.value[selectedBugId.value]
+    await loadBugCaptures(selectedBugId.value)
+  } finally {
+    refreshingCaptures.value = false
+  }
+}
+
+async function refreshAllCaptures() {
+  refreshingCaptures.value = true
+  try {
+    // Reload all bug captures and unsorted captures
+    bugCaptures.value = {}
+    for (const bug of bugs.value) {
+      await loadBugCaptures(bug.id)
+    }
+    await loadUnsortedCaptures()
+  } finally {
+    refreshingCaptures.value = false
   }
 }
 
@@ -2104,14 +2164,19 @@ onMounted(async () => {
     }
   }
 
-  // Listen for new unsorted captures in real-time
+  // Listen for new captures (both unsorted and bug-assigned) in real-time
   const { listen } = await import('@tauri-apps/api/event')
-  const unlisten = await listen<{ filePath: string; captureId: string; sessionId: string; bugId: null; type: string }>(
+  const unlisten = await listen<{ filePath: string; captureId: string; sessionId: string; bugId: string | null; type: string }>(
     'capture:file-detected',
     (event) => {
-      if (event.payload.bugId === null && sessionStore.activeSession?.id === event.payload.sessionId) {
+      if (sessionStore.activeSession?.id !== event.payload.sessionId) return
+      if (event.payload.bugId === null) {
         // Reload unsorted captures when a new one arrives
         void loadUnsortedCaptures()
+      } else {
+        // Invalidate the bug's capture cache so it reloads with the new file
+        delete bugCaptures.value[event.payload.bugId]
+        void loadBugCaptures(event.payload.bugId)
       }
     }
   )
