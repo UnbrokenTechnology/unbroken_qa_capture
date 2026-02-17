@@ -43,6 +43,9 @@ static CAPTURE_BRIDGE: Mutex<Option<Box<dyn platform::CaptureBridge>>> = Mutex::
 // Active file watcher handle (None when no session is active)
 static ACTIVE_WATCHER: Mutex<Option<platform::WatcherHandle>> = Mutex::new(None);
 
+// Original Snipping Tool screenshot folder before redirect (for restoration on session end)
+static ORIGINAL_SCREENSHOT_FOLDER: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
+
 // Tauri event emitter implementation
 struct TauriEventEmitter {
     app_handle: Arc<Mutex<Option<AppHandle>>>,
@@ -863,6 +866,17 @@ fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
                 Ok(handle) => {
                     *ACTIVE_WATCHER.lock().unwrap() = Some(handle);
 
+                    // Redirect Snipping Tool output to _captures/ so screenshots land there automatically.
+                    // Best-effort: log warnings on failure but don't abort session start.
+                    match bridge.redirect_screenshot_output(std::path::Path::new(&captures_watch_path)) {
+                        Ok(original) => {
+                            *ORIGINAL_SCREENSHOT_FOLDER.lock().unwrap() = Some(original);
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: Could not redirect Snipping Tool output folder: {}", e);
+                        }
+                    }
+
                     // Spawn background thread to sort capture events from _captures/
                     // into bug subfolders or _unsorted/, with PRD-compliant naming.
                     let app_handle = app.clone();
@@ -956,6 +970,14 @@ async fn end_session(session_id: String) -> Result<(), String> {
                 if let Some(handle) = active.take() {
                     if let Err(e) = bridge.stop_file_watcher(handle) {
                         eprintln!("Warning: Failed to stop file watcher: {}", e);
+                    }
+                }
+
+                // Restore the original Snipping Tool screenshot folder
+                let original = ORIGINAL_SCREENSHOT_FOLDER.lock().unwrap().take();
+                if let Some(original_path) = original {
+                    if let Err(e) = bridge.restore_screenshot_output(&original_path) {
+                        eprintln!("Warning: Failed to restore Snipping Tool output folder: {}", e);
                     }
                 }
             }

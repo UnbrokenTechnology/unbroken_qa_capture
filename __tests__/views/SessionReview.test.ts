@@ -353,6 +353,42 @@ describe('SessionReview', () => {
     expect(backSpy).toHaveBeenCalled()
   })
 
+  it('should reload bug captures when Refresh Captures is clicked', async () => {
+    const sessionStore = useSessionStore()
+    const session = createMockSession('session-1')
+    sessionStore.activeSession = session
+
+    const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
+    const initialCaptures = [createMockCapture('cap-1', 'bug-1')]
+    const refreshedCaptures = [
+      createMockCapture('cap-1', 'bug-1'),
+      createMockCapture('cap-2', 'bug-1')
+    ]
+
+    vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
+    vi.mocked(tauri.getBugCaptures)
+      .mockResolvedValueOnce(initialCaptures)
+      .mockResolvedValueOnce(refreshedCaptures)
+
+    const wrapper = await mountComponent()
+    await flushPromises()
+
+    // Verify initial load happened
+    expect(tauri.getBugCaptures).toHaveBeenCalledTimes(1)
+
+    // Click the Refresh Captures button
+    const refreshButton = wrapper.findAll('button').find(btn => btn.text().includes('Refresh Captures'))
+    expect(refreshButton).toBeDefined()
+
+    if (refreshButton) {
+      await refreshButton.trigger('click')
+      await flushPromises()
+
+      // Should have reloaded captures
+      expect(tauri.getBugCaptures).toHaveBeenCalledTimes(2)
+    }
+  })
+
   it('should load bug captures on mount', async () => {
     const sessionStore = useSessionStore()
     const session = createMockSession('session-1')
@@ -624,6 +660,22 @@ describe('SessionReview', () => {
           )
         }
       }
+    })
+
+    it('should show Refresh Captures button in actions row when bug is selected', async () => {
+      const sessionStore = useSessionStore()
+      const session = createMockSession('session-1')
+      sessionStore.activeSession = session
+
+      const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
+
+      vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
+      vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
+
+      const wrapper = await mountComponent()
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Refresh Captures')
     })
 
     it('should refine description when Refine button is clicked', async () => {
