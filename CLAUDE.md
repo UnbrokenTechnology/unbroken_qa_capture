@@ -67,6 +67,20 @@ Source: `C:\Users\steph\Repositories\claude-swarm\swarm\swarm.py` (the swarm CLI
 
 Agents push to a bare repo at `.swarm/repo.git`. The main branch is **`main`**. Agents work on feature branches named `ticket-<N>`.
 
+**Quick pull (recommended):**
+
+```powershell
+# Pull latest, sync to GitHub
+powershell -ExecutionPolicy Bypass -File scripts/swarm-pull.ps1
+
+# Pull and immediately launch the app
+powershell -ExecutionPolicy Bypass -File scripts/swarm-pull.ps1 -Run
+```
+
+The script handles: killing the running app (so the exe isn't locked), fetching, fast-forward merge, and pushing to origin. It's idempotent — safe to run anytime.
+
+**Manual commands (if needed):**
+
 ```bash
 # Pull merged work from main
 git pull swarm main --ff-only
