@@ -7,6 +7,7 @@ import App from '@/App.vue'
 import SessionToolbar from '@/components/SessionToolbar.vue'
 import FirstRunWizard from '@/components/FirstRunWizard.vue'
 import * as tauri from '@/api/tauri'
+import { invoke } from '@tauri-apps/api/core'
 
 // Mock Tauri API
 vi.mock('@/api/tauri', () => ({
@@ -18,6 +19,15 @@ vi.mock('@/api/tauri', () => ({
   getAllSettings: vi.fn(),
   deleteSetting: vi.fn(),
   getActiveSession: vi.fn(),
+  resumeSession: vi.fn(),
+  updateTrayIcon: vi.fn(),
+  updateTrayMenu: vi.fn(),
+  updateTrayTooltip: vi.fn(),
+}))
+
+// Mock Tauri core invoke
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
 }))
 
 // Mock Tauri event API
@@ -39,12 +49,14 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 
 // Mock useQuasar
 const mockNotify = vi.fn()
+const mockDialog = vi.fn()
 vi.mock('quasar', async () => {
   const actual = await vi.importActual('quasar')
   return {
     ...actual,
     useQuasar: () => ({
       notify: mockNotify,
+      dialog: mockDialog,
       screen: {
         lt: {
           md: false
@@ -74,6 +86,9 @@ describe('App.vue', () => {
 
     vi.clearAllMocks()
 
+    // Default invoke mock (for tray and end_session calls)
+    vi.mocked(invoke).mockResolvedValue(undefined)
+
     // Setup default mocks
     vi.mocked(tauri.hasCompletedSetup).mockResolvedValue(true)
     vi.mocked(tauri.getSetting).mockResolvedValue(null)
@@ -81,6 +96,19 @@ describe('App.vue', () => {
     vi.mocked(tauri.getAllSettings).mockResolvedValue([])
     vi.mocked(tauri.deleteSetting).mockResolvedValue(undefined)
     vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
+    vi.mocked(tauri.resumeSession).mockResolvedValue({
+      id: 'session-1',
+      status: 'active',
+      started_at: new Date().toISOString(),
+      ended_at: null,
+      folder_path: '/tmp/session-1',
+      display_id: 'S-1',
+    } as any)
+    vi.mocked(tauri.updateTrayIcon).mockResolvedValue(undefined)
+    vi.mocked(tauri.updateTrayMenu).mockResolvedValue(undefined)
+    vi.mocked(tauri.updateTrayTooltip).mockResolvedValue(undefined)
+    // Default: dialog does not open (no active session case)
+    mockDialog.mockReturnValue({ onOk: vi.fn().mockReturnThis(), onCancel: vi.fn().mockReturnThis() })
   })
 
   const mountComponent = () => {
@@ -189,6 +217,89 @@ describe('App.vue', () => {
       const wizard = wrapper.findComponent(FirstRunWizard)
       expect(wizard.exists()).toBe(true)
       expect(wizard.props('modelValue')).toBe(true)
+    })
+  })
+
+  describe('Crash Recovery Dialog', () => {
+    const activeSessionFixture = {
+      id: 'session-crash-1',
+      status: 'active' as const,
+      started_at: '2026-02-17T10:00:00.000Z',
+      ended_at: null,
+      folder_path: '/tmp/session-crash-1',
+      display_id: 'S-CRASH-1',
+    }
+
+    it('should not show recovery dialog when no active session exists', async () => {
+      vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
+
+      mountComponent()
+      await flushPromises()
+
+      expect(mockDialog).not.toHaveBeenCalled()
+    })
+
+    it('should show recovery dialog when an active session is found on startup', async () => {
+      vi.mocked(tauri.getActiveSession).mockResolvedValue(activeSessionFixture as any)
+
+      mockDialog.mockReturnValue({
+        onOk: vi.fn().mockReturnThis(),
+        onCancel: vi.fn().mockReturnThis(),
+      })
+
+      mountComponent()
+      await flushPromises()
+
+      expect(mockDialog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Session Recovery',
+          persistent: true,
+        })
+      )
+    })
+
+    it('should call resumeSession and navigate to active-session when user chooses Resume', async () => {
+      vi.mocked(tauri.getActiveSession).mockResolvedValue(activeSessionFixture as any)
+
+      let capturedOnOk: (() => Promise<void>) | undefined
+      mockDialog.mockReturnValue({
+        onOk: vi.fn().mockImplementation((cb: () => Promise<void>) => {
+          capturedOnOk = cb
+          return { onCancel: vi.fn().mockReturnThis() }
+        }),
+        onCancel: vi.fn().mockReturnThis(),
+      })
+
+      mountComponent()
+      await flushPromises()
+
+      // Trigger the onOk callback (user clicked "Resume Session")
+      expect(capturedOnOk).toBeDefined()
+      await capturedOnOk!()
+      await flushPromises()
+
+      expect(tauri.resumeSession).toHaveBeenCalledWith('session-crash-1')
+      expect(router.currentRoute.value.name).toBe('active-session')
+    })
+
+    it('should call endSession and stay on home when user chooses End Session', async () => {
+      vi.mocked(tauri.getActiveSession).mockResolvedValue(activeSessionFixture as any)
+
+      let capturedOnCancel: (() => Promise<void>) | undefined
+      mockDialog.mockReturnValue({
+        onOk: vi.fn().mockReturnValue({ onCancel: vi.fn().mockImplementation((cb: () => Promise<void>) => { capturedOnCancel = cb; return {} }) }),
+        onCancel: vi.fn().mockImplementation((cb: () => Promise<void>) => { capturedOnCancel = cb; return {} }),
+      })
+
+      mountComponent()
+      await flushPromises()
+
+      expect(capturedOnCancel).toBeDefined()
+      await capturedOnCancel!()
+      await flushPromises()
+
+      // Should remain on home route (not navigate to active-session)
+      expect(router.currentRoute.value.name).toBe('home')
     })
   })
 })

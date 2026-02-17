@@ -52,7 +52,10 @@ vi.mock('@/api/tauri', () => ({
   getBugsBySession: vi.fn(),
   // Tray commands
   updateTrayIcon: vi.fn(),
+  updateTrayMenu: vi.fn(),
   updateTrayTooltip: vi.fn(),
+  // Recovery commands
+  resumeSession: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/api/window', () => ({
@@ -68,12 +71,14 @@ vi.mock('@tauri-apps/api/core', () => ({
 }))
 
 const mockNotify = vi.fn()
+const mockDialog = vi.fn(() => ({ onOk: vi.fn().mockReturnThis(), onCancel: vi.fn().mockReturnThis() }))
 vi.mock('quasar', async () => {
   const actual = await vi.importActual('quasar')
   return {
     ...actual,
     useQuasar: () => ({
       notify: mockNotify,
+      dialog: mockDialog,
       screen: { lt: { md: false } },
     }),
   }
@@ -136,7 +141,23 @@ describe('Hotkey event listeners (App.vue)', () => {
     vi.mocked(tauri.deleteSetting).mockResolvedValue(undefined)
     vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
     vi.mocked(tauri.updateTrayIcon).mockResolvedValue(undefined)
+    vi.mocked(tauri.updateTrayMenu).mockResolvedValue(undefined)
     vi.mocked(tauri.updateTrayTooltip).mockResolvedValue(undefined)
+    vi.mocked(tauri.resumeSession).mockResolvedValue(undefined as any)
+    // Auto-dismiss the crash recovery dialog by immediately calling onCancel
+    mockDialog.mockImplementation(() => {
+      const handlers: Record<string, () => void> = {}
+      const chain = {
+        onOk: vi.fn().mockImplementation((cb: () => void) => { handlers.ok = cb; return chain }),
+        onCancel: vi.fn().mockImplementation((cb: () => void) => {
+          handlers.cancel = cb
+          // Immediately resolve so startup completes
+          Promise.resolve().then(() => cb && cb())
+          return chain
+        }),
+      }
+      return chain
+    })
   })
 
   it('registers all 5 hotkey event listeners on mount', async () => {

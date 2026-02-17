@@ -116,6 +116,10 @@ export async function updateSessionStatus(id: string, status: string): Promise<v
   await invoke('update_session_status', { sessionId: id, status })
 }
 
+export async function resumeSession(id: string): Promise<Session> {
+  return await invoke<Session>('resume_session', { sessionId: id })
+}
+
 // Bug operations
 export async function createBug(bug: Partial<Bug>): Promise<Bug> {
   if (!bug.session_id) {

@@ -179,6 +179,21 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
+  async function resumeSession(id: string): Promise<Session> {
+    loading.value = true
+    error.value = null
+    try {
+      const session = await tauri.resumeSession(id)
+      activeSession.value = session
+      return session
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function endSession(id: string): Promise<void> {
     loading.value = true
     error.value = null
@@ -381,6 +396,7 @@ export const useSessionStore = defineStore('session', () => {
 
     // Actions - Lifecycle
     startSession,
+    resumeSession,
     endSession,
     updateSessionStatus,
 

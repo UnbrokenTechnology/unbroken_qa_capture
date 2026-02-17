@@ -130,9 +130,53 @@ onMounted(async () => {
     console.error('Failed to load active session:', err)
   }
 
-  // Now that we know whether a session is active, perform initial navigation
-  if (sessionStore.isSessionActive) {
-    router.push({ name: 'active-session' })
+  // If a session is active on startup, it was interrupted by a crash/restart.
+  // Show a recovery dialog so the user can choose to resume or end it.
+  if (sessionStore.isSessionActive && sessionStore.activeSession) {
+    const crashedSession = sessionStore.activeSession
+    await new Promise<void>((resolve) => {
+      $q.dialog({
+        title: 'Session Recovery',
+        message: `A session was interrupted. Would you like to resume it or end it?\n\nSession started: ${new Date(crashedSession.started_at).toLocaleString()}`,
+        persistent: true,
+        ok: {
+          label: 'Resume Session',
+          color: 'primary',
+          unelevated: true,
+        },
+        cancel: {
+          label: 'End Session',
+          color: 'negative',
+          flat: true,
+        },
+      })
+        .onOk(async () => {
+          try {
+            await sessionStore.resumeSession(crashedSession.id)
+            await trayStore.setActive()
+            router.push({ name: 'active-session' })
+          } catch (err) {
+            console.error('Failed to resume session:', err)
+            $q.notify({
+              type: 'negative',
+              message: 'Failed to resume session',
+              caption: err instanceof Error ? err.message : String(err),
+              position: 'bottom-right',
+              timeout: 5000,
+            })
+          }
+          resolve()
+        })
+        .onCancel(async () => {
+          try {
+            await sessionStore.endSession(crashedSession.id)
+            await trayStore.setIdle()
+          } catch (err) {
+            console.error('Failed to end crashed session:', err)
+          }
+          resolve()
+        })
+    })
   }
 
   // Reveal the UI now that initialization is complete

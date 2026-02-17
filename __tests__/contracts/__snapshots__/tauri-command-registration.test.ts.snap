@@ -96,6 +96,7 @@ exports[`Tauri command registration contract > parsed frontend commands snapshot
   "reload_template",
   "render_bug_template",
   "reset_setup",
+  "resume_session",
   "save_bug_description",
   "set_custom_template_path",
   "set_setting",
