@@ -4,14 +4,14 @@
 //!
 //! # Implementation Status
 //!
-//! - **CaptureBridge**: Full implementation (file watcher + screenshot trigger)
+//! - **CaptureBridge**: Full implementation (screenshot trigger only)
 //! - **RegistryBridge**: Full implementation with crash recovery via SQLite cache
 //!
 //! # Capture Model
 //!
-//! Uses the Watch+Copy model: the app watches the system screenshot folder
-//! (%USERPROFILE%\Pictures\Screenshots by default, configurable via settings) and
-//! copies new files into the active bug or _unsorted/ folder. No registry modification required.
+//! The user saves screenshots directly into the session's _captures/ folder.
+//! The app moves files from _captures/ into the active bug's screenshots/ subfolder.
+//! No system screenshot folder watching or registry modification required.
 //!
 //! # Registry (startup/other uses)
 //!
@@ -20,81 +20,32 @@
 //! - Persistent caching of original values in SQLite for crash recovery
 
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc::Sender, Arc, Mutex};
-use std::collections::HashMap;
-use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
 use std::os::windows::process::CommandExt;
 
-use notify::{Watcher, RecursiveMode, RecommendedWatcher, Event, EventKind};
-
-use super::capture::{CaptureBridge, CaptureEvent, WatcherHandle};
+use super::capture::CaptureBridge;
 use super::registry::RegistryBridge;
 use super::registry_cache::RegistryCache;
 use super::error::{PlatformError, Result};
-
-// DESIGN NOTE: The registry redirect approach (modifying Snipping Tool's default save folder)
-// was removed in favor of the Watch+Copy model. The app now watches the system screenshot folder
-// directly and copies new files into the session/bug folder. See lib.rs::start_session.
 
 #[cfg(windows)]
 use winreg::enums::*;
 #[cfg(windows)]
 use winreg::RegKey;
 
-/// Wrapper struct to track active file watchers
-struct ActiveWatcher {
-    _watcher: RecommendedWatcher,
-    _thread: Option<thread::JoinHandle<()>>,
-}
-
 /// Windows implementation of `CaptureBridge`.
 ///
 /// This implementation provides:
-/// - File watching with automatic file type detection and exponential backoff retry
 /// - Screenshot trigger via multiple fallback methods (URI, process, key simulation)
 ///
-/// Screenshots are detected by watching the system screenshot folder directly (Watch+Copy model).
-/// The folder to watch is configured via the `screenshot_watch_folder` setting in the app.
-pub struct WindowsCaptureBridge {
-    active_watchers: Arc<Mutex<HashMap<usize, ActiveWatcher>>>,
-    next_watcher_id: Arc<Mutex<usize>>,
-}
+/// Users save screenshots directly into the session's _captures/ folder.
+/// The app moves files from _captures/ into the active bug's screenshots/ subfolder.
+pub struct WindowsCaptureBridge;
 
 impl WindowsCaptureBridge {
     /// Creates a new Windows capture bridge.
     pub fn new() -> Self {
-        Self {
-            active_watchers: Arc::new(Mutex::new(HashMap::new())),
-            next_watcher_id: Arc::new(Mutex::new(1)),
-        }
-    }
-
-    /// Determines if a file extension is for an image file
-    fn is_image_extension(extension: &str) -> bool {
-        matches!(extension.to_lowercase().as_str(), "png" | "jpg" | "jpeg" | "gif")
-    }
-
-    /// Determines if a file extension is for a video file
-    fn is_video_extension(extension: &str) -> bool {
-        matches!(extension.to_lowercase().as_str(), "mp4" | "webm" | "mkv")
-    }
-
-    /// Attempts to get file metadata with exponential backoff retry
-    /// Returns Ok(file_size) if successful, Err if file is still locked after all retries
-    fn try_get_file_size(path: &Path) -> Option<u64> {
-        let retries = [100, 200, 400]; // milliseconds
-
-        for (i, delay_ms) in retries.iter().enumerate() {
-            match std::fs::metadata(path) {
-                Ok(metadata) => return Some(metadata.len()),
-                Err(_) if i < retries.len() - 1 => {
-                    thread::sleep(Duration::from_millis(*delay_ms));
-                }
-                Err(_) => return None,
-            }
-        }
-        None
+        Self
     }
 
     /// Attempts to trigger screenshot via ms-screenclip: URI scheme
@@ -297,152 +248,6 @@ impl CaptureBridge for WindowsCaptureBridge {
         })
     }
 
-    fn start_file_watcher(&self, folder: &Path, sender: Sender<CaptureEvent>) -> Result<WatcherHandle> {
-        // Validate folder exists and is a directory
-        if !folder.exists() {
-            return Err(PlatformError::InvalidArgument {
-                parameter: "folder".to_string(),
-                message: "Folder does not exist".to_string(),
-            });
-        }
-        if !folder.is_dir() {
-            return Err(PlatformError::InvalidArgument {
-                parameter: "folder".to_string(),
-                message: "Path is not a directory".to_string(),
-            });
-        }
-
-        // Clone sender for the watcher callback
-        let event_sender = sender.clone();
-
-        // Create the file system watcher
-        let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
-            match res {
-                Ok(event) => {
-                    // Only process Create events
-                    if !matches!(event.kind, EventKind::Create(_)) {
-                        return;
-                    }
-
-                    for path in event.paths {
-                        // Skip directories
-                        if path.is_dir() {
-                            continue;
-                        }
-
-                        // Get file extension
-                        let extension = match path.extension() {
-                            Some(ext) => ext.to_string_lossy().to_lowercase(),
-                            None => continue, // Skip files without extensions
-                        };
-
-                        // Check if it's an image or video
-                        let is_image = Self::is_image_extension(&extension);
-                        let is_video = Self::is_video_extension(&extension);
-
-                        if !is_image && !is_video {
-                            continue; // Skip unsupported file types
-                        }
-
-                        // Try to get file size with retry (file might still be locked)
-                        let file_size = match Self::try_get_file_size(&path) {
-                            Some(size) => size,
-                            None => {
-                                // Send error event if file is still locked
-                                let _ = event_sender.send(CaptureEvent::WatcherError {
-                                    message: format!("File locked or inaccessible: {}", path.display()),
-                                });
-                                continue;
-                            }
-                        };
-
-                        // Get current timestamp
-                        let detected_at = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis() as u64;
-
-                        // Send appropriate event based on file type
-                        let capture_event = if is_image {
-                            CaptureEvent::ScreenshotDetected {
-                                file_path: path.clone(),
-                                file_size,
-                                detected_at,
-                            }
-                        } else {
-                            CaptureEvent::VideoDetected {
-                                file_path: path.clone(),
-                                file_size,
-                                detected_at,
-                            }
-                        };
-
-                        if let Err(e) = event_sender.send(capture_event) {
-                            // If send fails, the receiver is gone - no point continuing
-                            eprintln!("Failed to send capture event: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    let _ = event_sender.send(CaptureEvent::WatcherError {
-                        message: format!("Watcher error: {}", e),
-                    });
-                }
-            }
-        })
-        .map_err(|e| PlatformError::WatcherError {
-            message: format!("Failed to create file watcher: {}", e),
-        })?;
-
-        // Start watching the folder (non-recursive)
-        watcher
-            .watch(folder, RecursiveMode::NonRecursive)
-            .map_err(|e| PlatformError::WatcherError {
-                message: format!("Failed to start watching folder: {}", e),
-            })?;
-
-        // Generate watcher ID
-        let watcher_id = {
-            let mut id_guard = self.next_watcher_id.lock().map_err(|e| {
-                PlatformError::WatcherError {
-                    message: format!("Failed to acquire ID lock: {}", e),
-                }
-            })?;
-            let id = *id_guard;
-            *id_guard += 1;
-            id
-        };
-
-        // Store the watcher in active watchers
-        {
-            let mut watchers = self.active_watchers.lock().map_err(|e| {
-                PlatformError::WatcherError {
-                    message: format!("Failed to acquire watchers lock: {}", e),
-                }
-            })?;
-            watchers.insert(
-                watcher_id,
-                ActiveWatcher {
-                    _watcher: watcher,
-                    _thread: None,
-                },
-            );
-        }
-
-        Ok(WatcherHandle::new(watcher_id))
-    }
-
-    fn stop_file_watcher(&self, handle: WatcherHandle) -> Result<()> {
-        // Remove watcher from active watchers (dropping it will stop it)
-        let mut watchers = self.active_watchers.lock().map_err(|e| {
-            PlatformError::WatcherError {
-                message: format!("Failed to acquire watchers lock: {}", e),
-            }
-        })?;
-
-        watchers.remove(&handle.id);
-        Ok(())
-    }
 }
 
 /// Windows implementation of `RegistryBridge` with crash recovery.
@@ -760,7 +565,6 @@ impl Drop for WindowsRegistryBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc::channel;
     use std::fs;
 
     #[test]
@@ -854,221 +658,6 @@ mod tests {
                 panic!("Unexpected error type: {:?}", e);
             }
         }
-    }
-
-    #[test]
-    fn test_file_watcher_rejects_nonexistent_folder() {
-        let bridge = WindowsCaptureBridge::new();
-        let (tx, _rx) = channel();
-        let nonexistent = PathBuf::from("/nonexistent/path/hopefully");
-
-        let result = bridge.start_file_watcher(&nonexistent, tx);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            PlatformError::InvalidArgument { parameter, message } => {
-                assert_eq!(parameter, "folder");
-                assert!(message.contains("does not exist"));
-            }
-            _ => panic!("Expected InvalidArgument error"),
-        }
-    }
-
-    #[test]
-    fn test_file_watcher_rejects_file_path() {
-        let bridge = WindowsCaptureBridge::new();
-        let temp_file = std::env::temp_dir().join("test_file.txt");
-        fs::write(&temp_file, "test").unwrap();
-
-        let (tx, _rx) = channel();
-        let result = bridge.start_file_watcher(&temp_file, tx);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            PlatformError::InvalidArgument { parameter, message } => {
-                assert_eq!(parameter, "folder");
-                assert!(message.contains("not a directory"));
-            }
-            _ => panic!("Expected InvalidArgument error"),
-        }
-
-        fs::remove_file(&temp_file).ok();
-    }
-
-    #[test]
-    fn test_file_watcher_detects_screenshots() {
-        let bridge = WindowsCaptureBridge::new();
-        let temp_dir = std::env::temp_dir().join("watcher_test_screenshots");
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let (tx, rx) = channel();
-        let handle = bridge.start_file_watcher(&temp_dir, tx).unwrap();
-
-        // Give the watcher a moment to initialize
-        thread::sleep(Duration::from_millis(100));
-
-        // Create a PNG file
-        let png_path = temp_dir.join("test_screenshot.png");
-        fs::write(&png_path, b"fake png data").unwrap();
-
-        // Wait for event with timeout
-        let event = rx.recv_timeout(Duration::from_secs(2));
-        assert!(event.is_ok(), "Should receive screenshot event");
-
-        match event.unwrap() {
-            CaptureEvent::ScreenshotDetected { file_path, file_size, .. } => {
-                assert_eq!(file_path, png_path);
-                assert!(file_size > 0);
-            }
-            _ => panic!("Expected ScreenshotDetected event"),
-        }
-
-        // Stop watcher and cleanup
-        bridge.stop_file_watcher(handle).unwrap();
-        fs::remove_dir_all(&temp_dir).unwrap();
-    }
-
-    #[test]
-    fn test_file_watcher_detects_videos() {
-        let bridge = WindowsCaptureBridge::new();
-        let temp_dir = std::env::temp_dir().join("watcher_test_videos");
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let (tx, rx) = channel();
-        let handle = bridge.start_file_watcher(&temp_dir, tx).unwrap();
-
-        // Give the watcher a moment to initialize
-        thread::sleep(Duration::from_millis(100));
-
-        // Create an MP4 file
-        let mp4_path = temp_dir.join("test_video.mp4");
-        fs::write(&mp4_path, b"fake mp4 data").unwrap();
-
-        // Wait for event
-        let event = rx.recv_timeout(Duration::from_secs(2));
-        assert!(event.is_ok(), "Should receive video event");
-
-        match event.unwrap() {
-            CaptureEvent::VideoDetected { file_path, file_size, .. } => {
-                assert_eq!(file_path, mp4_path);
-                assert!(file_size > 0);
-            }
-            _ => panic!("Expected VideoDetected event"),
-        }
-
-        // Stop watcher and cleanup
-        bridge.stop_file_watcher(handle).unwrap();
-        fs::remove_dir_all(&temp_dir).unwrap();
-    }
-
-    #[test]
-    fn test_file_watcher_ignores_unsupported_files() {
-        let bridge = WindowsCaptureBridge::new();
-        let temp_dir = std::env::temp_dir().join("watcher_test_unsupported");
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let (tx, rx) = channel();
-        let handle = bridge.start_file_watcher(&temp_dir, tx).unwrap();
-
-        // Give the watcher a moment to initialize
-        thread::sleep(Duration::from_millis(100));
-
-        // Create unsupported file types
-        fs::write(temp_dir.join("test.txt"), b"text").unwrap();
-        fs::write(temp_dir.join("test.pdf"), b"pdf").unwrap();
-        fs::write(temp_dir.join("test.exe"), b"exe").unwrap();
-
-        // Wait a bit to ensure no events are sent
-        thread::sleep(Duration::from_millis(500));
-
-        // Should not receive any events
-        let event = rx.try_recv();
-        assert!(event.is_err(), "Should not receive events for unsupported files");
-
-        // Stop watcher and cleanup
-        bridge.stop_file_watcher(handle).unwrap();
-        fs::remove_dir_all(&temp_dir).unwrap();
-    }
-
-    #[test]
-    fn test_file_watcher_handles_multiple_files() {
-        let bridge = WindowsCaptureBridge::new();
-        let temp_dir = std::env::temp_dir().join("watcher_test_multiple");
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let (tx, rx) = channel();
-        let handle = bridge.start_file_watcher(&temp_dir, tx).unwrap();
-
-        // Give the watcher a moment to initialize
-        thread::sleep(Duration::from_millis(100));
-
-        // Create multiple files
-        fs::write(temp_dir.join("screenshot1.png"), b"png1").unwrap();
-        thread::sleep(Duration::from_millis(50));
-        fs::write(temp_dir.join("screenshot2.jpg"), b"jpg2").unwrap();
-        thread::sleep(Duration::from_millis(50));
-        fs::write(temp_dir.join("video1.mp4"), b"mp4").unwrap();
-
-        // Collect events (with timeout)
-        let mut events = Vec::new();
-        for _ in 0..3 {
-            if let Ok(event) = rx.recv_timeout(Duration::from_secs(2)) {
-                events.push(event);
-            }
-        }
-
-        assert_eq!(events.len(), 3, "Should receive 3 events");
-
-        // Verify we got the right mix of events
-        let screenshot_count = events.iter().filter(|e| matches!(e, CaptureEvent::ScreenshotDetected { .. })).count();
-        let video_count = events.iter().filter(|e| matches!(e, CaptureEvent::VideoDetected { .. })).count();
-
-        assert_eq!(screenshot_count, 2, "Should have 2 screenshot events");
-        assert_eq!(video_count, 1, "Should have 1 video event");
-
-        // Stop watcher and cleanup
-        bridge.stop_file_watcher(handle).unwrap();
-        fs::remove_dir_all(&temp_dir).unwrap();
-    }
-
-    #[test]
-    fn test_file_watcher_stop_is_idempotent() {
-        let bridge = WindowsCaptureBridge::new();
-        let temp_dir = std::env::temp_dir().join("watcher_test_stop");
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let (tx, _rx) = channel();
-        let handle = bridge.start_file_watcher(&temp_dir, tx).unwrap();
-
-        // Stop the watcher
-        let result1 = bridge.stop_file_watcher(handle);
-        assert!(result1.is_ok(), "First stop should succeed");
-
-        // Create a new handle with same ID (simulating double-stop)
-        let fake_handle = WatcherHandle::new(1);
-        let result2 = bridge.stop_file_watcher(fake_handle);
-        assert!(result2.is_ok(), "Stop should be idempotent");
-
-        // Cleanup
-        fs::remove_dir_all(&temp_dir).unwrap();
-    }
-
-    #[test]
-    fn test_file_extension_detection() {
-        // Test image extensions
-        assert!(WindowsCaptureBridge::is_image_extension("png"));
-        assert!(WindowsCaptureBridge::is_image_extension("PNG"));
-        assert!(WindowsCaptureBridge::is_image_extension("jpg"));
-        assert!(WindowsCaptureBridge::is_image_extension("jpeg"));
-        assert!(WindowsCaptureBridge::is_image_extension("gif"));
-        assert!(!WindowsCaptureBridge::is_image_extension("mp4"));
-        assert!(!WindowsCaptureBridge::is_image_extension("txt"));
-
-        // Test video extensions
-        assert!(WindowsCaptureBridge::is_video_extension("mp4"));
-        assert!(WindowsCaptureBridge::is_video_extension("MP4"));
-        assert!(WindowsCaptureBridge::is_video_extension("webm"));
-        assert!(WindowsCaptureBridge::is_video_extension("mkv"));
-        assert!(!WindowsCaptureBridge::is_video_extension("png"));
-        assert!(!WindowsCaptureBridge::is_video_extension("avi"));
     }
 
     /// Tests the WindowsRegistryBridge interface using a real cache (not the actual registry).

@@ -16,9 +16,8 @@
 //! - `RegistryBridge` will be a no-op (macOS does not have a Windows-style registry)
 
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
 
-use super::capture::{CaptureBridge, CaptureEvent, WatcherHandle};
+use super::capture::CaptureBridge;
 use super::registry::RegistryBridge;
 use super::error::{PlatformError, Result};
 
@@ -48,20 +47,6 @@ impl CaptureBridge for MacCaptureBridge {
     fn trigger_screenshot(&self) -> Result<()> {
         Err(PlatformError::NotImplemented {
             operation: "trigger_screenshot".to_string(),
-            platform: "macOS".to_string(),
-        })
-    }
-
-    fn start_file_watcher(&self, _folder: &Path, _sender: Sender<CaptureEvent>) -> Result<WatcherHandle> {
-        Err(PlatformError::NotImplemented {
-            operation: "start_file_watcher".to_string(),
-            platform: "macOS".to_string(),
-        })
-    }
-
-    fn stop_file_watcher(&self, _handle: WatcherHandle) -> Result<()> {
-        Err(PlatformError::NotImplemented {
-            operation: "stop_file_watcher".to_string(),
             platform: "macOS".to_string(),
         })
     }
@@ -142,12 +127,10 @@ impl super::Platform for MacPlatform {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc::channel;
 
     #[test]
     fn test_macos_capture_bridge_returns_not_implemented() {
         let bridge = MacCaptureBridge::new();
-        let temp_path = PathBuf::from("/tmp/test");
 
         // Test trigger_screenshot
         let result = bridge.trigger_screenshot();
@@ -155,30 +138,6 @@ mod tests {
         match result.unwrap_err() {
             PlatformError::NotImplemented { operation, platform } => {
                 assert_eq!(operation, "trigger_screenshot");
-                assert_eq!(platform, "macOS");
-            }
-            _ => panic!("Expected NotImplemented error"),
-        }
-
-        // Test start_file_watcher
-        let (tx, _rx) = channel();
-        let result = bridge.start_file_watcher(&temp_path, tx);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            PlatformError::NotImplemented { operation, platform } => {
-                assert_eq!(operation, "start_file_watcher");
-                assert_eq!(platform, "macOS");
-            }
-            _ => panic!("Expected NotImplemented error"),
-        }
-
-        // Test stop_file_watcher (create a dummy handle)
-        let handle = WatcherHandle::new(0);
-        let result = bridge.stop_file_watcher(handle);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            PlatformError::NotImplemented { operation, platform } => {
-                assert_eq!(operation, "stop_file_watcher");
                 assert_eq!(platform, "macOS");
             }
             _ => panic!("Expected NotImplemented error"),

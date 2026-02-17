@@ -356,20 +356,6 @@ export async function triggerScreenshot(): Promise<void> {
   await invoke('trigger_screenshot')
 }
 
-/**
- * Start watching a folder for new screenshot/video files.
- * Emits `screenshot:captured` events to the frontend when files are detected.
- * Automatically stops any previously running watcher before starting a new one.
- */
-export async function startFileWatcher(folderPath: string): Promise<void> {
-  await invoke('start_file_watcher', { folderPath })
-}
-
-/** Stop the active file watcher (if any). */
-export async function stopFileWatcher(): Promise<void> {
-  await invoke('stop_file_watcher')
-}
-
 // ============================================================================
 // Annotation Commands
 // ============================================================================
