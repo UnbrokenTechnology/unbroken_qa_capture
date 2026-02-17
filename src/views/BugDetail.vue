@@ -27,6 +27,15 @@
           {{ bug.title }}
         </div>
         <q-btn
+          color="secondary"
+          icon="folder_open"
+          label="Open Folder"
+          class="q-mr-sm"
+          @click="openBugFolder"
+        >
+          <q-tooltip>Open bug folder in file explorer</q-tooltip>
+        </q-btn>
+        <q-btn
           color="primary"
           icon="content_copy"
           label="Copy to Clipboard"
@@ -305,6 +314,31 @@ const bug = computed(() => bugStore.getBugById(bugId.value))
 // Navigate back to bug list
 function goBack() {
   router.back()
+}
+
+// Open bug folder in file explorer
+async function openBugFolder() {
+  if (!bug.value) return
+
+  try {
+    await invoke('open_bug_folder', {
+      folderPath: bug.value.folder_path
+    })
+
+    $q.notify({
+      type: 'positive',
+      message: 'Bug folder opened',
+      position: 'top',
+      timeout: 2000
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: `Failed to open bug folder: ${error}`,
+      position: 'top',
+      timeout: 3000
+    })
+  }
 }
 
 // Copy bug to clipboard

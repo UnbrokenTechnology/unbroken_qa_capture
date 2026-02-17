@@ -227,6 +227,79 @@ describe('BugDetail', () => {
     expect(wrapper.text()).toContain('Copy to Clipboard')
   })
 
+  it('should display open folder button', async () => {
+    const store = useBugStore()
+    const bug = createMockBug('1')
+    store.addBug(bug)
+
+    const wrapper = await mountComponent('1')
+
+    expect(wrapper.text()).toContain('Open Folder')
+  })
+
+  it('should call open_bug_folder command when open folder button clicked', async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const store = useBugStore()
+    const bug = createMockBug('1')
+    store.addBug(bug)
+
+    const wrapper = await mountComponent('1')
+    const buttons = wrapper.findAll('button')
+    const openFolderButton = buttons.at(1)! // Second button is the open folder button
+
+    await openFolderButton.trigger('click')
+
+    expect(invoke).toHaveBeenCalledWith('open_bug_folder', {
+      folderPath: '/test/path'
+    })
+  })
+
+  it('should show success notification when open folder succeeds', async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    vi.mocked(invoke).mockResolvedValueOnce(undefined)
+
+    const store = useBugStore()
+    const bug = createMockBug('1')
+    store.addBug(bug)
+
+    const wrapper = await mountComponent('1')
+    const buttons = wrapper.findAll('button')
+    const openFolderButton = buttons.at(1)!
+
+    await openFolderButton.trigger('click')
+    await flushPromises()
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: 'positive',
+      message: 'Bug folder opened',
+      position: 'top',
+      timeout: 2000
+    })
+  })
+
+  it('should show error notification when open folder fails', async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    vi.mocked(invoke).mockRejectedValueOnce('Folder not found')
+
+    const store = useBugStore()
+    const bug = createMockBug('1')
+    store.addBug(bug)
+
+    const wrapper = await mountComponent('1')
+    const buttons = wrapper.findAll('button')
+    const openFolderButton = buttons.at(1)!
+
+    await openFolderButton.trigger('click')
+    await flushPromises()
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: 'negative',
+      message: 'Failed to open bug folder: Folder not found',
+      position: 'top',
+      timeout: 3000
+    })
+  })
+
   it('should call copy_bug_to_clipboard command with correct folder path', async () => {
     const { invoke } = await import('@tauri-apps/api/core')
     const store = useBugStore()
@@ -235,7 +308,7 @@ describe('BugDetail', () => {
 
     const wrapper = await mountComponent('1')
     const buttons = wrapper.findAll('button')
-    const copyButton = buttons.at(1)! // Second button is the copy button
+    const copyButton = buttons.at(2)! // Third button is the copy button (back, open folder, copy)
 
     await copyButton.trigger('click')
 
@@ -254,7 +327,7 @@ describe('BugDetail', () => {
 
     const wrapper = await mountComponent('1')
     const buttons = wrapper.findAll('button')
-    const copyButton = buttons.at(1)!
+    const copyButton = buttons.at(2)! // Third button is copy
 
     await copyButton.trigger('click')
     await flushPromises()
@@ -277,7 +350,7 @@ describe('BugDetail', () => {
 
     const wrapper = await mountComponent('1')
     const buttons = wrapper.findAll('button')
-    const copyButton = buttons.at(1)!
+    const copyButton = buttons.at(2)! // Third button is copy
 
     await copyButton.trigger('click')
     await flushPromises()
