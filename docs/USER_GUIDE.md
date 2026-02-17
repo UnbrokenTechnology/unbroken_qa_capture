@@ -534,6 +534,507 @@ QA Mode
 
 ---
 
+## Annotation Guide
+
+The annotation tool allows you to add text labels, shapes, and freehand drawings to your screenshots. This solves the Windows 11 text annotation gap — the built-in Snipping Tool can crop and draw basic shapes, but lacks the ability to add text labels and detailed annotations.
+
+### Opening the Annotation Tool
+
+The annotation window can be opened in two ways:
+
+1. **Automatically** — If "Auto-Open on Screenshot" is enabled in Settings (default), the annotation tool opens immediately after you capture a screenshot with Snipping Tool
+2. **Manually** — During review, click any screenshot thumbnail in the bug detail panel to open it in the annotation tool
+
+**Tip:** If auto-open is enabled but you don't need to annotate a particular screenshot, press `Escape` to close the annotation window without saving.
+
+### Annotation Tools
+
+The annotation toolbar provides four drawing tools:
+
+#### 1. Text Tool
+
+**Icon:** T (text fields icon)
+**Keyboard shortcut:** `T`
+**Use case:** Adding labels, callouts, and explanatory notes
+
+**How to use:**
+1. Click the Text button or press `T`
+2. Click anywhere on the screenshot to place a text box
+3. Type your text
+4. Click outside the text box or press `Escape` to finish editing
+5. Drag the text box to reposition it
+6. Drag the corner handles to resize the text box
+
+**Editing existing text:**
+- Double-click any text annotation to edit its content
+- Select the text and use your keyboard to edit (Ctrl+A, Ctrl+C, Ctrl+V all work)
+- Click outside to finish editing
+
+#### 2. Rectangle Tool
+
+**Icon:** ▢ (square icon)
+**Keyboard shortcut:** `R`
+**Use case:** Highlighting areas of interest, drawing boxes around UI elements
+
+**How to use:**
+1. Click the Rectangle button or press `R`
+2. Click and drag on the screenshot to draw a rectangle
+3. Release to complete the shape
+4. Drag the rectangle to reposition it
+5. Drag the corner handles to resize it
+
+**Tip:** Rectangles are drawn as outlined shapes (no fill), making them perfect for highlighting UI elements without obscuring the content.
+
+#### 3. Circle Tool
+
+**Icon:** ○ (circle icon)
+**Keyboard shortcut:** `O`
+**Use case:** Circling errors, highlighting specific points of interest
+
+**How to use:**
+1. Click the Circle button or press `O`
+2. Click and drag on the screenshot to draw a circle
+3. Release to complete the shape
+4. Drag the circle to reposition it
+5. Drag the handles to resize it
+
+**Note:** Circles are drawn from the center outward, making it easy to position them precisely around a specific element.
+
+#### 4. Freehand Drawing Tool
+
+**Icon:** 🖌️ (brush icon)
+**Keyboard shortcut:** `D`
+**Use case:** Underlining text, drawing arrows, circling irregular shapes, adding custom annotations
+
+**How to use:**
+1. Click the Freehand Drawing button or press `D`
+2. Click and drag on the screenshot to draw
+3. Release to complete the stroke
+4. Each drag creates a new separate stroke (this allows you to undo individual strokes)
+
+**Tip:** The freehand tool is great for drawing arrows, underlining error messages, or circling irregularly-shaped UI elements that don't fit in a rectangle or circle.
+
+### Color Palette
+
+Choose colors for your annotations using the color palette in the toolbar.
+
+**Preset colors (left to right):**
+1. **Red** (#FF3B30) — Errors, critical issues
+2. **Yellow** (#FFCC00) — Warnings, moderate issues
+3. **Blue** (#007AFF) — Information, general highlights
+4. **Green** (#34C759) — Success states, confirmations
+5. **White** (#FFFFFF) — High contrast on dark backgrounds
+6. **Black** (#000000) — High contrast on light backgrounds
+
+**Custom colors:**
+- Click the palette icon (🎨) at the end of the color presets
+- A color picker opens where you can select any color
+- The custom color is remembered for the current annotation session
+
+**Tip:** Choose colors that contrast well with your screenshot background. Use red for errors and critical issues, yellow for warnings, and blue for general information.
+
+### Stroke Width
+
+Control the thickness of shapes and freehand drawings with the stroke width toggle.
+
+**Options:**
+- **Thin** (2px) — Fine details, small text, precise annotations
+- **Medium** (4px) — General use, good balance of visibility and precision (default)
+- **Thick** (8px) — Bold highlights, visible from a distance, presentation screenshots
+
+**Note:** Stroke width does not affect text size. To change text size, select the text box and drag the corner handles to resize it.
+
+### Undo and Redo
+
+The annotation tool tracks your last 50 actions and allows you to undo and redo changes.
+
+**Undo:**
+- Click the Undo button (↶ icon)
+- Or press `Ctrl+Z`
+
+**Redo:**
+- Click the Redo button (↷ icon)
+- Or press `Ctrl+Shift+Z`
+
+**What can be undone:**
+- Adding a new annotation (text, shape, or freehand stroke)
+- Moving an annotation
+- Resizing an annotation
+- Deleting an annotation
+- Color or stroke width changes
+
+**Tip:** Undo/redo is particularly useful when experimenting with freehand drawings — try multiple arrows or underlines and undo the ones that don't look right.
+
+### Deleting Annotations
+
+To remove an annotation:
+
+1. Click on the annotation to select it (you'll see selection handles)
+2. Press `Delete` or `Backspace`
+
+**Tip:** Use `Ctrl+Z` if you accidentally delete an annotation — it will be restored.
+
+### Saving Annotated Screenshots
+
+When you're done annotating, save your changes with the **"Save Annotated Screenshot"** button or by pressing `Ctrl+S`.
+
+**Save modes** (configured in Settings → Annotation → Save Mode):
+
+1. **Alongside (default)** — Creates a new file with `_annotated` suffix
+   - Original: `screenshot_001.png`
+   - Annotated: `screenshot_001_annotated.png`
+   - **Use case:** Keep both original and annotated versions
+
+2. **Overwrite** — Replaces the original file with the annotated version
+   - **Use case:** Save disk space, you don't need the original
+
+**Resolution preservation:**
+The annotation tool exports screenshots at their original resolution with no quality loss. If you captured a 4K screenshot, the annotated version will also be 4K.
+
+**Tip:** If you're unsure whether you'll need the original later, stick with "Alongside" mode — you can always delete the originals after review.
+
+### Closing Without Saving
+
+To discard your annotations and close the annotation window:
+
+- Click the close button (✕) in the top-right corner
+- Or press `Escape`
+
+**Warning:** There is no prompt when closing without saving. If you've made changes and press Escape, those changes are lost. Use `Ctrl+S` to save first if you want to keep your annotations.
+
+### Keyboard Shortcuts Reference (Annotation Tools)
+
+| Shortcut | Action |
+|----------|--------|
+| `T` | Switch to Text tool |
+| `R` | Switch to Rectangle tool |
+| `O` | Switch to Circle tool |
+| `D` | Switch to Freehand Drawing tool |
+| `Ctrl+Z` | Undo last action |
+| `Ctrl+Shift+Z` | Redo last undone action |
+| `Ctrl+S` | Save annotated screenshot |
+| `Escape` | Close without saving |
+| `Delete` or `Backspace` | Delete selected annotation |
+
+**Note:** Keyboard shortcuts are disabled when editing text to avoid conflicts. For example, pressing `T` while editing text will type the letter "t" instead of switching to the Text tool.
+
+### Annotation Workflows
+
+Here are some common annotation workflows to help you work efficiently:
+
+#### Workflow 1: Highlighting a UI Error
+
+**Goal:** Circle an error message and add an explanatory label
+
+1. Press `Print Screen` to capture the screenshot
+2. (Annotation tool opens automatically if auto-open is enabled)
+3. Press `O` to switch to Circle tool
+4. Select Red color from the palette
+5. Drag to draw a circle around the error message
+6. Press `T` to switch to Text tool
+7. Click above the circle to place a text box
+8. Type: "Error appears when clicking Save without selecting a file"
+9. Click outside the text box to finish editing
+10. Press `Ctrl+S` to save
+
+**Result:** Screenshot with a red circle around the error and a clear text label explaining the issue.
+
+#### Workflow 2: Annotating a Complex Bug with Multiple Elements
+
+**Goal:** Document a bug involving multiple UI elements and their relationships
+
+1. Capture the screenshot
+2. Press `R` to switch to Rectangle tool
+3. Select Yellow color
+4. Draw rectangles around each relevant UI element
+5. Press `D` to switch to Freehand Drawing tool
+6. Select Blue color
+7. Draw arrows connecting the rectangles to show relationships or sequence
+8. Press `T` to switch to Text tool
+9. Add numbered labels (1, 2, 3) to indicate the sequence of interactions
+10. Press `Ctrl+S` to save
+
+**Result:** A clearly annotated screenshot showing the interaction flow and all relevant UI elements.
+
+#### Workflow 3: Underlining and Labeling Console Errors
+
+**Goal:** Highlight specific errors in a console screenshot
+
+1. Capture the console screenshot
+2. Press `D` to switch to Freehand Drawing tool
+3. Select Red color, Medium stroke width
+4. Drag to underline the error message
+5. Press `T` to switch to Text tool
+6. Add a text label next to the underlined error
+7. Repeat for additional errors (each with a different color if needed)
+8. Press `Ctrl+S` to save
+
+**Result:** Console screenshot with clearly marked and labeled errors.
+
+### Troubleshooting
+
+**Problem: Annotation window doesn't open after taking a screenshot**
+
+**Solutions:**
+- Check Settings → Annotation → Auto-Open on Screenshot — make sure it's enabled if you expect automatic opening
+- During review, you can manually open the annotation tool by clicking any screenshot thumbnail
+- If the window opens but is off-screen (multi-monitor setup), try Alt+Space then M to move it
+
+**Problem: Can't type text in a text box**
+
+**Solutions:**
+- Make sure you double-clicked the text box to enter edit mode (single-click just selects it)
+- Check that the cursor is blinking inside the text box
+- Try clicking inside the text box again
+
+**Problem: Keyboard shortcuts aren't working**
+
+**Solutions:**
+- Make sure you're not currently editing text (shortcuts are disabled during text editing to avoid conflicts)
+- Click outside any text boxes to deselect them, then try the shortcut again
+- Press Escape to ensure you're not in text edit mode
+
+**Problem: Annotations are blurry or low-quality**
+
+**Solutions:**
+- This should not happen — the annotation tool preserves original screenshot resolution
+- If you're seeing quality loss, report this as a bug (it may indicate a settings issue)
+- Make sure you're viewing the annotated screenshot at 100% zoom, not zoomed in excessively
+
+**Problem: Can't undo my changes**
+
+**Solutions:**
+- Undo is limited to the last 50 actions — older changes cannot be undone
+- If you've already saved and closed the annotation window, you cannot undo changes later
+- If you use "Overwrite" save mode, the original is lost — use "Alongside" mode if you want to keep the original as a backup
+
+---
+
+## Review & AI Features
+
+After ending a QA session, you enter **Review Mode** where you can review all captured bugs, generate AI-powered descriptions, refine them with follow-up instructions, and prepare your findings for ticketing.
+
+### The Review Interface
+
+When you end a session (`Ctrl+Shift+Q`), the Review Mode interface appears:
+
+**Left panel:** List of all captured bugs
+**Right panel:** Bug details (screenshots, metadata, notes, description)
+**Bottom bar:** Actions (Generate All Descriptions, Resume Session, Export to Linear, Close Session)
+
+### Reviewing a Bug's Screenshots and Notes
+
+1. Click a bug card in the left panel to select it
+2. The right panel shows all details for that bug:
+   - **Screenshots** — Click any thumbnail to view full-size or open in annotation tool
+   - **Videos** — Click to play (if you captured video)
+   - **Metadata** — Meeting ID, software version, timestamps
+   - **Your notes** — Everything you typed in the quick notepad during capture
+   - **Description** — The final formatted bug description (initially empty until generated)
+
+**Tip:** Review screenshots first to confirm the bug is clearly visible. If a screenshot is unclear, you can resume the session, recapture, and return to review.
+
+### Generating AI Descriptions with Claude
+
+If Claude Code CLI is installed and authenticated, Unbroken QA Capture can generate structured bug descriptions automatically by analyzing your screenshots and notes.
+
+**Prerequisites:**
+- Claude Code CLI installed (`npm install -g @anthropic-ai/claude-code`)
+- Authenticated (`claude` command → log in with your Claude.ai account)
+- Active Claude subscription (Pro or Team)
+- Settings → AI → Enable AI for Description Generation is checked
+
+**To generate a description for a single bug:**
+
+1. Select the bug in the left panel
+2. Click the **"Generate Description"** button in the bug detail panel
+3. Claude analyzes:
+   - All screenshots for the bug
+   - Your quick notepad notes
+   - Metadata (software version, timestamps, etc.)
+4. Wait 10-30 seconds (depending on number of screenshots and Claude API latency)
+5. A structured description appears in the Description section with these fields:
+   - **Summary** — One-sentence overview
+   - **Type** — Bug, UI Issue, Performance Issue, Feature Request, or Other
+   - **Steps to Reproduce** — Numbered list of actions that trigger the issue
+   - **Expected Behavior** — What should happen
+   - **Actual Behavior** — What actually happened
+   - **Environment** — Software version, Windows version, relevant context
+   - **Console Output** — Extracted from console screenshots if present
+   - **Attachments** — List of screenshot and video filenames
+
+**To generate descriptions for all bugs at once:**
+
+1. Click **"Generate All Descriptions"** in the bottom action bar
+2. Claude processes each bug sequentially
+3. You'll see a progress indicator showing which bug is being processed
+4. When complete, all bugs will have AI-generated descriptions
+
+**Tip:** Use "Generate All Descriptions" at the start of review, then refine individual descriptions as needed. This is faster than generating them one at a time.
+
+### Refining Descriptions with Follow-Up Instructions
+
+AI-generated descriptions are a starting point. You can refine them with natural language instructions without manually editing the text.
+
+**To refine a description:**
+
+1. Select the bug with a generated description
+2. Click the **"Refine Description"** button (appears after a description is generated)
+3. A text input appears asking "How would you like to refine this description?"
+4. Enter your instructions, for example:
+   - "Make it more technical"
+   - "Add more detail to the reproduction steps"
+   - "Emphasize that this is a critical blocker"
+   - "Simplify the language for non-technical stakeholders"
+   - "Focus on the performance impact"
+5. Press Enter or click **"Refine"**
+6. Claude regenerates the description following your instructions
+7. The refined version replaces the previous description
+
+**You can refine multiple times:**
+- Each refinement builds on the previous version
+- If a refinement makes things worse, you can manually edit or regenerate from scratch
+
+**Tip:** Refinement is faster than manually editing when you want structural changes (e.g., more detail, different tone). For small typo fixes, manual editing is faster.
+
+### Manually Editing Descriptions
+
+You can also edit descriptions manually without using AI.
+
+**To manually edit:**
+
+1. Select the bug in the left panel
+2. Click the **"Edit Description"** button (pencil icon) in the Description section
+3. A text editor appears with the current description (Markdown format)
+4. Make your changes
+5. Click **"Save"** to write the changes to `description.md`
+
+**When to manually edit:**
+- Fixing typos or small wording changes
+- Adding information that Claude missed
+- Adjusting formatting (bold, italic, lists)
+- You don't have Claude CLI available
+
+**When to use refinement instead:**
+- You want to change the tone or level of detail
+- You want to restructure the reproduction steps
+- You want to emphasize a different aspect of the bug
+
+### Console Screenshot Parsing
+
+If you captured screenshots of console output (error logs, stack traces, JavaScript console errors), Claude can extract the text from those images and include it in the bug description.
+
+**How it works:**
+
+1. Claude automatically detects screenshots that look like console output (dark backgrounds, monospace text, terminal-like appearance)
+2. Claude extracts the visible text using OCR-like analysis
+3. The extracted text is included in the **Console Output** section of the description
+4. The formatting is cleaned up (removing screenshot artifacts, preserving line breaks)
+
+**No manual tagging required** — Claude identifies console screenshots automatically.
+
+**Tip:** If console output is important, make sure the text is clearly legible in the screenshot (avoid scaling down or compressing console windows before capturing).
+
+### Generating Session Summaries
+
+A **session summary** is a high-level overview of all bugs found in the session. It's useful for standups, reports, and sharing findings with teammates.
+
+**To generate a session summary:**
+
+1. Click **"Generate Session Summary"** in the bottom action bar
+2. Claude analyzes all bugs in the session
+3. A summary is generated and saved to `session_summary.md` in the session folder
+4. The summary includes:
+   - **Session metadata** — Date, duration, number of bugs
+   - **Overview** — High-level summary of what was tested
+   - **Critical issues** — Bugs marked as high priority or blockers
+   - **Summary table** — List of all bugs with one-line descriptions
+   - **Key themes** — Common issues or patterns across multiple bugs
+
+**Use cases for session summaries:**
+- **Standup reports** — "Here's what I found in yesterday's QA session"
+- **Release blockers** — Quickly identify critical issues before shipping
+- **Team sharing** — Send the summary to developers or PMs for a quick overview
+- **Historical record** — Archive the summary for future reference
+
+**Tip:** Generate the session summary after all bug descriptions are complete for the most accurate results.
+
+### AI Availability Indicator
+
+The Review Mode interface shows the current Claude AI availability status:
+
+- **Green checkmark** — Claude CLI is installed, authenticated, and ready
+- **Yellow warning** — Claude CLI is installed but not authenticated (run `claude` to log in)
+- **Red X** — Claude CLI is not found (run `npm install -g @anthropic-ai/claude-code`)
+
+If AI is unavailable, all AI features are disabled and you'll see manual editing options instead.
+
+### Cost and Rate Limits
+
+**Cost:**
+- AI description generation uses Claude's API and counts against your Claude.ai subscription usage
+- Typical cost per bug: ~$0.01-0.05 depending on number of screenshots and complexity
+- Session summaries: ~$0.05-0.15 depending on number of bugs
+
+**Rate limits:**
+- Claude.ai Pro accounts: Generous usage limits (exact limits vary, check claude.ai/account)
+- Claude.ai Team accounts: Higher limits
+- If you hit rate limits, you'll see an error message — wait a few minutes and try again
+
+**Monitoring usage:**
+- Settings → AI → Cost Tracking Display shows approximate API usage for the current session
+- Check claude.ai/account for detailed usage and billing information
+
+### Troubleshooting AI Features
+
+**Problem: "Claude CLI not found" error**
+
+**Solutions:**
+1. Install Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
+2. Verify installation: Open a terminal and run `claude --version`
+3. Restart Unbroken QA Capture to detect the newly installed CLI
+4. If still not found, check Settings → AI → Claude CLI Detection Status for diagnostic info
+
+**Problem: "Claude is not authenticated" warning**
+
+**Solutions:**
+1. Open a terminal and run: `claude`
+2. Follow the prompts to log in with your Claude.ai account
+3. Verify authentication: `claude --version` should show your account info
+4. Return to Unbroken QA Capture and try generating a description again
+
+**Problem: "Generate Description" hangs or times out**
+
+**Solutions:**
+- Check your internet connection — Claude API requires network access
+- If you have many large screenshots, the analysis may take 30-60 seconds — wait longer
+- Check Claude.ai status page — the API may be experiencing issues
+- Try generating descriptions one at a time instead of using "Generate All Descriptions"
+
+**Problem: AI descriptions are low-quality or generic**
+
+**Solutions:**
+- Add more detail to your quick notepad notes during capture — Claude uses these notes heavily
+- Make sure screenshots clearly show the issue — blurry or unclear screenshots produce vague descriptions
+- Use the "Refine Description" feature with specific instructions (e.g., "Add more technical detail about the error")
+- Manually edit the description to add information Claude missed
+
+**Problem: Console screenshots aren't being parsed**
+
+**Solutions:**
+- Make sure the console text is clearly legible in the screenshot (large font, high contrast)
+- Claude may not recognize heavily customized terminal themes — stick with standard dark-on-light or light-on-dark themes
+- If parsing fails, you can manually copy/paste console output into the description editor
+
+**Problem: Session summary is missing bugs**
+
+**Solutions:**
+- Make sure all bugs have descriptions before generating the summary (bugs without descriptions are excluded)
+- Try regenerating the summary — click "Generate Session Summary" again
+- Check `session_summary.md` in the session folder to see the raw output
+
+---
+
 ## Output & Ticketing
 
 Unbroken QA Capture organizes all your QA session data into structured folders that integrate seamlessly with your existing ticketing workflow. This section explains the folder structure, how to use the output with Linear or other ticketing systems, and how to customize the ticket format.
