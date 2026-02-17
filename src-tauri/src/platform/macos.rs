@@ -133,6 +133,26 @@ impl RegistryBridge for MacRegistryBridge {
     }
 }
 
+/// macOS platform stub implementation
+#[allow(dead_code)]
+pub struct MacPlatform;
+
+impl super::Platform for MacPlatform {
+    fn enable_startup(&self) -> Result<()> {
+        Err(PlatformError::NotImplemented {
+            operation: "enable_startup".to_string(),
+            platform: "macOS".to_string(),
+        })
+    }
+
+    fn disable_startup(&self) -> Result<()> {
+        Err(PlatformError::NotImplemented {
+            operation: "disable_startup".to_string(),
+            platform: "macOS".to_string(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,24 +276,5 @@ mod tests {
         let _capture_bridge = MacCaptureBridge::default();
         let _registry_bridge = MacRegistryBridge::default();
         // Just verify they can be constructed
-    }
-}
-
-/// macOS platform stub implementation
-pub struct MacPlatform;
-
-impl super::Platform for MacPlatform {
-    fn enable_startup(&self) -> Result<()> {
-        Err(PlatformError::NotImplemented {
-            operation: "enable_startup".to_string(),
-            platform: "macOS".to_string(),
-        })
-    }
-
-    fn disable_startup(&self) -> Result<()> {
-        Err(PlatformError::NotImplemented {
-            operation: "disable_startup".to_string(),
-            platform: "macOS".to_string(),
-        })
     }
 }

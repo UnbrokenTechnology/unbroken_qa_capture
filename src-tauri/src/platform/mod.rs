@@ -25,7 +25,7 @@ mod error;
 #[cfg(target_os = "windows")]
 mod windows;
 
-#[cfg(target_os = "macos")]
+#[cfg(not(target_os = "windows"))]
 mod macos;
 
 // Re-export public types
@@ -76,6 +76,12 @@ pub fn get_capture_bridge() -> Box<dyn CaptureBridge> {
     Box::new(macos::MacCaptureBridge::new())
 }
 
+/// Fallback stub for unsupported platforms (e.g. Linux when building in WSL).
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+pub fn get_capture_bridge() -> Box<dyn CaptureBridge> {
+    Box::new(macos::MacCaptureBridge::new())
+}
+
 /// Returns the platform-specific `RegistryBridge` implementation for the current OS.
 ///
 /// # Platform Selection
@@ -97,7 +103,7 @@ pub fn get_registry_bridge() -> Box<dyn RegistryBridge> {
     Box::new(windows::WindowsRegistryBridge::new())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(not(target_os = "windows"))]
 pub fn get_registry_bridge() -> Box<dyn RegistryBridge> {
     Box::new(macos::MacRegistryBridge::new())
 }
