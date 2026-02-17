@@ -21,6 +21,21 @@ impl LinearIntegration {
         }
     }
 
+    /// Create a Linear integration instance with a custom API endpoint (for testing only)
+    #[cfg(test)]
+    pub(crate) fn with_endpoint(api_endpoint: &str) -> Self {
+        Self {
+            credentials: Arc::new(RwLock::new(None)),
+            api_endpoint: api_endpoint.to_string(),
+        }
+    }
+
+    /// Set credentials directly without network validation (for testing only)
+    #[cfg(test)]
+    pub(crate) fn set_credentials_for_test(&self, credentials: TicketingCredentials) {
+        *self.credentials.write().unwrap() = Some(credentials);
+    }
+
     /// Send a GraphQL query to Linear API
     fn send_graphql_query(
         &self,
