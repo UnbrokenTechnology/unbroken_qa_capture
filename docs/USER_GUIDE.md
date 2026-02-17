@@ -244,6 +244,296 @@ For detailed guidance on each topic, see the corresponding sections in this User
 
 ---
 
+## Core Workflow
+
+This section explains the complete session lifecycle, how to capture and organize bugs during testing, and how to use the review interface to prepare bugs for ticketing.
+
+### Session States
+
+Unbroken QA Capture operates as a state machine with four distinct states:
+
+1. **Idle** — No active session. The main window shows recent sessions and a "Start Session" button.
+2. **QA Mode** — A session is active, but you're not currently capturing a bug. You're testing the application and looking for issues.
+3. **Bug Capture Mode** — You've started capturing a specific bug. Screenshots and notes are associated with this bug.
+4. **Review Mode** — The session has ended. You're reviewing bugs, generating descriptions, and preparing them for ticketing.
+
+### Starting a Session
+
+**To start a QA session:**
+
+1. **Via Hotkey (Recommended):** Press `Ctrl+Shift+Q`
+2. **Via Tray Icon:** Right-click the system tray icon → "Start Session"
+3. **Via Main Window:** Click "Start Session" button (if the main window is open)
+
+**What happens:**
+- The application enters **QA Mode**
+- The system tray icon changes to green (indicating an active session)
+- A timestamped session folder is created in your configured sessions directory (e.g., `2026-02-17_a3f2/`)
+- The main window (if open) displays the active session view with a session status bar showing:
+  - Session duration timer (starts at 00:00)
+  - Bug count (starts at 0)
+  - Current state badge ("QA Mode")
+
+**You're now ready to test your application and capture bugs.**
+
+### Capturing a Bug
+
+When you encounter something worth reporting during testing, start capturing evidence:
+
+**Press `Print Screen` to start a new bug capture.**
+
+**What happens:**
+1. A new bug is created (Bug-01, Bug-02, etc.)
+2. The application enters **Bug Capture Mode**
+3. The system tray icon changes to red
+4. The session status bar updates to show "Capturing Bug-XX"
+5. Windows Snipping Tool opens automatically (Windows 11's native screenshot tool)
+6. After you capture the screenshot, it's automatically saved to the bug's folder
+
+**The bug folder structure:**
+```
+2026-02-17_a3f2/
+└── Bug-01/
+    ├── screenshot_001.png    ← your first screenshot
+    ├── screenshot_002.png    ← additional screenshots for this bug
+    └── metadata.json         ← bug metadata (timestamps, status, etc.)
+```
+
+### Adding Evidence to a Bug
+
+While in **Bug Capture Mode**, all screenshots you take are automatically associated with the current bug:
+
+**Taking Additional Screenshots:**
+- Press `Print Screen` again
+- The Snipping Tool opens
+- The screenshot is saved to the same bug folder (screenshot_002.png, screenshot_003.png, etc.)
+
+**Adding Notes:**
+- The main window displays the active session view where you can see all captured bugs
+- Click on the current bug card to view its details
+- Edit the notes field directly in the bug card
+- Notes are automatically saved as you type
+
+**Editing Metadata:**
+- In the active session view, click on a bug card to expand its details
+- You can edit:
+  - Meeting ID / URL (useful for bugs found during meetings)
+  - Software version
+  - Free-text notes
+
+### Ending a Bug Capture
+
+When you've gathered sufficient evidence for the current bug, end the capture:
+
+**Press `F4` to end the bug capture.**
+
+**Alternative method:**
+- Click "End Bug Capture" button in the main window
+- Right-click the tray icon → "End Bug Capture"
+
+**What happens:**
+- The bug's status changes from "capturing" to "captured"
+- The application returns to **QA Mode**
+- The tray icon changes back to green
+- You're ready to continue testing and capture the next bug
+
+### Capturing Multiple Bugs
+
+The power of Unbroken QA Capture is organizing multiple bugs in a single session:
+
+1. **Find a bug** → Press `Print Screen` → Take screenshots → Press `F4`
+2. **Continue testing** → Find another bug → Press `Print Screen` → Take screenshots → Press `F4`
+3. **Repeat** as many times as needed during your testing session
+
+Each bug gets its own folder with its own screenshots and metadata. The session folder keeps everything organized:
+
+```
+2026-02-17_a3f2/
+├── Bug-01/
+│   ├── screenshot_001.png
+│   ├── screenshot_002.png
+│   └── metadata.json
+├── Bug-02/
+│   ├── screenshot_001.png
+│   └── metadata.json
+├── Bug-03/
+│   ├── screenshot_001.png
+│   ├── screenshot_002.png
+│   ├── screenshot_003.png
+│   └── metadata.json
+└── session.json
+```
+
+### Ending a Session
+
+When your testing session is complete, end the session:
+
+**Press `Ctrl+Shift+Q` again to end the session.**
+
+**Alternative methods:**
+- Click "End Session" button in the main window
+- Right-click the tray icon → "End Session"
+
+**What happens:**
+- The session's status changes from "active" to "ended"
+- The application enters **Review Mode**
+- The main window opens automatically and displays the Session Review interface
+- The tray icon returns to its default state
+
+### Session Review Interface
+
+The Session Review interface is where you prepare bugs for ticketing. It uses a master-detail layout:
+
+#### Left Panel: Bug List
+
+- Displays all bugs captured in the session as clickable cards
+- Each card shows:
+  - **Bug ID badge** (Bug-01, Bug-02, etc.) with color-coded type
+  - **Bug type chip** (bug, feature, or feedback)
+  - **Title** (editable via the right panel)
+  - **Notes snippet** (first 2 lines)
+  - **Folder path** (relative path to bug folder)
+  - **Screenshot thumbnails** (first 3 screenshots, with "+N more" indicator if there are more)
+
+**To select a bug:** Click on any bug card in the list.
+
+#### Right Panel: Bug Detail
+
+When you select a bug, the right panel displays comprehensive details and editing tools:
+
+**Actions Bar** (top of panel):
+- **Copy to Clipboard** — Copies the bug details as markdown format (useful for manual ticketing)
+- **Open Folder** — Opens the bug's folder in File Explorer
+- **Delete Bug** — Removes the bug from the session (with confirmation dialog)
+- **Mark Ready** — Changes the bug status to "ready" (indicates it's finalized and ready for ticketing)
+
+**Bug Type Editor:**
+- Toggle between Bug, Feature, or Feedback
+- The type affects color coding and can be used as a label when exporting to ticketing systems
+
+**Bug Metadata:**
+- Bug ID (display only)
+- Status (captured, reviewed, ready)
+- Folder path (display only)
+
+**Editable Metadata Fields:**
+- Meeting ID / URL (e.g., Zoom meeting link)
+- Software version (e.g., "2.4.1")
+
+**Notes Editor:**
+- Multi-line text area for free-form notes
+- Auto-expands as you type
+- Saves automatically
+
+**AI-Generated Description** (if Claude CLI is installed):
+- **Generate Description** button — Analyzes screenshots and notes to draft a structured bug description
+- **Refine** button (appears after generation) — Opens a dialog where you can provide refinement instructions (e.g., "add more technical details")
+- **Save** button — Saves the description to `description.md` in the bug folder
+- The description editor is fully editable — you can modify the AI-generated text before saving
+- If Claude CLI is not available, this section shows a warning message with setup instructions
+
+**Screenshots Gallery:**
+- Grid display of all screenshots for the selected bug
+- Click any screenshot to view full-size (opens lightbox dialog)
+- **Console capture toggle** (icon button on each thumbnail) — Mark screenshots as console captures (useful for distinguishing UI screenshots from console/log screenshots)
+- Screenshot lightbox includes navigation arrows to move between screenshots
+
+#### Bottom Action Bar
+
+The bottom action bar provides session-level operations:
+
+- **Generate All Descriptions** — Runs AI description generation for all bugs in the session (requires Claude CLI)
+- **Export to Linear** — Opens the Linear push dialog (see Output & Ticketing section)
+- **Resume Session** — Changes the session status back to "active" and returns to QA Mode (useful if you realize you need to capture more bugs)
+- **Close Session** — Finalizes the session and returns to Idle state (with confirmation dialog)
+
+### Review Workflow
+
+**Recommended workflow for reviewing a session:**
+
+1. **Select the first bug** from the left panel
+2. **Review screenshots** — Click each screenshot to view full-size, verify the issue is clearly visible
+3. **Edit metadata** — Update meeting ID, software version if applicable
+4. **Edit or add notes** — Clarify what the bug is, steps to reproduce, expected vs. actual behavior
+5. **Generate AI description** (if Claude is available):
+   - Click "Generate Description"
+   - Wait for Claude to analyze screenshots and notes
+   - Review the generated description
+   - Click "Refine" if you want to adjust it (e.g., "make it more technical" or "add reproduction steps")
+   - Click "Save" to write the description to `description.md`
+6. **Mark as ready** — Click "Mark Ready" to indicate the bug is finalized
+7. **Move to the next bug** — Click the next bug card in the left panel
+8. **Repeat steps 2-7** for all bugs
+
+**After all bugs are reviewed:**
+
+- **Export to Linear** (if you use Linear for ticketing) — see Output & Ticketing section
+- **Or manually create tickets** — Use "Copy to Clipboard" on each bug, then paste into your ticketing system
+- **Close Session** — Click "Close Session" when you're done
+
+### Resuming a Session
+
+If you realize during review that you need to capture more bugs, you can resume the session:
+
+1. Click **"Resume Session"** in the bottom action bar
+2. The session returns to **QA Mode**
+3. Continue testing and capturing bugs as normal
+4. Press `Ctrl+Shift+Q` again to end the session and return to review
+
+### Keyboard Shortcuts Reference (Core Workflow)
+
+| Shortcut | Action | Context |
+|----------|--------|---------|
+| `Ctrl+Shift+Q` | Start session (from Idle) | Global |
+| `Ctrl+Shift+Q` | End session (from QA Mode or Bug Capture Mode) | Global |
+| `Print Screen` | Start new bug capture (opens Snipping Tool) | QA Mode |
+| `Print Screen` | Take additional screenshot (opens Snipping Tool) | Bug Capture Mode |
+| `F4` | End current bug capture | Bug Capture Mode |
+
+**Note:** All global shortcuts can be customized during the first-run setup wizard or in Settings.
+
+### State Transitions Summary
+
+Understanding state transitions helps you navigate the workflow efficiently:
+
+```
+Idle
+ ↓ [Start Session]
+QA Mode
+ ↓ [Print Screen]
+Bug Capture Mode
+ ↓ [F4]
+QA Mode
+ ↓ [Print Screen] (repeat for more bugs)
+Bug Capture Mode
+ ↓ [F4]
+QA Mode
+ ↓ [End Session]
+Review Mode
+ ↓ [Close Session]
+Idle
+
+OR
+
+Review Mode
+ ↓ [Resume Session]
+QA Mode
+```
+
+### Tips for Efficient Bug Capture
+
+**During testing:**
+- Keep the main window open on a second monitor (or sized small on the same monitor) to see your bug count in real-time
+- Use the session notes area (collapsible notepad at bottom of active session view) for session-level context like "Testing v2.4.1 release candidate"
+- Take multiple screenshots per bug from different angles — it's easier to skip screenshots during review than to recreate them later
+
+**During review:**
+- Use the "Generate All Descriptions" feature at the start of review if you have Claude CLI — you can refine individual descriptions afterward
+- Mark bugs as "ready" as you complete them — this makes it easy to see which bugs still need attention
+- Use "Copy to Clipboard" to preview the markdown output before exporting to Linear
+
+---
+
 ## Output & Ticketing
 
 Unbroken QA Capture organizes all your QA session data into structured folders that integrate seamlessly with your existing ticketing workflow. This section explains the folder structure, how to use the output with Linear or other ticketing systems, and how to customize the ticket format.
