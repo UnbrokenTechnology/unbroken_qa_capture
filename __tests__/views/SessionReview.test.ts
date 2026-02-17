@@ -154,11 +154,11 @@ describe('SessionReview', () => {
     })
   }
 
-  it('should show "No active session" when there is no active session', async () => {
+  it('should show "No session found" when there is no active session and no session ID in route', async () => {
     const wrapper = await mountComponent()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('No active session')
+    expect(wrapper.text()).toContain('No session found')
   })
 
   it('should display session review header with active session', async () => {

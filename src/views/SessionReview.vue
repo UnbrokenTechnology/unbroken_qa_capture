@@ -24,7 +24,7 @@
           @click="showPushDialog = true"
         />
         <q-btn
-          v-if="sessionStore.activeSession"
+          v-if="viewSession"
           flat
           round
           dense
@@ -36,20 +36,20 @@
           <q-tooltip>Refresh all captures</q-tooltip>
         </q-btn>
         <div
-          v-if="sessionStore.activeSession"
+          v-if="viewSession"
           class="text-caption text-grey-7"
         >
-          {{ formatDate(sessionStore.activeSession.started_at) }}
+          {{ formatDate(viewSession.started_at) }}
         </div>
       </div>
 
       <!-- Empty state -->
       <div
-        v-if="!sessionStore.activeSession"
+        v-if="!viewSession"
         class="flex flex-center q-pa-xl"
       >
         <div class="text-h6 text-grey">
-          No active session
+          No session found
         </div>
       </div>
 
@@ -751,7 +751,7 @@
 
       <!-- Bottom Action Bar -->
       <div
-        v-if="sessionStore.activeSession && bugs.length > 0"
+        v-if="viewSession && bugs.length > 0"
         class="row q-gutter-md q-mt-lg q-pa-md bg-grey-2 rounded-borders"
       >
         <q-btn
@@ -766,7 +766,7 @@
           color="info"
           icon="summarize"
           label="Generate Session Summary"
-          :disable="!sessionStore.activeSession"
+          :disable="!viewSession"
           :loading="isSummaryGenerating"
           @click="generateSessionSummary"
         />
@@ -1145,7 +1145,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useBugStore } from '@/stores/bug'
 import { useSessionStore } from '@/stores/session'
@@ -1156,9 +1156,18 @@ import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 
 const router = useRouter()
+const route = useRoute()
 const bugStore = useBugStore()
 const sessionStore = useSessionStore()
 const $q = useQuasar()
+
+// The session being viewed — either the one from the route param (historical) or the active session
+const viewSessionId = computed(() => (route.params.sessionId as string | undefined) ?? sessionStore.activeSession?.id ?? null)
+const viewSession = computed(() => {
+  const id = viewSessionId.value
+  if (!id) return null
+  return sessionStore.sessions.find(s => s.id === id) ?? sessionStore.activeSession ?? null
+})
 
 // State
 const selectedBugId = ref<string | null>(null)
@@ -1306,9 +1315,10 @@ async function refreshAllCaptures() {
 }
 
 async function loadUnsortedCaptures() {
-  if (!sessionStore.activeSession) return
+  const id = viewSessionId.value
+  if (!id) return
   try {
-    unsortedCaptures.value = await tauri.getUnsortedCaptures(sessionStore.activeSession.id)
+    unsortedCaptures.value = await tauri.getUnsortedCaptures(id)
   } catch (err) {
     console.error('Failed to load unsorted captures:', err)
   }
@@ -1811,11 +1821,11 @@ function copySummaryPath() {
 }
 
 async function generateSessionSummary() {
-  if (!sessionStore.activeSession) return
+  if (!viewSession.value) return
 
   try {
     isSummaryGenerating.value = true
-    const filePath = await tauri.generateSessionSummary(sessionStore.activeSession.id, false)
+    const filePath = await tauri.generateSessionSummary(viewSession.value.id, false)
     summaryFilePath.value = filePath
 
     // Read the generated file content to display in the dialog
@@ -1841,11 +1851,11 @@ async function generateSessionSummary() {
 }
 
 async function exportToFile() {
-  if (!sessionStore.activeSession) return
+  if (!viewSession.value) return
 
   try {
     isExportingToFile.value = true
-    const folderPath = sessionStore.activeSession.folder_path
+    const folderPath = viewSession.value.folder_path
     await tauri.formatSessionExport(folderPath)
     await tauri.openSessionFolder(folderPath)
 
@@ -2081,10 +2091,10 @@ async function markBugReady() {
 }
 
 async function resumeSession() {
-  if (!sessionStore.activeSession) return
+  if (!viewSession.value) return
 
   try {
-    await sessionStore.updateSessionStatus(sessionStore.activeSession.id, 'active')
+    await sessionStore.updateSessionStatus(viewSession.value.id, 'active')
 
     $q.notify({
       type: 'positive',
@@ -2105,7 +2115,7 @@ async function resumeSession() {
 }
 
 function confirmCloseSession() {
-  if (!sessionStore.activeSession) return
+  if (!viewSession.value) return
 
   $q.dialog({
     title: 'Close Session',
@@ -2118,10 +2128,10 @@ function confirmCloseSession() {
 }
 
 async function closeSession() {
-  if (!sessionStore.activeSession) return
+  if (!viewSession.value) return
 
   try {
-    await sessionStore.endSession(sessionStore.activeSession.id)
+    await sessionStore.endSession(viewSession.value.id)
 
     $q.notify({
       type: 'positive',
@@ -2146,9 +2156,16 @@ onMounted(async () => {
   // Check Claude CLI status
   await checkClaudeStatus()
 
-  // Load bugs for the active session
-  if (sessionStore.activeSession) {
-    await bugStore.loadBugsBySession(sessionStore.activeSession.id)
+  // If navigating to a historical session via route param, load it first
+  const routeSessionId = route.params.sessionId as string | undefined
+  if (routeSessionId && !sessionStore.sessions.find(s => s.id === routeSessionId)) {
+    await sessionStore.loadSession(routeSessionId)
+  }
+
+  // Load bugs for the session being viewed (historical or active)
+  const sessionId = viewSessionId.value
+  if (sessionId) {
+    await bugStore.loadBugsBySession(sessionId)
 
     // Preload captures for all bugs
     for (const bug of bugs.value) {
@@ -2169,7 +2186,7 @@ onMounted(async () => {
   const unlisten = await listen<{ filePath: string; captureId: string; sessionId: string; bugId: string | null; type: string }>(
     'capture:file-detected',
     (event) => {
-      if (sessionStore.activeSession?.id !== event.payload.sessionId) return
+      if (viewSessionId.value !== event.payload.sessionId) return
       if (event.payload.bugId === null) {
         // Reload unsorted captures when a new one arrives
         void loadUnsortedCaptures()

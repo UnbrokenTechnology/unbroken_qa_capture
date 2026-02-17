@@ -190,10 +190,7 @@ async function handleStartSession() {
 }
 
 function handleSessionClick(session: SessionSummary) {
-  // Navigate to session review mode
-  // For now, just log - full implementation in future ticket
-  console.log('Open session for review:', session.id)
-  router.push({ name: 'session-review', params: { id: session.id } })
+  router.push({ name: 'session-review', params: { sessionId: session.id } })
 }
 
 function handleSettingsClick() {
