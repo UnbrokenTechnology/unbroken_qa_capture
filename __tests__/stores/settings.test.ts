@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useSettingsStore, SETTINGS_KEYS } from '@/stores/settings'
 import type { Setting } from '@/types/backend'
@@ -13,28 +13,6 @@ vi.mock('@/api/tauri', () => ({
 
 import * as tauri from '@/api/tauri'
 
-// Mock localStorage
-const localStorageMock = (() => {
-  let store: Record<string, string> = {}
-
-  return {
-    getItem: (key: string) => store[key] || null,
-    setItem: (key: string, value: string) => {
-      store[key] = value
-    },
-    removeItem: (key: string) => {
-      delete store[key]
-    },
-    clear: () => {
-      store = {}
-    },
-  }
-})()
-
-Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock,
-})
-
 const mockSettings: Setting[] = [
   { key: SETTINGS_KEYS.HOTKEY_CAPTURE, value: 'Ctrl+Shift+C', updated_at: '2024-01-01T10:00:00Z' },
   { key: SETTINGS_KEYS.DEFAULT_SAVE_PATH, value: '/custom/path', updated_at: '2024-01-01T10:00:00Z' },
@@ -45,11 +23,6 @@ describe('Settings Store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    localStorageMock.clear()
-  })
-
-  afterEach(() => {
-    localStorageMock.clear()
   })
 
   it('should initialize with default settings', () => {
@@ -237,67 +210,6 @@ describe('Settings Store', () => {
     })
   })
 
-  describe('LocalStorage persistence', () => {
-    it('should save to localStorage', () => {
-      const store = useSettingsStore()
-      store.settings[SETTINGS_KEYS.THEME] = 'dark'
-
-      store.saveToLocalStorage()
-
-      const stored = localStorageMock.getItem('unbroken-qa-settings')
-      expect(stored).toBeTruthy()
-      const parsed = JSON.parse(stored!)
-      expect(parsed[SETTINGS_KEYS.THEME]).toBe('dark')
-    })
-
-    it('should load from localStorage', () => {
-      const testSettings = {
-        [SETTINGS_KEYS.THEME]: 'dark',
-        [SETTINGS_KEYS.HOTKEY_CAPTURE]: 'Ctrl+Alt+X',
-      }
-      localStorageMock.setItem('unbroken-qa-settings', JSON.stringify(testSettings))
-
-      const store = useSettingsStore()
-      store.loadFromLocalStorage()
-
-      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('dark')
-      expect(store.settings[SETTINGS_KEYS.HOTKEY_CAPTURE]).toBe('Ctrl+Alt+X')
-    })
-
-    it('should merge localStorage with defaults', () => {
-      const testSettings = {
-        [SETTINGS_KEYS.THEME]: 'dark',
-      }
-      localStorageMock.setItem('unbroken-qa-settings', JSON.stringify(testSettings))
-
-      const store = useSettingsStore()
-      store.loadFromLocalStorage()
-
-      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('dark')
-      expect(store.settings[SETTINGS_KEYS.HOTKEY_CAPTURE]).toBe('Ctrl+Shift+B')
-    })
-
-    it('should clear localStorage', () => {
-      localStorageMock.setItem('unbroken-qa-settings', '{"test":"value"}')
-
-      const store = useSettingsStore()
-      store.clearLocalStorage()
-
-      const stored = localStorageMock.getItem('unbroken-qa-settings')
-      expect(stored).toBeNull()
-    })
-
-    it('should handle invalid JSON in localStorage', () => {
-      localStorageMock.setItem('unbroken-qa-settings', 'invalid json')
-
-      const store = useSettingsStore()
-      // Should not throw
-      expect(() => store.loadFromLocalStorage()).not.toThrow()
-      // Should still have defaults
-      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('light')
-    })
-  })
-
   describe('getAllSettings with malformed backend response', () => {
     it('should handle backend returning an entry with a null value', async () => {
       const store = useSettingsStore()
@@ -392,7 +304,7 @@ describe('Settings Store', () => {
   })
 
   describe('settings defaults when backend is unavailable', () => {
-    it('should keep default settings when backend returns error and no localStorage', async () => {
+    it('should keep default settings when backend returns error', async () => {
       const store = useSettingsStore()
       vi.mocked(tauri.getAllSettings).mockRejectedValue(new Error('Backend offline'))
 
@@ -402,25 +314,6 @@ describe('Settings Store', () => {
       expect(store.settings[SETTINGS_KEYS.THEME]).toBe('light')
       expect(store.settings[SETTINGS_KEYS.HOTKEY_CAPTURE]).toBe('Ctrl+Shift+B')
       expect(store.settings[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION]).toBe('true')
-    })
-
-    it('should use localStorage values when backend is unavailable', async () => {
-      const savedSettings = {
-        [SETTINGS_KEYS.THEME]: 'dark',
-        [SETTINGS_KEYS.HOTKEY_CAPTURE]: 'Ctrl+Alt+X',
-      }
-      localStorageMock.setItem('unbroken-qa-settings', JSON.stringify(savedSettings))
-
-      const store = useSettingsStore()
-      store.loadFromLocalStorage()
-
-      vi.mocked(tauri.getAllSettings).mockRejectedValue(new Error('Backend offline'))
-
-      await expect(store.loadAllSettings()).rejects.toThrow('Backend offline')
-
-      // Should still have the localStorage values loaded earlier
-      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('dark')
-      expect(store.settings[SETTINGS_KEYS.HOTKEY_CAPTURE]).toBe('Ctrl+Alt+X')
     })
 
     it('should return defaults from getSetting when backend has never responded', () => {
@@ -434,14 +327,11 @@ describe('Settings Store', () => {
   })
 
   describe('initialize', () => {
-    it('should load from localStorage and then backend', async () => {
-      const localSettings = { [SETTINGS_KEYS.THEME]: 'dark' }
-      localStorageMock.setItem('unbroken-qa-settings', JSON.stringify(localSettings))
-
+    it('should load from backend on initialize', async () => {
       vi.mocked(tauri.getAllSettings).mockResolvedValue([
         {
           key: SETTINGS_KEYS.THEME,
-          value: 'light',
+          value: 'dark',
           updated_at: '2024-01-01T10:00:00Z',
         },
       ])
@@ -449,30 +339,27 @@ describe('Settings Store', () => {
       const store = useSettingsStore()
       store.initialize()
 
-      // Should have localStorage value initially
-      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('dark')
-
       // Wait for backend load
       await vi.waitFor(() => {
         expect(tauri.getAllSettings).toHaveBeenCalled()
       })
+
+      // Should have backend value after load
+      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('dark')
     })
 
-    it('should fallback to localStorage if backend fails', async () => {
-      const localSettings = { [SETTINGS_KEYS.THEME]: 'dark' }
-      localStorageMock.setItem('unbroken-qa-settings', JSON.stringify(localSettings))
-
+    it('should keep defaults if backend fails', async () => {
       vi.mocked(tauri.getAllSettings).mockRejectedValue(new Error('Backend error'))
 
       const store = useSettingsStore()
       store.initialize()
 
-      // Should still have localStorage value
-      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('dark')
-
       await vi.waitFor(() => {
         expect(tauri.getAllSettings).toHaveBeenCalled()
       })
+
+      // Should fall back to defaults when backend fails
+      expect(store.settings[SETTINGS_KEYS.THEME]).toBe('light')
     })
   })
 })

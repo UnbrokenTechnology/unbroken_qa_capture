@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import type { Setting } from '../types/backend'
 import * as tauri from '../api/tauri'
 
@@ -166,8 +166,6 @@ export const useSettingsStore = defineStore('settings', () => {
   function setSetting(key: string, value: string): void {
     settings.value[key] = value
     isDirty.value = true
-    // Persist to localStorage
-    saveToLocalStorage()
   }
 
   function getSetting(key: string, defaultValue?: string): string {
@@ -177,7 +175,6 @@ export const useSettingsStore = defineStore('settings', () => {
   function resetToDefaults(): void {
     settings.value = { ...DEFAULT_SETTINGS }
     isDirty.value = true
-    saveToLocalStorage()
   }
 
   function clearError(): void {
@@ -185,61 +182,14 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   // ============================================================================
-  // Local Storage Persistence
-  // ============================================================================
-
-  const STORAGE_KEY = 'unbroken-qa-settings'
-
-  function saveToLocalStorage(): void {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings.value))
-    } catch (err) {
-      console.error('Failed to save settings to localStorage:', err)
-    }
-  }
-
-  function loadFromLocalStorage(): void {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        settings.value = { ...DEFAULT_SETTINGS, ...parsed }
-      }
-    } catch (err) {
-      console.error('Failed to load settings from localStorage:', err)
-    }
-  }
-
-  function clearLocalStorage(): void {
-    try {
-      localStorage.removeItem(STORAGE_KEY)
-    } catch (err) {
-      console.error('Failed to clear settings from localStorage:', err)
-    }
-  }
-
-  // ============================================================================
   // Initialization
   // ============================================================================
 
   function initialize(): void {
-    // Load from localStorage first (for offline/fallback)
-    loadFromLocalStorage()
-
-    // Then try to load from backend (will override localStorage if available)
     loadAllSettings().catch((err) => {
-      console.warn('Failed to load settings from backend, using localStorage:', err)
+      console.warn('Failed to load settings from backend, using defaults:', err)
     })
   }
-
-  // Watch for changes and auto-save to localStorage
-  watch(
-    () => settings.value,
-    () => {
-      saveToLocalStorage()
-    },
-    { deep: true }
-  )
 
   // ============================================================================
   // Store Return
@@ -282,11 +232,6 @@ export const useSettingsStore = defineStore('settings', () => {
     getSetting,
     resetToDefaults,
     clearError,
-
-    // Actions - Storage
-    saveToLocalStorage,
-    loadFromLocalStorage,
-    clearLocalStorage,
 
     // Actions - Lifecycle
     initialize,

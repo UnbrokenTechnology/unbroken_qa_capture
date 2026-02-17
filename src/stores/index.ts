@@ -60,9 +60,6 @@ export function cleanupStores(): void {
     const bugStore = useBugStore()
     bugStore.cleanupEventListeners()
 
-    const settingsStore = useSettingsStore()
-    settingsStore.saveToLocalStorage()
-
     console.log('Stores cleaned up successfully')
   } catch (error) {
     console.error('Failed to cleanup stores:', error)
