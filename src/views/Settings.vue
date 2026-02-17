@@ -113,7 +113,7 @@
             <q-input
               v-model="localSettings.hotkey_toggle_session"
               label="Start/End Session"
-              hint="Default: Ctrl+Shift+Q"
+              hint="Default: F5"
               outlined
               readonly
             >
@@ -136,7 +136,7 @@
             <q-input
               v-model="localSettings.hotkey_new_bug"
               label="New Bug Capture"
-              hint="Default: Print Screen"
+              hint="Default: F7"
               outlined
               readonly
             >
@@ -159,7 +159,7 @@
             <q-input
               v-model="localSettings.hotkey_end_bug"
               label="End Bug Capture"
-              hint="Default: F4"
+              hint="Default: F9"
               outlined
               readonly
             >
@@ -997,9 +997,9 @@ async function loadSettings(): Promise<void> {
     minimize_to_tray: settingsStore.getSetting('minimize_to_tray', 'true') === 'true',
 
     // Hotkeys - load from backend HotkeyConfig if available
-    hotkey_toggle_session: hotkeyConfig?.shortcuts?.toggle_session ?? 'Ctrl+Shift+Q',
-    hotkey_new_bug: hotkeyConfig?.shortcuts?.start_bug_capture ?? 'PrintScreen',
-    hotkey_end_bug: hotkeyConfig?.shortcuts?.end_bug_capture ?? 'F4',
+    hotkey_toggle_session: hotkeyConfig?.shortcuts?.toggle_session ?? 'F5',
+    hotkey_new_bug: hotkeyConfig?.shortcuts?.start_bug_capture ?? 'F7',
+    hotkey_end_bug: hotkeyConfig?.shortcuts?.end_bug_capture ?? 'F9',
     hotkey_quick_notepad: hotkeyConfig?.shortcuts?.open_quick_notepad ?? 'Ctrl+Shift+N',
     hotkey_session_notepad: hotkeyConfig?.shortcuts?.open_session_notepad ?? 'Ctrl+Shift+M',
 

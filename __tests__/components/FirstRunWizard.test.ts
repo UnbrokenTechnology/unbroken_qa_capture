@@ -212,9 +212,9 @@ describe('FirstRunWizard', () => {
       const bodyText = document.body.textContent || ''
       expect(bodyText).toContain('Current Keyboard Shortcuts')
       // Verify correct defaults from hotkey.rs
-      expect(bodyText).toContain('Ctrl+Shift+Q') // Toggle Session
-      expect(bodyText).toContain('PrintScreen')  // Start Bug Capture
-      expect(bodyText).toContain('F4')           // End Bug Capture
+      expect(bodyText).toContain('F5')           // Toggle Session
+      expect(bodyText).toContain('F7')           // Start Bug Capture
+      expect(bodyText).toContain('F9')           // End Bug Capture
       expect(bodyText).toContain('Ctrl+Shift+N') // Open Quick Notepad
       expect(bodyText).toContain('Ctrl+Shift+M') // Open Session Notepad
     })

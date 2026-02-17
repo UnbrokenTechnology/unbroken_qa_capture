@@ -93,9 +93,9 @@ mod integration_tests {
     #[test]
     fn test_is_registered_initially_false() {
         let manager = HotkeyManager::new();
-        assert!(!manager.is_registered("Ctrl+Shift+Q"));
-        assert!(!manager.is_registered("PrintScreen"));
-        assert!(!manager.is_registered("F4"));
+        assert!(!manager.is_registered("F5"));
+        assert!(!manager.is_registered("F7"));
+        assert!(!manager.is_registered("F9"));
     }
 
     #[test]
@@ -104,15 +104,15 @@ mod integration_tests {
 
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::ToggleSession).unwrap(),
-            "Ctrl+Shift+Q"
+            "F5"
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::StartBugCapture).unwrap(),
-            "PrintScreen"
+            "F7"
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::EndBugCapture).unwrap(),
-            "F4"
+            "F9"
         );
         assert_eq!(
             config.shortcuts.get(&HotkeyAction::OpenQuickNotepad).unwrap(),

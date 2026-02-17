@@ -148,7 +148,7 @@
                 <q-input
                   v-model="hotkeys.toggleSession"
                   label="Toggle Session (Start/Stop)"
-                  hint="Default: Ctrl+Shift+Q"
+                  hint="Default: F5"
                   outlined
                   readonly
                 >
@@ -160,7 +160,7 @@
                 <q-input
                   v-model="hotkeys.startBugCapture"
                   label="Start Bug Capture"
-                  hint="Default: PrintScreen"
+                  hint="Default: F7"
                   outlined
                   readonly
                 >
@@ -172,7 +172,7 @@
                 <q-input
                   v-model="hotkeys.endBugCapture"
                   label="End Bug Capture"
-                  hint="Default: F4"
+                  hint="Default: F9"
                   outlined
                   readonly
                 >
@@ -485,9 +485,9 @@ const sessionsFolderPath = ref('')
 
 // Step 3: Hotkeys (use actual defaults from hotkey.rs)
 const hotkeys = ref({
-  toggleSession: 'Ctrl+Shift+Q',
-  startBugCapture: 'PrintScreen',
-  endBugCapture: 'F4',
+  toggleSession: 'F5',
+  startBugCapture: 'F7',
+  endBugCapture: 'F9',
   openQuickNotepad: 'Ctrl+Shift+N',
   openSessionNotepad: 'Ctrl+Shift+M',
 })
