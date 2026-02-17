@@ -64,6 +64,7 @@ exports[`Tauri command registration contract > parsed backend handlers snapshot 
   "update_session_notes",
   "update_session_status",
   "update_tray_icon",
+  "update_tray_menu",
   "update_tray_tooltip",
 ]
 `;
@@ -113,6 +114,7 @@ exports[`Tauri command registration contract > parsed frontend commands snapshot
   "update_session_notes",
   "update_session_status",
   "update_tray_icon",
+  "update_tray_menu",
   "update_tray_tooltip",
 ]
 `;

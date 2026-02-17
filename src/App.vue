@@ -167,8 +167,8 @@ onMounted(async () => {
     if (sessionStore.isSessionActive && sessionStore.activeSessionId) {
       // Start bug capture in the current session and navigate to it
       try {
-        await bugStore.startBugCapture({ session_id: sessionStore.activeSessionId, status: 'capturing' })
-        await trayStore.setBugCapture()
+        const bug = await bugStore.startBugCapture({ session_id: sessionStore.activeSessionId, status: 'capturing' })
+        await trayStore.setBugCapture(bug.display_id)
         router.push({ name: 'active-session' })
       } catch (err) {
         console.error('Failed to start bug capture from tray:', err)
@@ -181,6 +181,49 @@ onMounted(async () => {
 
   const unlistenSettings = await listen('tray-menu-settings', () => {
     router.push({ name: 'settings' })
+  })
+
+  // Tray "End Session" menu item (shown during active/bug states)
+  const unlistenTrayEndSession = await listen('tray-menu-end-session', async () => {
+    if (sessionStore.isSessionActive && sessionStore.activeSessionId) {
+      try {
+        await sessionStore.endSession(sessionStore.activeSessionId)
+        await trayStore.setIdle()
+      } catch (err) {
+        console.error('Failed to end session from tray:', err)
+        $q.notify({
+          type: 'negative',
+          message: 'Failed to end session',
+          caption: err instanceof Error ? err.message : String(err),
+          position: 'bottom-right',
+          timeout: 5000,
+        })
+      }
+    }
+  })
+
+  // Tray "End Bug Capture (F4)" menu item (shown during bug capture state)
+  const unlistenTrayEndBugCapture = await listen('tray-menu-end-bug-capture', async () => {
+    if (bugStore.activeBug?.id) {
+      try {
+        await bugStore.completeBugCapture(bugStore.activeBug.id)
+        await trayStore.setActive()
+      } catch (err) {
+        console.error('Failed to end bug capture from tray:', err)
+        $q.notify({
+          type: 'negative',
+          message: 'Failed to end bug capture',
+          caption: err instanceof Error ? err.message : String(err),
+          position: 'bottom-right',
+          timeout: 5000,
+        })
+      }
+    }
+  })
+
+  // Tray "Open Review" menu item (shown during review state)
+  const unlistenTrayOpenReview = await listen('tray-menu-open-review', () => {
+    router.push({ name: 'session-review' })
   })
 
   // When the window is restored from tray (icon click or "Open Main Window"),
@@ -229,8 +272,8 @@ onMounted(async () => {
   const unlistenHotkeyStartBugCapture = await listen('hotkey-start-bug-capture', async () => {
     if (sessionStore.isSessionActive && sessionStore.activeSessionId) {
       try {
-        await bugStore.startBugCapture({ session_id: sessionStore.activeSessionId, status: 'capturing' })
-        await trayStore.setBugCapture()
+        const bug = await bugStore.startBugCapture({ session_id: sessionStore.activeSessionId, status: 'capturing' })
+        await trayStore.setBugCapture(bug.display_id)
         router.push({ name: 'active-session' })
       } catch (err) {
         console.error('Failed to start bug capture via hotkey:', err)
@@ -283,6 +326,9 @@ onMounted(async () => {
     unlistenStartSession,
     unlistenNewBug,
     unlistenSettings,
+    unlistenTrayEndSession,
+    unlistenTrayEndBugCapture,
+    unlistenTrayOpenReview,
     unlistenWindowShown,
     unlistenHotkeyToggleSession,
     unlistenHotkeyStartBugCapture,

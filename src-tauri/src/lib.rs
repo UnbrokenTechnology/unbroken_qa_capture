@@ -334,10 +334,102 @@ async fn open_session_folder(
 
 #[tauri::command]
 async fn update_tray_icon(state: String, app_handle: tauri::AppHandle) -> Result<(), String> {
-    // Emit event to update tray icon based on state
-    // States: idle, active, bug, review
+    update_tray_menu(state, None, app_handle).await
+}
+
+/// Rebuild the tray context menu to reflect the current app state.
+///
+/// PRD Section 13 specifies different menus per state:
+/// - Idle: 'Start Session', 'Open App', 'Settings', 'Quit'
+/// - Active Session: 'End Session', 'Open App', 'Quit'
+/// - Bug Capture: 'End Bug Capture (F4)', 'End Session', 'Open App'
+/// - Review: 'Open Review', 'Quit'
+#[tauri::command]
+async fn update_tray_menu(state: String, bug_id: Option<String>, app_handle: tauri::AppHandle) -> Result<(), String> {
+    let Some(tray) = app_handle.tray_by_id("main-tray") else {
+        return Ok(());
+    };
+
+    let menu = Menu::new(&app_handle)
+        .map_err(|e| format!("Failed to create menu: {}", e))?;
+
+    match state.as_str() {
+        "idle" => {
+            let start = MenuItemBuilder::new("Start Session")
+                .id("start-session").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let open = MenuItemBuilder::new("Open App")
+                .id("open-main-window").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let settings = MenuItemBuilder::new("Settings")
+                .id("settings").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let quit = MenuItemBuilder::new("Quit")
+                .id("quit").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            menu.append_items(&[&start, &open, &settings, &quit])
+                .map_err(|e| format!("Failed to append menu items: {}", e))?;
+        }
+        "active" => {
+            let end = MenuItemBuilder::new("End Session")
+                .id("end-session").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let open = MenuItemBuilder::new("Open App")
+                .id("open-main-window").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let quit = MenuItemBuilder::new("Quit")
+                .id("quit").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            menu.append_items(&[&end, &open, &quit])
+                .map_err(|e| format!("Failed to append menu items: {}", e))?;
+        }
+        "bug" => {
+            let label = if let Some(id) = &bug_id {
+                format!("End Bug Capture {} (F4)", id)
+            } else {
+                "End Bug Capture (F4)".to_string()
+            };
+            let end_bug = MenuItemBuilder::new(&label)
+                .id("end-bug-capture").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let end_session = MenuItemBuilder::new("End Session")
+                .id("end-session").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let open = MenuItemBuilder::new("Open App")
+                .id("open-main-window").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            menu.append_items(&[&end_bug, &end_session, &open])
+                .map_err(|e| format!("Failed to append menu items: {}", e))?;
+        }
+        "review" => {
+            let open_review = MenuItemBuilder::new("Open Review")
+                .id("open-review").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let quit = MenuItemBuilder::new("Quit")
+                .id("quit").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            menu.append_items(&[&open_review, &quit])
+                .map_err(|e| format!("Failed to append menu items: {}", e))?;
+        }
+        _ => {
+            // Unknown state — fall back to idle menu
+            let open = MenuItemBuilder::new("Open App")
+                .id("open-main-window").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            let quit = MenuItemBuilder::new("Quit")
+                .id("quit").enabled(true).build(&app_handle)
+                .map_err(|e| format!("Menu item error: {}", e))?;
+            menu.append_items(&[&open, &quit])
+                .map_err(|e| format!("Failed to append menu items: {}", e))?;
+        }
+    }
+
+    tray.set_menu(Some(menu))
+        .map_err(|e| format!("Failed to set tray menu: {}", e))?;
+
+    // Also emit event so frontend can react if needed
     app_handle
-        .emit("tray-state-changed", state)
+        .emit("tray-state-changed", &state)
         .map_err(|e| format!("Failed to emit tray state event: {}", e))?;
 
     Ok(())
@@ -1550,6 +1642,27 @@ pub fn run() {
                             }
                             app_handle.emit("tray-menu-settings", ()).ok();
                         }
+                        "end-session" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
+                            app_handle.emit("tray-menu-end-session", ()).ok();
+                        }
+                        "end-bug-capture" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
+                            app_handle.emit("tray-menu-end-bug-capture", ()).ok();
+                        }
+                        "open-review" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
+                            app_handle.emit("tray-menu-open-review", ()).ok();
+                        }
                         "quit" => {
                             app_handle.exit(0);
                         }
@@ -1586,6 +1699,7 @@ pub fn run() {
             open_bug_folder,
             open_session_folder,
             update_tray_icon,
+            update_tray_menu,
             update_tray_tooltip,
             get_bug_notes,
             update_bug_notes,

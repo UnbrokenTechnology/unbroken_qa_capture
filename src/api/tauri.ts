@@ -67,6 +67,13 @@ export async function updateTrayIcon(state: 'idle' | 'active' | 'bug' | 'review'
   await invoke('update_tray_icon', { state })
 }
 
+export async function updateTrayMenu(
+  state: 'idle' | 'active' | 'bug' | 'review',
+  bugId?: string | null
+): Promise<void> {
+  await invoke('update_tray_menu', { state, bugId: bugId ?? null })
+}
+
 export async function updateTrayTooltip(tooltip: string): Promise<void> {
   await invoke('update_tray_tooltip', { tooltip })
 }
