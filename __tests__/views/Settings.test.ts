@@ -308,6 +308,71 @@ describe('Settings View', () => {
     })
   })
 
+  describe('Navigation', () => {
+    it('has goBack function that calls router.back', async () => {
+      const mockBack = vi.fn()
+      const localRouter = createRouter({
+        history: createMemoryHistory(),
+        routes: [
+          { path: '/', component: { template: '<div/>' } },
+          { path: '/settings', name: 'settings', component: Settings }
+        ]
+      })
+      vi.spyOn(localRouter, 'back').mockImplementation(mockBack)
+
+      const wrapper = mount(Settings, {
+        global: {
+          plugins: [pinia, localRouter, Quasar]
+        }
+      })
+
+      await flushPromises()
+
+      const vm = wrapper.vm as any
+      vm.goBack()
+
+      expect(mockBack).toHaveBeenCalled()
+    })
+
+    it('navigates back when Escape key is pressed', async () => {
+      const mockBack = vi.fn()
+      const localRouter = createRouter({
+        history: createMemoryHistory(),
+        routes: [
+          { path: '/', component: { template: '<div/>' } },
+          { path: '/settings', name: 'settings', component: Settings }
+        ]
+      })
+      vi.spyOn(localRouter, 'back').mockImplementation(mockBack)
+
+      mount(Settings, {
+        global: {
+          plugins: [pinia, localRouter, Quasar]
+        }
+      })
+
+      await flushPromises()
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+      expect(mockBack).toHaveBeenCalled()
+    })
+
+    it('back button is accessible via goBack function', async () => {
+      const wrapper = mount(Settings, {
+        global: {
+          plugins: [pinia, router, Quasar]
+        }
+      })
+
+      await flushPromises()
+
+      // Verify goBack function exists and is callable (back button functionality)
+      const vm = wrapper.vm as any
+      expect(typeof vm.goBack).toBe('function')
+    })
+  })
+
   describe('Path Selection', () => {
     it('updates sessions root when folder is selected', async () => {
       mockOpen.mockResolvedValue('/selected/path')

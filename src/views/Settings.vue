@@ -7,9 +7,9 @@
       <div class="row items-center q-mb-md">
         <q-btn
           flat
-          round
           dense
           icon="arrow_back"
+          label="Back"
           class="q-mr-md"
           @click="goBack"
         />
@@ -645,7 +645,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useQuasar } from 'quasar'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -1133,6 +1133,13 @@ function goBack(): void {
   router.back()
 }
 
+// Escape key handler
+function handleEscapeKey(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    goBack()
+  }
+}
+
 // Reset to defaults
 function confirmReset(): void {
   $q.dialog({
@@ -1175,6 +1182,12 @@ onMounted(async () => {
     console.warn('Failed to get app version:', err)
     appVersion.value = '1.0.0'
   }
+
+  document.addEventListener('keydown', handleEscapeKey)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleEscapeKey)
 })
 </script>
 
