@@ -282,6 +282,58 @@ describe('Settings View', () => {
       )
     })
 
+    it('navigates back after successful save', async () => {
+      const mockBack = vi.fn()
+      const localRouter = createRouter({
+        history: createMemoryHistory(),
+        routes: [
+          { path: '/', component: { template: '<div/>' } },
+          { path: '/settings', name: 'settings', component: Settings }
+        ]
+      })
+      vi.spyOn(localRouter, 'back').mockImplementation(mockBack)
+
+      const wrapper = mount(Settings, {
+        global: {
+          plugins: [pinia, localRouter, Quasar]
+        }
+      })
+
+      await flushPromises()
+
+      const vm = wrapper.vm as any
+      await vm.saveSettings()
+
+      expect(mockBack).toHaveBeenCalled()
+    })
+
+    it('does not navigate back when save fails', async () => {
+      vi.mocked(tauri.setSetting).mockRejectedValueOnce(new Error('Database error'))
+
+      const mockBack = vi.fn()
+      const localRouter = createRouter({
+        history: createMemoryHistory(),
+        routes: [
+          { path: '/', component: { template: '<div/>' } },
+          { path: '/settings', name: 'settings', component: Settings }
+        ]
+      })
+      vi.spyOn(localRouter, 'back').mockImplementation(mockBack)
+
+      const wrapper = mount(Settings, {
+        global: {
+          plugins: [pinia, localRouter, Quasar]
+        }
+      })
+
+      await flushPromises()
+
+      const vm = wrapper.vm as any
+      await vm.saveSettings()
+
+      expect(mockBack).not.toHaveBeenCalled()
+    })
+
     it('shows error when save fails', async () => {
       vi.mocked(tauri.setSetting).mockRejectedValueOnce(new Error('Database error'))
 
