@@ -18,6 +18,11 @@ SMOKE_OK=true
 # ─── Rust Backend ───────────────────────────────────────────────────────────
 
 if [ -f "src-tauri/Cargo.toml" ]; then
+    # Tauri's generate_context!() proc macro requires frontendDist ("../dist"
+    # relative to src-tauri/) to exist at compile time, even for clippy.
+    # Ensure it exists so clippy can run without the full frontend build.
+    mkdir -p dist
+
     echo "=== Rust: clippy ==="
     (cd src-tauri && cargo clippy --all-targets -- -D warnings) || RUST_OK=false
 
