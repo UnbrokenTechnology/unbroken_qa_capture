@@ -505,6 +505,82 @@ fn get_session_summaries(app: tauri::AppHandle) -> Result<Vec<database::SessionS
 }
 
 #[tauri::command]
+fn get_active_session(app: tauri::AppHandle) -> Result<Option<database::Session>, String> {
+    use database::{Database, SessionRepository, SessionOps};
+
+    let db_path = app.path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?
+        .join("qa_capture.db");
+
+    let db = Database::new(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+
+    let repo = SessionRepository::new(db.connection());
+    repo.get_active_session()
+        .map_err(|e| format!("Failed to get active session: {}", e))
+}
+
+#[tauri::command]
+fn list_sessions(app: tauri::AppHandle) -> Result<Vec<database::Session>, String> {
+    use database::{Database, SessionRepository, SessionOps};
+
+    let db_path = app.path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?
+        .join("qa_capture.db");
+
+    let db = Database::new(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+
+    let repo = SessionRepository::new(db.connection());
+    repo.list()
+        .map_err(|e| format!("Failed to list sessions: {}", e))
+}
+
+#[tauri::command]
+fn update_session_status(session_id: String, status: String, app: tauri::AppHandle) -> Result<(), String> {
+    use database::{Database, SessionRepository, SessionOps};
+
+    let parsed_status = match status.as_str() {
+        "active" => database::SessionStatus::Active,
+        "ended" => database::SessionStatus::Ended,
+        "reviewed" => database::SessionStatus::Reviewed,
+        "synced" => database::SessionStatus::Synced,
+        _ => return Err(format!("Invalid session status: {}", status)),
+    };
+
+    let db_path = app.path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?
+        .join("qa_capture.db");
+
+    let db = Database::new(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+
+    let repo = SessionRepository::new(db.connection());
+    repo.update_status(&session_id, parsed_status)
+        .map_err(|e| format!("Failed to update session status: {}", e))
+}
+
+#[tauri::command]
+fn get_bugs_by_session(session_id: String, app: tauri::AppHandle) -> Result<Vec<database::Bug>, String> {
+    use database::{Database, BugRepository, BugOps};
+
+    let db_path = app.path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?
+        .join("qa_capture.db");
+
+    let db = Database::new(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+
+    let repo = BugRepository::new(db.connection());
+    repo.list_by_session(&session_id)
+        .map_err(|e| format!("Failed to get bugs for session: {}", e))
+}
+
+#[tauri::command]
 fn generate_session_summary(session_id: String, include_ai_summary: bool) -> Result<String, String> {
     use session_summary::SessionSummaryGenerator;
 
@@ -1344,6 +1420,10 @@ pub fn run() {
             end_bug_capture,
             get_active_session_id,
             get_active_bug_id,
+            get_active_session,
+            list_sessions,
+            update_session_status,
+            get_bugs_by_session,
             get_session_summaries,
             generate_session_summary,
             get_hotkey_config,

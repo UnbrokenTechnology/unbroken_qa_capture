@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/core'
 import type { Session, SessionSummary, SessionStatus } from '../types/backend'
 import * as tauri from '../api/tauri'
 
@@ -160,7 +161,7 @@ export const useSessionStore = defineStore('session', () => {
   // Actions - Session Lifecycle
   // ============================================================================
 
-  async function startSession(sessionData?: Partial<Session>): Promise<Session> {
+  async function startSession(_sessionData?: Partial<Session>): Promise<Session> {
     starting.value = true
     error.value = null
     try {
@@ -169,14 +170,7 @@ export const useSessionStore = defineStore('session', () => {
         await endSession(activeSession.value.id)
       }
 
-      const newSession: Partial<Session> = {
-        ...sessionData,
-        status: 'active',
-        started_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      }
-
-      return await createSession(newSession)
+      return await createSession({})
     } finally {
       starting.value = false
     }
@@ -186,7 +180,7 @@ export const useSessionStore = defineStore('session', () => {
     loading.value = true
     error.value = null
     try {
-      await tauri.updateSessionStatus(id, 'ended')
+      await invoke('end_session', { sessionId: id })
       const session = sessions.value.find(s => s.id === id)
       if (session) {
         session.status = 'ended'

@@ -76,74 +76,71 @@ export async function updateTrayTooltip(tooltip: string): Promise<void> {
 // ============================================================================
 
 // Session operations
-export async function createSession(session: Partial<Session>): Promise<Session> {
-  // TODO: Implement when backend command is available
-  return await invoke<Session>('create_session', { session })
+export async function createSession(_session: Partial<Session>): Promise<Session> {
+  return await invoke<Session>('start_session')
 }
 
-export async function getSession(id: string): Promise<Session | null> {
-  // TODO: Implement when backend command is available
-  return await invoke<Session | null>('get_session', { id })
+export async function getSession(_id: string): Promise<Session | null> {
+  // Not implemented: use getActiveSession() or getSessionSummaries() instead
+  return null
 }
 
-export async function updateSession(session: Session): Promise<void> {
-  // TODO: Implement when backend command is available
-  await invoke('update_session', { session })
+export async function updateSession(_session: Session): Promise<void> {
+  // Not implemented: use updateSessionStatus() instead
 }
 
-export async function deleteSession(id: string): Promise<void> {
-  // TODO: Implement when backend command is available
-  await invoke('delete_session', { id })
+export async function deleteSession(_id: string): Promise<void> {
+  // Not implemented
 }
 
 export async function listSessions(): Promise<Session[]> {
-  // TODO: Implement when backend command is available
   return await invoke<Session[]>('list_sessions')
 }
 
 export async function getActiveSession(): Promise<Session | null> {
-  // TODO: Implement when backend command is available
   return await invoke<Session | null>('get_active_session')
 }
 
 export async function getSessionSummaries(): Promise<SessionSummary[]> {
-  // TODO: Implement when backend command is available
   return await invoke<SessionSummary[]>('get_session_summaries')
 }
 
 export async function updateSessionStatus(id: string, status: string): Promise<void> {
-  // TODO: Implement when backend command is available
-  await invoke('update_session_status', { id, status })
+  await invoke('update_session_status', { sessionId: id, status })
 }
 
 // Bug operations
 export async function createBug(bug: Partial<Bug>): Promise<Bug> {
-  // TODO: Implement when backend command is available
-  return await invoke<Bug>('create_bug', { bug })
+  if (!bug.session_id) {
+    throw new Error('session_id is required to create a bug')
+  }
+  return await invoke<Bug>('start_bug_capture', { sessionId: bug.session_id })
 }
 
-export async function getBug(id: string): Promise<Bug | null> {
-  // TODO: Implement when backend command is available
-  return await invoke<Bug | null>('get_bug', { id })
+export async function getBug(_id: string): Promise<Bug | null> {
+  // Not implemented
+  return null
 }
 
 export async function updateBug(id: string, update: BugUpdate): Promise<void> {
-  // TODO: Implement when backend command is available
-  await invoke('update_bug', { id, update })
+  // Map to end_bug_capture for status transitions
+  if (update.status === 'captured') {
+    await invoke('end_bug_capture', { bugId: id })
+  }
 }
 
-export async function deleteBug(id: string): Promise<void> {
-  // TODO: Implement when backend command is available
-  await invoke('delete_bug', { id })
+export async function deleteBug(_id: string): Promise<void> {
+  // Not implemented
 }
 
 export async function listBugs(sessionId?: string): Promise<Bug[]> {
-  // TODO: Implement when backend command is available
-  return await invoke<Bug[]>('list_bugs', { sessionId })
+  if (sessionId) {
+    return await invoke<Bug[]>('get_bugs_by_session', { sessionId })
+  }
+  return []
 }
 
 export async function getBugsBySession(sessionId: string): Promise<Bug[]> {
-  // TODO: Implement when backend command is available
   return await invoke<Bug[]>('get_bugs_by_session', { sessionId })
 }
 

@@ -20,7 +20,13 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }))
 
+// Mock Tauri core invoke
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn().mockResolvedValue(undefined),
+}))
+
 import * as tauri from '@/api/tauri'
+import { invoke } from '@tauri-apps/api/core'
 
 const mockSession: Session = {
   id: 'session-1',
@@ -252,7 +258,7 @@ describe('Session Store', () => {
     it('should end active session before starting new one', async () => {
       const store = useSessionStore()
       store.activeSession = { ...mockSession }
-      vi.mocked(tauri.updateSessionStatus).mockResolvedValue()
+      vi.mocked(invoke).mockResolvedValue(undefined)
       vi.mocked(tauri.createSession).mockResolvedValue({
         ...mockSession,
         id: 'session-2',
@@ -260,7 +266,7 @@ describe('Session Store', () => {
 
       await store.startSession()
 
-      expect(tauri.updateSessionStatus).toHaveBeenCalledWith('session-1', 'ended')
+      expect(invoke).toHaveBeenCalledWith('end_session', { sessionId: 'session-1' })
     })
 
     it('should set starting=true while session is being created and false after', async () => {
@@ -298,13 +304,13 @@ describe('Session Store', () => {
       const store = useSessionStore()
       store.sessions.push({ ...mockSession })
       store.activeSession = { ...mockSession }
-      vi.mocked(tauri.updateSessionStatus).mockResolvedValue()
+      vi.mocked(invoke).mockResolvedValue(undefined)
 
       await store.endSession('session-1')
 
       expect(store.sessions[0]?.status).toBe('ended')
       expect(store.activeSession).toBeNull()
-      expect(tauri.updateSessionStatus).toHaveBeenCalledWith('session-1', 'ended')
+      expect(invoke).toHaveBeenCalledWith('end_session', { sessionId: 'session-1' })
     })
   })
 
