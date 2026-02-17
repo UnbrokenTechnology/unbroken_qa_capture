@@ -16,7 +16,6 @@ export const SETTINGS_KEYS = {
   HOTKEY_OPEN_QUICK_NOTEPAD: 'hotkey_open_quick_notepad',
   HOTKEY_OPEN_SESSION_NOTEPAD: 'hotkey_open_session_notepad',
   DEFAULT_SAVE_PATH: 'default_save_path',
-  SCREENSHOT_WATCH_FOLDER: 'screenshot_watch_folder',
   CUSTOM_TEMPLATE_PATH: 'custom_template_path',
   AUTO_START_RECORDING: 'auto_start_recording',
   CAPTURE_CONSOLE: 'capture_console',
@@ -41,7 +40,6 @@ const DEFAULT_SETTINGS: Record<SettingsKey, string> = {
   [SETTINGS_KEYS.HOTKEY_OPEN_QUICK_NOTEPAD]: 'Ctrl+Shift+N',
   [SETTINGS_KEYS.HOTKEY_OPEN_SESSION_NOTEPAD]: 'Ctrl+Shift+M',
   [SETTINGS_KEYS.DEFAULT_SAVE_PATH]: '',
-  [SETTINGS_KEYS.SCREENSHOT_WATCH_FOLDER]: '',
   [SETTINGS_KEYS.CUSTOM_TEMPLATE_PATH]: '',
   [SETTINGS_KEYS.AUTO_START_RECORDING]: 'false',
   [SETTINGS_KEYS.CAPTURE_CONSOLE]: 'true',
@@ -79,7 +77,6 @@ export const useSettingsStore = defineStore('settings', () => {
   const hotkeyOpenQuickNotepad = computed(() => settings.value[SETTINGS_KEYS.HOTKEY_OPEN_QUICK_NOTEPAD])
   const hotkeyOpenSessionNotepad = computed(() => settings.value[SETTINGS_KEYS.HOTKEY_OPEN_SESSION_NOTEPAD])
   const defaultSavePath = computed(() => settings.value[SETTINGS_KEYS.DEFAULT_SAVE_PATH])
-  const screenshotWatchFolder = computed(() => settings.value[SETTINGS_KEYS.SCREENSHOT_WATCH_FOLDER])
   const customTemplatePath = computed(() => settings.value[SETTINGS_KEYS.CUSTOM_TEMPLATE_PATH])
   const autoStartRecording = computed(() => settings.value[SETTINGS_KEYS.AUTO_START_RECORDING] === 'true')
   const captureConsole = computed(() => settings.value[SETTINGS_KEYS.CAPTURE_CONSOLE] === 'true')
@@ -216,7 +213,6 @@ export const useSettingsStore = defineStore('settings', () => {
     hotkeyOpenQuickNotepad,
     hotkeyOpenSessionNotepad,
     defaultSavePath,
-    screenshotWatchFolder,
     customTemplatePath,
     autoStartRecording,
     captureConsole,
