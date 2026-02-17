@@ -40,15 +40,13 @@ vi.mock('@/api/tauri', () => ({
 }))
 
 const mockReadyClaudeStatus: ClaudeStatus = {
-  Ready: {
-    version: 'claude-cli 1.0.0',
-  },
+  status: 'ready',
+  version: 'claude-cli 1.0.0',
 }
 
 const mockNotInstalledClaudeStatus: ClaudeStatus = {
-  NotInstalled: {
-    message: 'Claude CLI not found in PATH',
-  },
+  status: 'notInstalled',
+  message: 'Claude CLI not found in PATH',
 }
 
 describe('FirstRunWizard', () => {

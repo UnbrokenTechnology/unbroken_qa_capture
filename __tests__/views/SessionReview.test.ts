@@ -115,7 +115,7 @@ describe('SessionReview', () => {
     // Set default mock implementations
     vi.mocked(tauri.ticketingGetCredentials).mockResolvedValue(null)
     vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
-      NotInstalled: { message: 'Claude CLI not installed' }
+      status: 'notInstalled', message: 'Claude CLI not installed'
     })
   })
 
@@ -452,7 +452,7 @@ describe('SessionReview', () => {
       sessionStore.activeSession = session
 
       vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
-        Ready: { version: '1.0.0' }
+        status: 'ready', version: '1.0.0'
       })
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([])
 
@@ -470,7 +470,7 @@ describe('SessionReview', () => {
       const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
 
       vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
-        Ready: { version: '1.0.0' }
+        status: 'ready', version: '1.0.0'
       })
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
       vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
@@ -489,7 +489,7 @@ describe('SessionReview', () => {
       const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
 
       vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
-        NotInstalled: { message: 'Claude CLI not found' }
+        status: 'notInstalled', message: 'Claude CLI not found'
       })
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
       vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
@@ -510,7 +510,7 @@ describe('SessionReview', () => {
       const capture = createMockCapture('cap-1', 'bug-1')
 
       vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
-        Ready: { version: '1.0.0' }
+        status: 'ready', version: '1.0.0'
       })
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
       vi.mocked(tauri.getBugCaptures).mockResolvedValue([capture])
@@ -551,7 +551,7 @@ describe('SessionReview', () => {
       const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
 
       vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
-        Ready: { version: '1.0.0' }
+        status: 'ready', version: '1.0.0'
       })
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
       vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
@@ -588,7 +588,7 @@ describe('SessionReview', () => {
       const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
 
       vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
-        Ready: { version: '1.0.0' }
+        status: 'ready', version: '1.0.0'
       })
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
       vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
@@ -618,7 +618,7 @@ describe('SessionReview', () => {
       const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
 
       vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
-        Ready: { version: '1.0.0' }
+        status: 'ready', version: '1.0.0'
       })
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
       vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
@@ -657,7 +657,7 @@ describe('SessionReview', () => {
       const bug = createMockBug('bug-1', 'session-1', 'BUG-001')
 
       vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
-        Ready: { version: '1.0.0' }
+        status: 'ready', version: '1.0.0'
       })
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
       vi.mocked(tauri.getBugCaptures).mockResolvedValue([])

@@ -241,9 +241,9 @@ export async function ticketingSaveCredentials(credentials: TicketingCredentials
 // ============================================================================
 
 export interface ClaudeStatus {
-  Ready?: { version: string }
-  NotAuthenticated?: { version: string; message: string }
-  NotInstalled?: { message: string }
+  status: 'ready' | 'notAuthenticated' | 'notInstalled'
+  version?: string
+  message?: string
 }
 
 export interface BugContext {

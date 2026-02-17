@@ -576,20 +576,20 @@ async function checkClaudeStatus() {
     // Use refresh instead of get to force a fresh check (not cached)
     const status = await tauri.refreshClaudeStatus()
 
-    if ('Ready' in status) {
+    if (status.status === 'ready') {
       claudeStatus.value = 'Ready'
-      claudeVersion.value = status.Ready?.version ?? ''
+      claudeVersion.value = status.version ?? ''
       claudeMessage.value = ''
       aiEnabled.value = true
-    } else if ('NotAuthenticated' in status) {
+    } else if (status.status === 'notAuthenticated') {
       claudeStatus.value = 'NotAuthenticated'
-      claudeVersion.value = status.NotAuthenticated?.version ?? ''
-      claudeMessage.value = status.NotAuthenticated?.message ?? ''
+      claudeVersion.value = status.version ?? ''
+      claudeMessage.value = status.message ?? ''
       aiEnabled.value = false
-    } else if ('NotInstalled' in status) {
+    } else if (status.status === 'notInstalled') {
       claudeStatus.value = 'NotInstalled'
       claudeVersion.value = ''
-      claudeMessage.value = status.NotInstalled?.message ?? ''
+      claudeMessage.value = status.message ?? ''
       aiEnabled.value = false
     }
   } catch (err) {

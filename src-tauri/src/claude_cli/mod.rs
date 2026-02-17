@@ -34,8 +34,10 @@ static CLAUDE_STATUS: Mutex<Option<ClaudeStatus>> = Mutex::new(None);
 /// Tries PATH first, then falls back to common installation locations on Windows
 pub(crate) fn find_claude_executable() -> Option<PathBuf> {
     // Try PATH first (works when running from terminal)
+    // Remove CLAUDECODE env var to avoid "nested session" detection
     if let Ok(output) = Command::new("claude")
         .arg("--version")
+        .env_remove("CLAUDECODE")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -76,6 +78,7 @@ pub fn check_cli_available() -> Result<String, ClaudeError> {
 
     let output = Command::new(&claude_path)
         .arg("--version")
+        .env_remove("CLAUDECODE")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -93,38 +96,25 @@ pub fn check_cli_available() -> Result<String, ClaudeError> {
     Ok(version)
 }
 
-/// Check if Claude CLI is authenticated
-/// Returns Ok(()) if authenticated, Err if not
+/// Check if Claude CLI is authenticated by looking for credential files.
+/// Avoids invoking `claude --print` which would cost API credits just for a status check.
+/// Returns Ok(()) if credentials found, Err if not.
 pub fn check_cli_authenticated() -> Result<(), ClaudeError> {
-    let claude_path = find_claude_executable()
-        .ok_or_else(|| ClaudeError::NotAuthenticated(
-            "Claude CLI not found".to_string()
-        ))?;
-
-    let output = Command::new(&claude_path)
-        .args(["--print", "--output-format", "json"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| ClaudeError::NotAuthenticated(format!("Failed to spawn test process: {}", e)))?
-        .wait_with_output()
-        .map_err(|e| ClaudeError::NotAuthenticated(format!("Failed to wait for test process: {}", e)))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("not authenticated") || stderr.contains("login") {
-            return Err(ClaudeError::NotAuthenticated(
-                "Run 'claude' in terminal to authenticate".to_string()
-            ));
+    if let Some(home_dir) = dirs::home_dir() {
+        let credentials_path = home_dir.join(".claude").join(".credentials.json");
+        if credentials_path.exists() {
+            // Check file is non-empty (not just an empty placeholder)
+            if let Ok(metadata) = std::fs::metadata(&credentials_path) {
+                if metadata.len() > 2 {
+                    return Ok(());
+                }
+            }
         }
-        return Err(ClaudeError::NotAuthenticated(format!(
-            "Authentication check failed: {}",
-            stderr
-        )));
     }
 
-    Ok(())
+    Err(ClaudeError::NotAuthenticated(
+        "No credentials found. Run 'claude' in a terminal to authenticate.".to_string()
+    ))
 }
 
 /// Get cached Claude CLI status or perform fresh check

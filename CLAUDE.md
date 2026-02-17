@@ -145,12 +145,14 @@ ticket log                              # last 20 events
 
 ### Sub-Agents
 
-Use sub-agents **liberally**. Context rot is a real problem — iteration, failed experiments, dead-ends, errors, and other token bloat accumulate and degrade output quality. The ideal workflow is for the top-level agent to be an **orchestrator** that delegates to sub-agents:
+Use sub-agents **liberally and by default**. Context rot is a real problem — iteration, failed experiments, dead-ends, errors, and other token bloat accumulate and degrade output quality. The ideal workflow is for the top-level agent to be an **orchestrator** that delegates to sub-agents:
 
 1. **Research** (sub-agent) — outputs a problem statement
 2. **Explore** (sub-agent) — reads code, outputs relevant file/function pointers
 3. **Plan** (sub-agent) — outputs an implementation plan
 4. **Implement** (sub-agent) — executes the plan
+
+**When responding to the human operator**, use sub-agents as much as possible. Delegate research, exploration, code reading, multi-file searches, and implementation tasks to sub-agents rather than doing them inline. This keeps the main conversation context clean, reduces token bloat, and produces higher quality results. The top-level agent should focus on orchestration — understanding what the user wants, dispatching sub-agents, and summarizing results.
 
 Begin every sub-agent prompt with `"YOU ARE THE SUB-AGENT"` so it does not attempt to recursively spawn its own sub-agents.
 

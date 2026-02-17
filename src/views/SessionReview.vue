@@ -1164,15 +1164,15 @@ function openUrl(url: string) {
 async function checkClaudeStatus() {
   try {
     const status = await tauri.getClaudeStatus()
-    if ('Ready' in status && status.Ready) {
+    if (status.status === 'ready') {
       claudeAvailable.value = true
-      claudeStatusMessage.value = `Claude CLI v${status.Ready.version} is ready`
-    } else if ('NotAuthenticated' in status && status.NotAuthenticated) {
+      claudeStatusMessage.value = `Claude CLI v${status.version} is ready`
+    } else if (status.status === 'notAuthenticated') {
       claudeAvailable.value = false
-      claudeStatusMessage.value = status.NotAuthenticated.message
-    } else if ('NotInstalled' in status && status.NotInstalled) {
+      claudeStatusMessage.value = status.message ?? 'Claude CLI not authenticated'
+    } else if (status.status === 'notInstalled') {
       claudeAvailable.value = false
-      claudeStatusMessage.value = status.NotInstalled.message
+      claudeStatusMessage.value = status.message ?? 'Claude CLI not installed'
     }
   } catch (err) {
     console.error('Failed to check Claude status:', err)

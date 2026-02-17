@@ -35,7 +35,8 @@ impl RealClaudeInvoker {
             ))?;
 
         let mut cmd = Command::new(&claude_path);
-        cmd.args(["--print", "--output-format", "json"]);
+        cmd.args(["--print", "--output-format", "json"])
+            .env_remove("CLAUDECODE");
 
         // Add image files if present
         for img_path in &request.image_paths {
