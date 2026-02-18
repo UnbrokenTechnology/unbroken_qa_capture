@@ -4,6 +4,13 @@ This file guides autonomous AI agents working on this project.
 Read PROJECT.md for business context and product vision.
 The original PRD is in the repository as `Unbroken_QA_Capture_PRD.md`.
 
+## Model Policy
+
+- **Main agent**: Claude Opus 4.6 (`claude-opus-4-6`) with standard 200K context. Do NOT use extended 1M context (cost is 2x input, 1.5x output when >200K tokens).
+- **Sub-agents**: Use Claude Sonnet 4.6 (`model: "sonnet"` in Task tool) for straightforward tasks — file reads, searches, script execution, implementations with clear instructions. Use Opus only when deeper reasoning or complex architectural decisions are needed.
+- **Model version**: Always use 4.6 family models. Do NOT use 4.5 or older models. The `"sonnet"` and `"opus"` aliases in Claude Code map to the latest (4.6) versions.
+- **Cost awareness**: Opus 4.6 is $5/$25 per MTok. Sonnet 4.6 is $3/$15 per MTok (40% cheaper). Prefer Sonnet sub-agents to keep costs down.
+
 ## Tech Stack
 
 - **Framework:** Tauri 2 (Rust backend + WebView frontend)
