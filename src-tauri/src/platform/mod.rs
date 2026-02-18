@@ -29,7 +29,7 @@ mod windows;
 mod macos;
 
 // Re-export public types
-pub use capture::{CaptureBridge, CaptureEvent, WatcherHandle};
+pub use capture::CaptureBridge;
 pub use registry::RegistryBridge;
 pub use error::{PlatformError, Result};
 

@@ -48,6 +48,29 @@
 
     <q-space />
 
+    <!-- Capture Folder Path -->
+    <div
+      v-if="captureFolderPath"
+      class="row items-center q-gutter-xs q-mr-sm"
+    >
+      <q-icon
+        name="folder_special"
+        size="xs"
+        color="white"
+      />
+      <span class="text-caption capture-path-text ellipsis">{{ captureFolderPath }}</span>
+      <q-btn
+        flat
+        dense
+        round
+        icon="content_copy"
+        size="xs"
+        @click="copyCapturePath"
+      >
+        <q-tooltip>Copy capture folder path to clipboard</q-tooltip>
+      </q-btn>
+    </div>
+
     <!-- Open Folder Button -->
     <q-btn
       flat
@@ -77,6 +100,7 @@ const $q = useQuasar()
 const sessionStartTime = ref<Date | null>(null)
 const elapsedTime = ref(0)
 let intervalId: number | null = null
+const captureFolderPath = ref<string | null>(null)
 
 // Computed
 const sessionDisplayId = computed(() => {
@@ -108,6 +132,40 @@ const bugCount = computed(() => {
 })
 
 // Methods
+async function loadCaptureFolderPath() {
+  if (!sessionStore.activeSession?.folder_path) {
+    captureFolderPath.value = null
+    return
+  }
+  try {
+    captureFolderPath.value = await invoke<string>('get_capture_folder_path', {
+      sessionFolderPath: sessionStore.activeSession.folder_path
+    })
+  } catch {
+    captureFolderPath.value = null
+  }
+}
+
+async function copyCapturePath() {
+  if (!captureFolderPath.value) return
+  try {
+    await navigator.clipboard.writeText(captureFolderPath.value)
+    $q.notify({
+      type: 'positive',
+      message: 'Capture folder path copied to clipboard',
+      position: 'top',
+      timeout: 2000
+    })
+  } catch {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to copy path to clipboard',
+      position: 'top',
+      timeout: 2000
+    })
+  }
+}
+
 function updateElapsedTime() {
   if (sessionStartTime.value) {
     const now = new Date()
@@ -173,6 +231,7 @@ onMounted(() => {
   // Start timer if session is active
   if (sessionStore.isSessionActive) {
     startTimer()
+    void loadCaptureFolderPath()
   }
 })
 
@@ -184,8 +243,10 @@ onUnmounted(() => {
 watch(() => sessionStore.isSessionActive, (isActive) => {
   if (isActive) {
     startTimer()
+    void loadCaptureFolderPath()
   } else {
     stopTimer()
+    captureFolderPath.value = null
   }
 })
 
@@ -199,5 +260,12 @@ watch(() => sessionStore.activeSession?.started_at, () => {
 <style scoped>
 .session-toolbar {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.capture-path-text {
+  max-width: 280px;
+  font-family: monospace;
+  font-size: 0.7rem;
+  opacity: 0.85;
 }
 </style>

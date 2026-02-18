@@ -36,6 +36,42 @@
         </q-card-section>
       </q-card>
 
+      <!-- Capture Folder Path -->
+      <q-card
+        v-if="captureFolderPath"
+        flat
+        bordered
+        class="capture-folder-card q-mb-md"
+      >
+        <q-card-section class="q-pa-sm">
+          <div class="text-caption text-grey-7 q-mb-xs">
+            <q-icon
+              name="folder"
+              size="xs"
+              class="q-mr-xs"
+            />
+            Save screenshots to this folder:
+          </div>
+          <div class="row items-center no-wrap">
+            <div class="col text-body2 capture-folder-path ellipsis q-mr-sm">
+              {{ captureFolderPath }}
+              <q-tooltip>{{ captureFolderPath }}</q-tooltip>
+            </div>
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              icon="content_copy"
+              color="primary"
+              @click="copyCaptureFolderPath"
+            >
+              <q-tooltip>Copy folder path to clipboard</q-tooltip>
+            </q-btn>
+          </div>
+        </q-card-section>
+      </q-card>
+
       <!-- Bug Card List -->
       <div class="bug-list-section q-mb-md">
         <div class="section-header q-mb-sm">
@@ -318,7 +354,7 @@ import { useQuasar } from 'quasar'
 import { useSessionStore } from '@/stores/session'
 import { useBugStore } from '@/stores/bug'
 import SessionNotepad from '@/components/SessionNotepad.vue'
-import { getBugCaptures } from '@/api/tauri'
+import { getBugCaptures, getCaptureFolderPath } from '@/api/tauri'
 import type { Bug as BackendBug } from '@/types/backend'
 
 const router = useRouter()
@@ -336,6 +372,7 @@ const showFirstRunWizard = inject<Ref<boolean>>('showFirstRunWizard', ref(false)
 // Local state
 const notepadExpanded = ref(false)
 const sessionDuration = ref('00:00')
+const captureFolderPath = ref<string>('')
 const bugCaptureCounts = ref<Map<string, { screenshots: number; videos: number; thumbnail: string | null }>>(new Map())
 
 let durationInterval: number | null = null
@@ -550,6 +587,39 @@ async function handleResumeCapture(bug: BackendBug) {
   }
 }
 
+async function loadCaptureFolderPath() {
+  if (!activeSession.value?.folder_path) {
+    captureFolderPath.value = ''
+    return
+  }
+  try {
+    captureFolderPath.value = await getCaptureFolderPath(activeSession.value.folder_path)
+  } catch {
+    captureFolderPath.value = ''
+  }
+}
+
+async function copyCaptureFolderPath() {
+  if (!captureFolderPath.value) return
+  try {
+    await navigator.clipboard.writeText(captureFolderPath.value)
+    $q.notify({
+      type: 'positive',
+      icon: 'content_copy',
+      message: 'Folder path copied to clipboard',
+      position: 'top',
+      timeout: 2000,
+    })
+  } catch {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to copy to clipboard',
+      position: 'bottom-right',
+      timeout: 3000,
+    })
+  }
+}
+
 async function loadSessionBugs() {
   if (!activeSession.value) {
     return
@@ -572,8 +642,8 @@ async function loadSessionBugs() {
 
 // Lifecycle
 onMounted(async () => {
-  // Load bugs for the active session
-  await loadSessionBugs()
+  // Load bugs and capture folder path for the active session
+  await Promise.all([loadSessionBugs(), loadCaptureFolderPath()])
 
   // Start duration timer
   updateSessionDuration()
@@ -595,7 +665,7 @@ watch(
   () => activeSession.value,
   async (newSession) => {
     if (newSession) {
-      await loadSessionBugs()
+      await Promise.all([loadSessionBugs(), loadCaptureFolderPath()])
     }
   }
 )
@@ -710,6 +780,22 @@ function handleDismissUnsortedDialog() {
   background: white;
   border-radius: 8px;
   animation: fadeIn 0.3s ease-in;
+}
+
+.capture-folder-card {
+  background: white;
+  border-radius: 8px;
+  animation: fadeIn 0.3s ease-in;
+}
+
+.capture-folder-path {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #444;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bug-list-section {

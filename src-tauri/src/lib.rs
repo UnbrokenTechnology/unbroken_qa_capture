@@ -37,11 +37,8 @@ static TRAY_ICON: Mutex<Option<TrayIcon>> = Mutex::new(None);
 // Global ticketing integration
 static TICKETING_INTEGRATION: Mutex<Option<Arc<dyn TicketingIntegration>>> = Mutex::new(None);
 
-// Global capture bridge (platform-specific screenshot/file-watcher implementation)
+// Global capture bridge (platform-specific screenshot implementation)
 static CAPTURE_BRIDGE: Mutex<Option<Box<dyn platform::CaptureBridge>>> = Mutex::new(None);
-
-// Active file watcher handle (None when no session is active)
-static ACTIVE_WATCHER: Mutex<Option<platform::WatcherHandle>> = Mutex::new(None);
 
 // Tauri event emitter implementation
 struct TauriEventEmitter {
@@ -332,6 +329,14 @@ async fn open_session_folder(
         .map_err(|e| format!("Failed to open session folder: {}", e))?;
 
     Ok(())
+}
+
+#[tauri::command]
+fn get_capture_folder_path(session_folder_path: String) -> Result<String, String> {
+    use std::path::Path;
+
+    let captures_path = Path::new(&session_folder_path).join("_captures");
+    Ok(captures_path.to_string_lossy().to_string())
 }
 
 /// Load the embedded tray icon PNG for the given state.
@@ -629,7 +634,8 @@ async fn open_session_notes_window(app: tauri::AppHandle) -> Result<(), String> 
 
 /// Determine capture type and generate PRD-compliant file name.
 /// Screenshots: capture-{NNN}.png, Videos: recording-{NNN}.mp4 (or .webm/.mkv).
-fn make_capture_filename(source_path: &std::path::Path, capture_number: u32) -> (String, database::CaptureType) {
+#[allow(dead_code)]
+pub(crate) fn make_capture_filename(source_path: &std::path::Path, capture_number: u32) -> (String, database::CaptureType) {
     use database::CaptureType;
     let extension = source_path
         .extension()
@@ -649,7 +655,8 @@ fn make_capture_filename(source_path: &std::path::Path, capture_number: u32) -> 
 }
 
 /// Count existing captures in a directory to determine the next sequential number.
-fn next_capture_number(dir: &std::path::Path) -> u32 {
+#[allow(dead_code)]
+pub(crate) fn next_capture_number(dir: &std::path::Path) -> u32 {
     let count = std::fs::read_dir(dir)
         .map(|entries| {
             entries
@@ -665,313 +672,13 @@ fn next_capture_number(dir: &std::path::Path) -> u32 {
     (count as u32) + 1
 }
 
-/// Copy a file detected with no active bug into the session's _unsorted/ directory,
-/// rename it per PRD conventions (capture-NNN.png / recording-NNN.mp4),
-/// create a Capture record with bug_id=None, and emit a capture:file-detected event.
-fn route_to_unsorted(
-    app_handle: &AppHandle,
-    file_path: &std::path::Path,
-    session_folder: &str,
-    session_id: &str,
-    file_size: u64,
-    _is_video: bool,
-) {
-    use database::{Database, CaptureOps, CaptureRepository, Capture};
-    use uuid::Uuid;
-    use chrono::Utc;
-
-    let unsorted_dir = std::path::Path::new(session_folder).join("_unsorted");
-
-    // Ensure _unsorted directory exists (may have been deleted by the OS or tests)
-    if let Err(e) = std::fs::create_dir_all(&unsorted_dir) {
-        eprintln!("Warning: Failed to create _unsorted directory: {}", e);
-        return;
-    }
-
-    // Generate PRD-compliant file name
-    let capture_num = next_capture_number(&unsorted_dir);
-    let (file_name, capture_type) = make_capture_filename(file_path, capture_num);
-
-    // Destination path in _unsorted/ with new name
-    let dest_path = unsorted_dir.join(&file_name);
-
-    // Copy (not move) so the original location is preserved if needed
-    if let Err(e) = std::fs::copy(file_path, &dest_path) {
-        eprintln!("Warning: Failed to copy file to _unsorted/: {}", e);
-        return;
-    }
-
-    // Get DB path
-    let db_path = app_handle.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    }).join("qa_capture.db");
-
-    let db = match Database::open(&db_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Warning: Failed to open database for unsorted capture: {}", e);
-            return;
-        }
-    };
-
-    let repo = CaptureRepository::new(db.connection());
-    let capture_id = Uuid::new_v4().to_string();
-    let now = Utc::now().to_rfc3339();
-
-    let capture = Capture {
-        id: capture_id.clone(),
-        bug_id: None,
-        session_id: session_id.to_string(),
-        file_name: file_name.clone(),
-        file_path: dest_path.to_string_lossy().to_string(),
-        file_type: capture_type,
-        annotated_path: None,
-        file_size_bytes: Some(file_size as i64),
-        is_console_capture: false,
-        parsed_content: None,
-        created_at: now,
-    };
-
-    if let Err(e) = repo.create(&capture) {
-        eprintln!("Warning: Failed to create unsorted capture record: {}", e);
-        return;
-    }
-
-    // Emit event so the frontend can update the Unsorted Captures section
-    let _ = app_handle.emit("capture:file-detected", serde_json::json!({
-        "filePath": dest_path.to_string_lossy().to_string(),
-        "captureId": capture_id,
-        "sessionId": session_id,
-        "bugId": null,
-        "type": capture.file_type.as_str(),
-    }));
-}
-
-/// Copy a file detected while a bug is active into the bug's folder,
-/// rename it per PRD conventions (capture-NNN.png / recording-NNN.mp4),
-/// create a Capture record with bug_id set, and emit a capture:file-detected event.
-fn route_to_bug(
-    app_handle: &AppHandle,
-    file_path: &std::path::Path,
-    session_id: &str,
-    bug_id: &str,
-    bug_folder: &str,
-    file_size: u64,
-) {
-    use database::{Database, CaptureOps, CaptureRepository, Capture};
-    use uuid::Uuid;
-    use chrono::Utc;
-
-    let bug_dir = std::path::Path::new(bug_folder);
-
-    // Ensure bug folder exists
-    if let Err(e) = std::fs::create_dir_all(bug_dir) {
-        eprintln!("Warning: Failed to create bug directory: {}", e);
-        return;
-    }
-
-    // Generate PRD-compliant file name
-    let capture_num = next_capture_number(bug_dir);
-    let (file_name, capture_type) = make_capture_filename(file_path, capture_num);
-
-    let dest_path = bug_dir.join(&file_name);
-
-    // Copy file to bug folder with new name
-    if let Err(e) = std::fs::copy(file_path, &dest_path) {
-        eprintln!("Warning: Failed to copy file to bug folder: {}", e);
-        return;
-    }
-
-    // Get DB path
-    let db_path = app_handle.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    }).join("qa_capture.db");
-
-    let db = match Database::open(&db_path) {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("Warning: Failed to open database for bug capture: {}", e);
-            return;
-        }
-    };
-
-    let repo = CaptureRepository::new(db.connection());
-    let capture_id = Uuid::new_v4().to_string();
-    let now = Utc::now().to_rfc3339();
-
-    let capture = Capture {
-        id: capture_id.clone(),
-        bug_id: Some(bug_id.to_string()),
-        session_id: session_id.to_string(),
-        file_name: file_name.clone(),
-        file_path: dest_path.to_string_lossy().to_string(),
-        file_type: capture_type,
-        annotated_path: None,
-        file_size_bytes: Some(file_size as i64),
-        is_console_capture: false,
-        parsed_content: None,
-        created_at: now,
-    };
-
-    if let Err(e) = repo.create(&capture) {
-        eprintln!("Warning: Failed to create bug capture record: {}", e);
-        return;
-    }
-
-    // Emit event so the frontend can update the Bug Captures section
-    let _ = app_handle.emit("capture:file-detected", serde_json::json!({
-        "filePath": dest_path.to_string_lossy().to_string(),
-        "captureId": capture_id,
-        "sessionId": session_id,
-        "bugId": bug_id,
-        "type": capture.file_type.as_str(),
-    }));
-}
-
-/// Returns the folder to watch for new screenshots.
-///
-/// Reads the `screenshot_watch_folder` setting from the database. If not set, falls back to
-/// `%USERPROFILE%\Pictures\Screenshots` on Windows (the Snipping Tool default).
-fn get_screenshot_watch_folder(app: &tauri::AppHandle) -> std::path::PathBuf {
-    use database::{Database, SettingsRepository, SettingsOps};
-
-    // Try to read from settings DB
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap_or_default().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-    if let Ok(db) = Database::open(&db_path) {
-        let repo = SettingsRepository::new(db.connection());
-        if let Ok(Some(value)) = repo.get("screenshot_watch_folder") {
-            let path = std::path::PathBuf::from(&value);
-            if path.is_dir() {
-                return path;
-            }
-        }
-    }
-
-    // Fall back to %USERPROFILE%\Pictures\Screenshots (Windows Snipping Tool default)
-    if let Ok(userprofile) = std::env::var("USERPROFILE") {
-        let default_path = std::path::PathBuf::from(userprofile)
-            .join("Pictures")
-            .join("Screenshots");
-        if default_path.is_dir() {
-            return default_path;
-        }
-        // Return the path even if it doesn't exist yet; watcher will fail gracefully
-        return default_path;
-    }
-
-    // Last resort: use temp dir
-    std::env::temp_dir()
-}
-
 #[tauri::command]
-fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
-    use std::sync::mpsc;
-
+fn start_session() -> Result<database::Session, String> {
     let manager_guard = SESSION_MANAGER.lock().unwrap();
     let manager = manager_guard
         .as_ref()
         .ok_or("Session manager not initialized")?;
-    let session = manager.start_session()?;
-    let folder_path = session.folder_path.clone();
-    drop(manager_guard); // Release lock before acquiring CAPTURE_BRIDGE lock
-
-    // Determine which folder to watch for new screenshots.
-    // We watch the system screenshot folder (Watch+Copy model) — no registry modification needed.
-    // When a new image appears it is copied into the active bug's screenshots/ folder or _unsorted/.
-    let watch_folder = get_screenshot_watch_folder(&app);
-
-    let (tx, rx) = mpsc::channel();
-    {
-        let bridge_guard = CAPTURE_BRIDGE.lock().unwrap();
-        if let Some(bridge) = bridge_guard.as_ref() {
-            // Stop any existing watcher first
-            {
-                let mut active = ACTIVE_WATCHER.lock().unwrap();
-                if let Some(old_handle) = active.take() {
-                    let _ = bridge.stop_file_watcher(old_handle);
-                }
-            }
-
-            match bridge.start_file_watcher(&watch_folder, tx) {
-                Ok(handle) => {
-                    *ACTIVE_WATCHER.lock().unwrap() = Some(handle);
-
-                    // Spawn background thread to copy new screenshots/videos from the system
-                    // screenshot folder into the active bug folder or _unsorted/.
-                    let app_handle = app.clone();
-                    let session_folder = folder_path.clone();
-                    std::thread::spawn(move || {
-                        while let Ok(event) = rx.recv() {
-                            match event {
-                                platform::CaptureEvent::ScreenshotDetected { file_path, detected_at: _, file_size } => {
-                                    let (active_bug_id, active_session_id) = {
-                                        let guard = SESSION_MANAGER.lock().ok();
-                                        let bug_id = guard.as_ref().and_then(|m| m.as_ref().and_then(|sm| sm.get_active_bug_id()));
-                                        let session_id = guard.as_ref().and_then(|m| m.as_ref().and_then(|sm| sm.get_active_session_id()));
-                                        (bug_id, session_id)
-                                    };
-
-                                    if let Some(bug_id) = active_bug_id {
-                                        if let Some(session_id) = active_session_id {
-                                            // Look up bug folder from DB
-                                            let db_path = app_handle.path().app_data_dir()
-                                                .unwrap_or_else(|_| std::env::current_dir().unwrap().join("data"))
-                                                .join("qa_capture.db");
-                                            if let Ok(db) = database::Database::open(&db_path) {
-                                                use database::{BugOps, BugRepository};
-                                                let repo = BugRepository::new(db.connection());
-                                                if let Ok(Some(bug)) = repo.get(&bug_id) {
-                                                    route_to_bug(&app_handle, &file_path, &session_id, &bug_id, &bug.folder_path, file_size);
-                                                }
-                                            }
-                                        }
-                                    } else if let Some(session_id) = active_session_id {
-                                        route_to_unsorted(&app_handle, &file_path, &session_folder, &session_id, file_size, false);
-                                    }
-                                }
-                                platform::CaptureEvent::VideoDetected { file_path, detected_at: _, file_size } => {
-                                    let (active_bug_id, active_session_id) = {
-                                        let guard = SESSION_MANAGER.lock().ok();
-                                        let bug_id = guard.as_ref().and_then(|m| m.as_ref().and_then(|sm| sm.get_active_bug_id()));
-                                        let session_id = guard.as_ref().and_then(|m| m.as_ref().and_then(|sm| sm.get_active_session_id()));
-                                        (bug_id, session_id)
-                                    };
-
-                                    if let Some(bug_id) = active_bug_id {
-                                        if let Some(session_id) = active_session_id {
-                                            let db_path = app_handle.path().app_data_dir()
-                                                .unwrap_or_else(|_| std::env::current_dir().unwrap().join("data"))
-                                                .join("qa_capture.db");
-                                            if let Ok(db) = database::Database::open(&db_path) {
-                                                use database::{BugOps, BugRepository};
-                                                let repo = BugRepository::new(db.connection());
-                                                if let Ok(Some(bug)) = repo.get(&bug_id) {
-                                                    route_to_bug(&app_handle, &file_path, &session_id, &bug_id, &bug.folder_path, file_size);
-                                                }
-                                            }
-                                        }
-                                    } else if let Some(session_id) = active_session_id {
-                                        route_to_unsorted(&app_handle, &file_path, &session_folder, &session_id, file_size, true);
-                                    }
-                                }
-                                platform::CaptureEvent::WatcherError { message } => {
-                                    eprintln!("File watcher error: {}", message);
-                                }
-                            }
-                        }
-                    });
-                }
-                Err(e) => {
-                    eprintln!("Warning: Failed to start file watcher for screenshot folder '{}': {}", watch_folder.display(), e);
-                }
-            }
-        }
-    }
-
-    Ok(session)
+    manager.start_session()
 }
 
 #[tauri::command]
@@ -981,23 +688,7 @@ async fn end_session(session_id: String) -> Result<(), String> {
         let manager = manager_guard
             .as_ref()
             .ok_or("Session manager not initialized")?;
-        let result = manager.end_session(&session_id);
-        drop(manager_guard); // Release lock before acquiring CAPTURE_BRIDGE lock
-
-        // Stop the active file watcher when the session ends
-        {
-            let bridge_guard = CAPTURE_BRIDGE.lock().unwrap();
-            if let Some(bridge) = bridge_guard.as_ref() {
-                let mut active = ACTIVE_WATCHER.lock().unwrap();
-                if let Some(handle) = active.take() {
-                    if let Err(e) = bridge.stop_file_watcher(handle) {
-                        eprintln!("Warning: Failed to stop file watcher: {}", e);
-                    }
-                }
-            }
-        }
-
-        result
+        manager.end_session(&session_id)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -1824,85 +1515,6 @@ fn trigger_screenshot() -> Result<(), String> {
     bridge.trigger_screenshot().map_err(|e| e.to_string())
 }
 
-/// Start watching the given folder for new screenshot/video files.
-/// Emits `screenshot:captured` events to the frontend when files are detected.
-/// Automatically stops any previously running watcher before starting a new one.
-#[tauri::command]
-fn start_file_watcher(folder_path: String, app: tauri::AppHandle) -> Result<(), String> {
-    use std::sync::mpsc;
-    use std::path::Path;
-
-    let folder = Path::new(&folder_path);
-
-    let (tx, rx) = mpsc::channel();
-
-    let bridge_guard = CAPTURE_BRIDGE.lock().unwrap();
-    let bridge = bridge_guard
-        .as_ref()
-        .ok_or("Capture bridge not initialized")?;
-
-    // Stop any existing watcher first
-    {
-        let mut active = ACTIVE_WATCHER.lock().unwrap();
-        if let Some(old_handle) = active.take() {
-            let _ = bridge.stop_file_watcher(old_handle);
-        }
-    }
-
-    let handle = bridge.start_file_watcher(folder, tx).map_err(|e| e.to_string())?;
-
-    {
-        let mut active = ACTIVE_WATCHER.lock().unwrap();
-        *active = Some(handle);
-    }
-
-    // Spawn a background thread to forward capture events to the frontend
-    let app_handle = app.clone();
-    std::thread::spawn(move || {
-        while let Ok(event) = rx.recv() {
-            match event {
-                platform::CaptureEvent::ScreenshotDetected { file_path, detected_at, .. } => {
-                    let path_str = file_path.to_string_lossy().to_string();
-                    let _ = app_handle.emit("screenshot:captured", serde_json::json!({
-                        "filePath": path_str,
-                        "timestamp": detected_at,
-                    }));
-                }
-                platform::CaptureEvent::VideoDetected { file_path, detected_at, .. } => {
-                    let path_str = file_path.to_string_lossy().to_string();
-                    let _ = app_handle.emit("capture:file-detected", serde_json::json!({
-                        "filePath": path_str,
-                        "timestamp": detected_at,
-                        "type": "video",
-                    }));
-                }
-                platform::CaptureEvent::WatcherError { message } => {
-                    eprintln!("File watcher error: {}", message);
-                }
-            }
-        }
-    });
-
-    Ok(())
-}
-
-/// Stop the active file watcher (if any).
-#[tauri::command]
-fn stop_file_watcher() -> Result<(), String> {
-    let bridge_guard = CAPTURE_BRIDGE.lock().unwrap();
-    let bridge = bridge_guard
-        .as_ref()
-        .ok_or("Capture bridge not initialized")?;
-
-    let mut active = ACTIVE_WATCHER.lock().unwrap();
-    if let Some(handle) = active.take() {
-        bridge.stop_file_watcher(handle).map_err(|e| e.to_string())
-    } else {
-        // No active watcher — not an error
-        Ok(())
-    }
-}
-
 // ─── Annotation Window Commands ──────────────────────────────────────
 
 #[tauri::command]
@@ -2281,6 +1893,7 @@ pub fn run() {
             copy_bug_to_clipboard,
             open_bug_folder,
             open_session_folder,
+            get_capture_folder_path,
             update_tray_icon,
             update_tray_menu,
             update_tray_tooltip,
@@ -2337,9 +1950,7 @@ pub fn run() {
             emit_screenshot_captured,
             open_annotation_window,
             save_annotated_image,
-            trigger_screenshot,
-            start_file_watcher,
-            stop_file_watcher
+            trigger_screenshot
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
