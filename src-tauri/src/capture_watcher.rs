@@ -346,3 +346,122 @@ fn record_and_emit(app: &AppHandle, ctx: RecordCtx<'_>) {
         }),
     );
 }
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── is_capture_file ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_is_capture_file_accepts_image_extensions() {
+        let dir = std::env::temp_dir().join(format!("cw_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        for ext in &["png", "jpg", "jpeg", "gif", "bmp", "webp"] {
+            let file = dir.join(format!("screenshot.{}", ext));
+            std::fs::write(&file, b"data").unwrap();
+            assert!(is_capture_file(&file), "expected {} to be accepted", ext);
+        }
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_is_capture_file_accepts_video_extensions() {
+        let dir = std::env::temp_dir().join(format!("cw_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        for ext in &["mp4", "webm", "mkv"] {
+            let file = dir.join(format!("recording.{}", ext));
+            std::fs::write(&file, b"data").unwrap();
+            assert!(is_capture_file(&file), "expected {} to be accepted", ext);
+        }
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_is_capture_file_rejects_unsupported_extensions() {
+        let dir = std::env::temp_dir().join(format!("cw_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        for ext in &["txt", "md", "tmp", "part", "pdf", "exe"] {
+            let file = dir.join(format!("file.{}", ext));
+            std::fs::write(&file, b"data").unwrap();
+            assert!(!is_capture_file(&file), "expected {} to be rejected", ext);
+        }
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_is_capture_file_rejects_directories() {
+        let dir = std::env::temp_dir().join(format!("cw_test_{}", uuid::Uuid::new_v4()));
+        // The path itself is a directory — should be rejected even if it ends in .png
+        let png_dir = dir.join("screenshot.png");
+        std::fs::create_dir_all(&png_dir).unwrap();
+
+        assert!(!is_capture_file(&png_dir));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_is_capture_file_rejects_nonexistent_path() {
+        let path = std::path::Path::new("/nonexistent/path/screenshot.png");
+        assert!(!is_capture_file(path));
+    }
+
+    #[test]
+    fn test_is_capture_file_case_insensitive() {
+        let dir = std::env::temp_dir().join(format!("cw_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Extensions are lowercased before matching
+        let upper = dir.join("SCREENSHOT.PNG");
+        std::fs::write(&upper, b"data").unwrap();
+        assert!(is_capture_file(&upper));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ── move_file ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_move_file_basic() {
+        let dir = std::env::temp_dir().join(format!("cw_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let src = dir.join("src.png");
+        let dest = dir.join("dest.png");
+        std::fs::write(&src, b"hello").unwrap();
+
+        move_file(&src, &dest).unwrap();
+
+        assert!(!src.exists(), "source should be gone after move");
+        assert!(dest.exists(), "destination should exist after move");
+        assert_eq!(std::fs::read(&dest).unwrap(), b"hello");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_move_file_preserves_content() {
+        let dir = std::env::temp_dir().join(format!("cw_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let content = b"PNG\x89\x50\x4E\x47 fake image bytes";
+        let src = dir.join("capture.png");
+        let dest = dir.join("capture-001.png");
+        std::fs::write(&src, content).unwrap();
+
+        move_file(&src, &dest).unwrap();
+
+        assert_eq!(std::fs::read(&dest).unwrap(), content);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}
