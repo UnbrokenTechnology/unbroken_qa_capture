@@ -31,11 +31,6 @@ pub enum PlatformError {
         message: String,
     },
 
-    /// File watcher operation failed.
-    WatcherError {
-        message: String,
-    },
-
     /// Screenshot trigger operation failed.
     ScreenshotTriggerError {
         method: String,
@@ -66,9 +61,6 @@ impl fmt::Display for PlatformError {
             PlatformError::FileSystemError { path, operation, message } => {
                 write!(f, "File system {} failed for path '{}': {}", operation, path, message)
             }
-            PlatformError::WatcherError { message } => {
-                write!(f, "File watcher error: {}", message)
-            }
             PlatformError::ScreenshotTriggerError { method, message } => {
                 write!(f, "Screenshot trigger '{}' failed: {}", method, message)
             }
@@ -89,14 +81,6 @@ impl From<std::io::Error> for PlatformError {
         PlatformError::FileSystemError {
             path: String::new(),
             operation: "io".to_string(),
-            message: err.to_string(),
-        }
-    }
-}
-
-impl From<notify::Error> for PlatformError {
-    fn from(err: notify::Error) -> Self {
-        PlatformError::WatcherError {
             message: err.to_string(),
         }
     }
