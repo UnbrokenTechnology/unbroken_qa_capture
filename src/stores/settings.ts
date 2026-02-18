@@ -23,6 +23,7 @@ export const SETTINGS_KEYS = {
   THEME: 'theme',
   ANNOTATION_SAVE_MODE: 'annotation_save_mode',
   AUTO_OPEN_ANNOTATION: 'auto_open_annotation',
+  SHOW_STATUS_WIDGET: 'show_status_widget',
 } as const
 
 export type SettingsKey = typeof SETTINGS_KEYS[keyof typeof SETTINGS_KEYS]
@@ -47,6 +48,7 @@ const DEFAULT_SETTINGS: Record<SettingsKey, string> = {
   [SETTINGS_KEYS.THEME]: 'light',
   [SETTINGS_KEYS.ANNOTATION_SAVE_MODE]: 'alongside',
   [SETTINGS_KEYS.AUTO_OPEN_ANNOTATION]: 'true',
+  [SETTINGS_KEYS.SHOW_STATUS_WIDGET]: 'false',
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -84,6 +86,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const theme = computed(() => settings.value[SETTINGS_KEYS.THEME])
   const annotationSaveMode = computed(() => settings.value[SETTINGS_KEYS.ANNOTATION_SAVE_MODE] as 'alongside' | 'overwrite')
   const autoOpenAnnotation = computed(() => settings.value[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION] === 'true')
+  const showStatusWidget = computed(() => settings.value[SETTINGS_KEYS.SHOW_STATUS_WIDGET] === 'true')
 
   // ============================================================================
   // Actions - Backend Operations
@@ -220,6 +223,7 @@ export const useSettingsStore = defineStore('settings', () => {
     theme,
     annotationSaveMode,
     autoOpenAnnotation,
+    showStatusWidget,
 
     // Actions - Backend
     loadSetting,

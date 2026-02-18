@@ -94,6 +94,17 @@
               label="Minimize to tray on close"
               color="primary"
             />
+
+            <q-toggle
+              v-model="localSettings.show_status_widget"
+              label="Show floating status widget during sessions"
+              color="primary"
+            >
+              <q-tooltip>
+                Displays a small overlay with session time, bug count, and current state.
+                Can also be toggled from the toolbar button.
+              </q-tooltip>
+            </q-toggle>
           </div>
         </q-card-section>
       </q-card>
@@ -663,6 +674,7 @@ const localSettings = ref({
   default_save_path: '',
   launch_on_startup: false,
   minimize_to_tray: true,
+  show_status_widget: false,
 
   // Hotkeys
   hotkey_toggle_session: 'Ctrl+Alt+S',
@@ -995,6 +1007,7 @@ async function loadSettings(): Promise<void> {
     default_save_path: settingsStore.getSetting('default_save_path', ''),
     launch_on_startup: settingsStore.getSetting('launch_on_startup', 'false') === 'true',
     minimize_to_tray: settingsStore.getSetting('minimize_to_tray', 'true') === 'true',
+    show_status_widget: settingsStore.getSetting('show_status_widget', 'false') === 'true',
 
     // Hotkeys - load from backend HotkeyConfig if available
     hotkey_toggle_session: hotkeyConfig?.shortcuts?.toggle_session ?? 'Ctrl+Alt+S',
@@ -1051,6 +1064,7 @@ async function saveSettings(): Promise<void> {
       default_save_path: localSettings.value.default_save_path,
       launch_on_startup: localSettings.value.launch_on_startup.toString(),
       minimize_to_tray: localSettings.value.minimize_to_tray.toString(),
+      show_status_widget: localSettings.value.show_status_widget.toString(),
 
       // Annotation
       annotation_auto_open: localSettings.value.annotation_auto_open.toString(),

@@ -215,6 +215,21 @@
                 </template>
                 You can customize these hotkeys later in the Settings page.
               </q-banner>
+
+              <q-separator class="q-my-lg" />
+
+              <h6 class="q-mt-none q-mb-md">
+                Interface Preferences
+              </h6>
+              <q-toggle
+                v-model="showStatusWidgetEnabled"
+                label="Show floating status widget during sessions"
+                color="primary"
+              />
+              <p class="text-caption text-grey-7 q-mt-xs q-mb-none">
+                Displays a small overlay with session time, bug count, and current state.
+                You can toggle this at any time from the toolbar or Settings.
+              </p>
             </div>
           </q-step>
 
@@ -499,6 +514,9 @@ const linearSetup = ref({
   teamId: '',
 })
 
+// Step 3: Status widget preference
+const showStatusWidgetEnabled = ref(false)
+
 // Step 5: Claude CLI
 const claudeChecking = ref(false)
 const claudeStatus = ref<string>('NotInstalled')
@@ -626,6 +644,7 @@ async function completeSetup() {
     // Note: Hotkeys are read-only in wizard - backend uses hardcoded defaults from hotkey.rs
     // User can customize them later in Settings which will update the backend HotkeyConfig
     await settingsStore.saveSetting(SETTINGS_KEYS.AI_ENABLED, aiEnabled.value.toString())
+    await settingsStore.saveSetting(SETTINGS_KEYS.SHOW_STATUS_WIDGET, showStatusWidgetEnabled.value.toString())
 
     // Save Linear settings if enabled
     if (linearSetup.value.enabled) {
