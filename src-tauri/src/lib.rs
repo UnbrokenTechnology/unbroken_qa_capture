@@ -2,7 +2,6 @@ mod template;
 pub mod database;
 pub mod platform;
 pub mod session_manager;
-mod capture_watcher;
 mod session_summary;
 mod session_json;
 mod hotkey;
@@ -40,11 +39,6 @@ static TICKETING_INTEGRATION: Mutex<Option<Arc<dyn TicketingIntegration>>> = Mut
 
 // Global capture bridge (platform-specific screenshot implementation)
 static CAPTURE_BRIDGE: Mutex<Option<Box<dyn platform::CaptureBridge>>> = Mutex::new(None);
-
-// Global capture watcher — watches the session's _captures/ folder and routes
-// new files to the active bug's folder (or _unsorted/ if no bug is active).
-// Dropped (and thus stopped) when the session ends.
-static CAPTURE_WATCHER: Mutex<Option<capture_watcher::CaptureWatcher>> = Mutex::new(None);
 
 // Tauri event emitter implementation
 struct TauriEventEmitter {
@@ -640,6 +634,7 @@ async fn open_session_notes_window(app: tauri::AppHandle) -> Result<(), String> 
 
 /// Determine capture type and generate PRD-compliant file name.
 /// Screenshots: capture-{NNN}.png, Videos: recording-{NNN}.mp4 (or .webm/.mkv).
+#[allow(dead_code)]
 pub(crate) fn make_capture_filename(source_path: &std::path::Path, capture_number: u32) -> (String, database::CaptureType) {
     use database::CaptureType;
     let extension = source_path
@@ -660,6 +655,7 @@ pub(crate) fn make_capture_filename(source_path: &std::path::Path, capture_numbe
 }
 
 /// Count existing captures in a directory to determine the next sequential number.
+#[allow(dead_code)]
 pub(crate) fn next_capture_number(dir: &std::path::Path) -> u32 {
     let count = std::fs::read_dir(dir)
         .map(|entries| {
@@ -677,51 +673,16 @@ pub(crate) fn next_capture_number(dir: &std::path::Path) -> u32 {
 }
 
 #[tauri::command]
-fn start_session(app: tauri::AppHandle) -> Result<database::Session, String> {
-    let session = {
-        let manager_guard = SESSION_MANAGER.lock().unwrap();
-        let manager = manager_guard
-            .as_ref()
-            .ok_or("Session manager not initialized")?;
-        let s = manager.start_session()?;
-
-        // Determine the db_path and active_bug Arc while still holding the lock
-        let db_path = manager.db_path.clone();
-        let active_bug = manager.active_bug_arc();
-        (s, db_path, active_bug)
-    };
-
-    let (session, db_path, active_bug) = session;
-
-    // Start the capture watcher on the new session's _captures/ folder
-    let captures_dir = std::path::PathBuf::from(&session.folder_path).join("_captures");
-    match capture_watcher::CaptureWatcher::start(
-        app,
-        captures_dir,
-        session.id.clone(),
-        session.folder_path.clone(),
-        active_bug,
-        db_path,
-    ) {
-        Ok(watcher) => {
-            *CAPTURE_WATCHER.lock().unwrap() = Some(watcher);
-        }
-        Err(e) => {
-            // Log but don't fail session start — capturing still works, just
-            // without automatic routing from _captures/.
-            eprintln!("Warning: Failed to start capture watcher: {}", e);
-        }
-    }
-
-    Ok(session)
+fn start_session() -> Result<database::Session, String> {
+    let manager_guard = SESSION_MANAGER.lock().unwrap();
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Session manager not initialized")?;
+    manager.start_session()
 }
 
 #[tauri::command]
 async fn end_session(session_id: String) -> Result<(), String> {
-    // Stop the capture watcher before ending the session so no stray events
-    // fire after the session folder is considered closed.
-    *CAPTURE_WATCHER.lock().unwrap() = None;
-
     tauri::async_runtime::spawn_blocking(move || {
         let manager_guard = SESSION_MANAGER.lock().unwrap();
         let manager = manager_guard
