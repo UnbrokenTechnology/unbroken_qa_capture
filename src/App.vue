@@ -73,7 +73,6 @@
       :visible="showQuickNotepad"
       @close="showQuickNotepad = false"
     />
-
   </q-layout>
 </template>
 
