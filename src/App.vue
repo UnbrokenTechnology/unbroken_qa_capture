@@ -184,7 +184,28 @@ onMounted(async () => {
         .onOk(async () => {
           try {
             await sessionStore.resumeSession(crashedSession.id)
-            await trayStore.setActive()
+
+            // Recover activeBug after crash/restart: load the session's bugs and check
+            // if any were still in 'capturing' state. Pinia state is ephemeral but the
+            // Rust backend restores active_bug in resume_session from DB.
+            if (bugStore.activeBug === null) {
+              try {
+                const { getBugsBySession } = await import('./api/tauri')
+                const bugs = await getBugsBySession(crashedSession.id)
+                const capturingBug = bugs.find(b => b.status === 'capturing')
+                if (capturingBug) {
+                  bugStore.setActiveBug(capturingBug)
+                  await trayStore.setBugCapture(capturingBug.display_id)
+                } else {
+                  await trayStore.setActive()
+                }
+              } catch {
+                await trayStore.setActive()
+              }
+            } else {
+              await trayStore.setActive()
+            }
+
             router.push({ name: 'active-session' })
           } catch (err) {
             console.error('Failed to resume session:', err)

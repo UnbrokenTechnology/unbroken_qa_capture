@@ -199,6 +199,29 @@ impl SessionManager {
         // Update active session pointer
         *self.active_session.lock().unwrap() = Some(session_id.to_string());
 
+        // Restore active_bug pointer: if a bug was in 'capturing' state when the app
+        // crashed/restarted, its status remains 'capturing' in the DB. Restore the
+        // in-memory active_bug so the capture watcher and frontend can resume correctly.
+        // Any additional stale 'capturing' bugs are auto-completed (only one should be active).
+        let bug_repo = BugRepository::new(&conn);
+        let bugs = bug_repo
+            .list_by_session(session_id)
+            .map_err(|e| format!("Failed to list bugs for session: {}", e))?;
+        let capturing_bugs: Vec<Bug> = bugs.into_iter().filter(|b| b.status == BugStatus::Capturing).collect();
+        if let Some(active) = capturing_bugs.first() {
+            *self.active_bug.lock().unwrap() = Some(active.id.clone());
+            // Auto-complete any other stale capturing bugs
+            for stale in capturing_bugs.iter().skip(1) {
+                let mut fixed = stale.clone();
+                fixed.status = BugStatus::Captured;
+                if let Err(e) = bug_repo.update(&fixed) {
+                    eprintln!("Warning: Failed to auto-complete stale bug {}: {}", stale.id, e);
+                }
+            }
+        } else {
+            *self.active_bug.lock().unwrap() = None;
+        }
+
         // Emit event
         self.event_emitter.emit(
             "session:resumed",
@@ -632,6 +655,49 @@ mod tests {
         let result = manager.start_bug_capture("nonexistent");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Session not found"));
+    }
+
+    #[test]
+    fn test_resume_session_restores_capturing_bug() {
+        let (manager, _emitter) = create_test_manager();
+
+        let session = manager.start_session().unwrap();
+        let session_id = session.id.clone();
+
+        // Start a bug capture (sets active_bug)
+        let bug = manager.start_bug_capture(&session_id).unwrap();
+        assert_eq!(manager.get_active_bug_id(), Some(bug.id.clone()));
+
+        // Simulate app crash: clear in-memory state without ending the session/bug
+        *manager.active_session.lock().unwrap() = None;
+        *manager.active_bug.lock().unwrap() = None;
+
+        // Bug should still be 'capturing' in the DB — resume session should restore active_bug
+        let resumed = manager.resume_session(&session_id).unwrap();
+        assert_eq!(resumed.status, SessionStatus::Active);
+        assert_eq!(manager.get_active_session_id(), Some(session_id.clone()));
+        // active_bug should be restored from the DB
+        assert_eq!(manager.get_active_bug_id(), Some(bug.id.clone()));
+    }
+
+    #[test]
+    fn test_resume_session_no_capturing_bug_leaves_active_bug_none() {
+        let (manager, _emitter) = create_test_manager();
+
+        let session = manager.start_session().unwrap();
+        let session_id = session.id.clone();
+
+        // Start and end a bug capture before crash
+        let bug = manager.start_bug_capture(&session_id).unwrap();
+        manager.end_bug_capture(&bug.id).unwrap();
+
+        // Simulate app crash
+        *manager.active_session.lock().unwrap() = None;
+        *manager.active_bug.lock().unwrap() = None;
+
+        // Resume — no bug is in 'capturing' state, so active_bug stays None
+        manager.resume_session(&session_id).unwrap();
+        assert_eq!(manager.get_active_bug_id(), None);
     }
 
     #[test]

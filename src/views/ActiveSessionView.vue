@@ -628,6 +628,16 @@ async function loadSessionBugs() {
   try {
     await bugStore.loadBugsBySession(activeSession.value.id)
     await loadBugCaptureCounts(sessionBugs.value)
+
+    // Recover activeBug after a crash/restart: the Rust backend restores active_bug
+    // in resume_session, but Pinia state is ephemeral. If a bug is still in 'capturing'
+    // status and we don't have an activeBug reference, restore it from the loaded list.
+    if (bugStore.activeBug === null) {
+      const capturingBug = sessionBugs.value.find(b => b.status === 'capturing')
+      if (capturingBug) {
+        bugStore.setActiveBug(capturingBug)
+      }
+    }
   } catch (error) {
     console.error('Failed to load session bugs:', error)
     $q.notify({

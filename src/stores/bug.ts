@@ -186,6 +186,15 @@ export const useBugStore = defineStore('bug', () => {
   // Actions - State Management
   // ============================================================================
 
+  /**
+   * Directly set the active bug reference. Used to restore activeBug from the
+   * backend on session load (e.g. after a crash/restart where Pinia state was lost
+   * but the DB still has a bug with status 'capturing').
+   */
+  function setActiveBug(bug: BackendBug | null) {
+    activeBug.value = bug
+  }
+
   function setLastSessionMeetingId(meetingId: string | null) {
     lastSessionMeetingId.value = meetingId
   }
@@ -314,6 +323,7 @@ export const useBugStore = defineStore('bug', () => {
     // Actions - State Management
     clearBugs,
     clearError,
+    setActiveBug,
     setLastSessionMeetingId,
     setLastSessionSoftwareVersion,
     setTagNextScreenshotAsConsole,
