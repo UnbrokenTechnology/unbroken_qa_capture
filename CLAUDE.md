@@ -94,13 +94,22 @@ Key differences from swarm mode:
 
 When ending a manual mode session, write a summary here so the next session can pick up cleanly. Delete the previous session's notes when starting fresh.
 
-**Session 2026-02-19 (session 3):**
+**Session 2026-02-19 (session 4):**
+- **T196 — Flaky platform tests:** Fixed 6 flaky `platform::windows` cargo tests. Root causes: SQLite file locks (tests called `remove_dir_all` while DB connection alive), shared hardcoded temp dir names (now UUID-suffixed), and incorrect test logic in `test_drop_trait_restores_registry`.
+- **Vitest config:** Added `test.exclude` for `.swarm/**` — swarm MCP tool tests (needing `tree-sitter`) were being picked up by main project's vitest. Test count now 582 (was 599 with swarm tests).
+- **Screenshot display fix:** BugDetail.vue, SessionReview.vue, and VideoPlayer.vue were passing raw Windows file paths or `file://` URLs as image/video `src`. All now use `asset://localhost/` URLs which Tauri's asset protocol serves correctly.
+- **Stuck bug capture after restart:** `active_bug` (Rust) and `activeBug` (Pinia) were ephemeral — never restored from DB on restart. Fixed: `resume_session` now restores `active_bug` from DB, auto-completes stale extra capturing bugs; frontend recovers `activeBug` on mount and crash recovery.
+- **T198 created:** Screenshots not associated with bugs during capture — `CaptureRepository::create` never called in production, only in tests. Captures land in `_captures` but no DB record links them to bugs.
+- **T199 created:** Screenshots still not displaying in BugDetail — likely downstream of T198 (no capture records = nothing to show).
+- Checks: vue-tsc clean, cargo clippy clean, cargo test 214/214, vitest 582/582.
+- Remaining open tickets: T152 (human verify), T162 (human verify/proposal), T198 (capture DB records), T199 (screenshot display)
+
+**Session 2026-02-19 (session 3, completed):**
 - **T197 — OAuth-only auth:** Removed Anthropic API key input from Settings UI and backend. AI features now use Claude Code OAuth exclusively (uses Claude subscription, no API token costs). Removed: `set_anthropic_api_key`/`clear_anthropic_api_key` Tauri commands, `TokenSource` enum, API key DB storage, `read_api_key_setting()` helper, API key UI in Settings.vue. Auth is now solely via `~/.claude/.credentials.json`.
 - **Ticket DB cleanup:** Marked 10 stale tickets (T184, T187-T195) as done — they were completed in session 2 but status wasn't updated.
 - **T196 created:** Flaky `cargo test` platform::windows registry_cache file lock race conditions (6 intermittent failures from shared temp dirs). Open for agents.
 - **CLAUDE.md cleanup:** Removed outdated hotkey double-registration bug (fixed in commit 6ea83ce). Added OAuth note.
-- Checks: vue-tsc clean, cargo clippy clean, vitest 599/599. **Remember to run `bash verify.sh`** as the swarm does — it runs all checks in sequence.
-- Remaining open tickets: T152 (human verify), T162 (human verify/proposal), T196 (flaky tests)
+- Checks: vue-tsc clean, cargo clippy clean, vitest 599/599.
 
 **Session 2026-02-19 (session 2, completed):**
 - Completed 10 tickets: T184, T187, T188, T189, T190, T191, T192, T193, T194, T195
