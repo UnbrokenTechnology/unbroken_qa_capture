@@ -432,3 +432,15 @@ export async function getActiveProfileId(): Promise<string | null> {
 export async function setActiveProfileId(profileId: string): Promise<void> {
   await invoke('set_active_profile_id', { profileId })
 }
+
+// ============================================================================
+// Swarm Integration Commands
+// ============================================================================
+
+/**
+ * Create a ticket in the local swarm ticket database (via ticket.py CLI).
+ * Returns the new ticket ID as a string.
+ */
+export async function createSwarmTicket(title: string, description: string): Promise<string> {
+  return invoke<string>('create_swarm_ticket', { title, description })
+}

@@ -1010,6 +1010,33 @@
         </q-card-section>
       </q-card>
 
+      <!-- Swarm Integration Section -->
+      <q-card class="q-mb-md">
+        <q-card-section>
+          <div class="text-h6 q-mb-md">
+            <q-icon
+              name="bug_report"
+              class="q-mr-sm"
+            />
+            Swarm Integration
+          </div>
+
+          <div class="q-gutter-md">
+            <q-input
+              v-model="localSettings.swarm_ticket_db_path"
+              label="Swarm Ticket DB Path"
+              hint="Path to the swarm ticket database used for dogfooding exports (default: .swarm/tickets/tickets.db)"
+              outlined
+              dense
+            >
+              <template #prepend>
+                <q-icon name="storage" />
+              </template>
+            </q-input>
+          </div>
+        </q-card-section>
+      </q-card>
+
       <!-- About Section -->
       <q-card class="q-mb-md">
         <q-card-section>
@@ -1146,6 +1173,9 @@ const localSettings = ref({
   linear_api_key: '',
   linear_team_id: '',
   linear_config_path: '',
+
+  // Swarm Integration
+  swarm_ticket_db_path: '',
 })
 
 // UI state
@@ -1549,6 +1579,9 @@ async function loadSettings(): Promise<void> {
     linear_api_key: settingsStore.getSetting('linear_api_key', ''),
     linear_team_id: settingsStore.getSetting('linear_team_id', ''),
     linear_config_path: settingsStore.getSetting('linear_config_path', ''),
+
+    // Swarm Integration
+    swarm_ticket_db_path: settingsStore.getSetting('swarm_ticket_db_path', ''),
   }
 }
 
@@ -1599,6 +1632,9 @@ async function saveSettings(): Promise<void> {
       linear_api_key: localSettings.value.linear_api_key,
       linear_team_id: localSettings.value.linear_team_id,
       linear_config_path: localSettings.value.linear_config_path,
+
+      // Swarm Integration
+      swarm_ticket_db_path: localSettings.value.swarm_ticket_db_path,
     }
 
     // Save each setting

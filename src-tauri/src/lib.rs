@@ -1841,6 +1841,56 @@ fn save_annotated_image(
     Ok(save_path)
 }
 
+// ─── Swarm Ticket Commands ───────────────────────────────────────────────
+
+/// Create a ticket in the local swarm ticket database via the ticket.py CLI.
+/// Reads `swarm_ticket_db_path` from settings, defaulting to `.swarm/tickets/tickets.db`.
+#[tauri::command]
+fn create_swarm_ticket(
+    title: String,
+    description: String,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    // Resolve the ticket DB path from settings or fall back to the default
+    let db_path = {
+        let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+            std::env::current_dir().unwrap().join("data")
+        });
+        let app_db = data_dir.join("qa_capture.db");
+
+        let db = Database::open(&app_db).map_err(|e| e.to_string())?;
+        let repo = SettingsRepository::new(db.connection());
+
+        repo.get("swarm_ticket_db_path")
+            .map_err(|e: rusqlite::Error| e.to_string())?
+            .unwrap_or_else(|| ".swarm/tickets/tickets.db".to_string())
+    };
+
+    // Resolve the path to ticket.py relative to the current working directory
+    let ticket_py = std::path::PathBuf::from(".swarm/ticket/ticket.py");
+
+    let output = std::process::Command::new("python")
+        .args([
+            ticket_py.to_str().unwrap_or(".swarm/ticket/ticket.py"),
+            "--db", &db_path,
+            "create", &title,
+            "--description", &description,
+            "--created-by", "qa-capture",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run ticket CLI: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(format!("ticket CLI error: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(stdout)
+}
+
 // ─── Profile Commands ────────────────────────────────────────────────────
 
 /// Returns the db_path for profile commands (shared helper)
@@ -1944,6 +1994,13 @@ pub fn run() {
 
             // Create data directory if it doesn't exist
             std::fs::create_dir_all(&data_dir).ok();
+
+            // Seed the default Contio MeetingOS profile on first run
+            if let Ok(db) = database::Database::open(&db_path) {
+                if let Err(e) = profile::seed_default_profile(db.connection()) {
+                    eprintln!("Warning: failed to seed default profile: {}", e);
+                }
+            }
 
             let emitter = Arc::new(TauriEventEmitter::new());
             emitter.set_app_handle(app_handle);
@@ -2210,7 +2267,8 @@ pub fn run() {
             profile_update,
             profile_delete,
             get_active_profile_id,
-            set_active_profile_id
+            set_active_profile_id,
+            create_swarm_ticket
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

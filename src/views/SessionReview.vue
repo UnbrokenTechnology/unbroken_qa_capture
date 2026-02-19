@@ -814,6 +814,14 @@
           @click="openPushDialog"
         />
         <q-btn
+          color="deep-purple"
+          icon="bug_report"
+          label="Export to Swarm"
+          :disable="finalizedBugs.length === 0"
+          :loading="isExportingToSwarm"
+          @click="exportToSwarm"
+        />
+        <q-btn
           color="secondary"
           icon="play_arrow"
           label="Resume Session"
@@ -1231,6 +1239,7 @@ import { useBugStore } from '@/stores/bug'
 import { useSessionStore } from '@/stores/session'
 import type { Bug, BugType, BugStatus, Capture, TicketingCredentials, LinearProfileConfig, CustomMetadataField, QaProfile } from '@/types/backend'
 import * as tauri from '@/api/tauri'
+import { createSwarmTicket } from '@/api/tauri'
 import { Notify } from 'quasar'
 import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import VideoPlayer from '@/components/VideoPlayer.vue'
@@ -1317,6 +1326,9 @@ const summaryFilePath = ref('')
 
 // File Export State
 const isExportingToFile = ref(false)
+
+// Swarm Export State
+const isExportingToSwarm = ref(false)
 
 // Computed
 const bugs = computed(() => bugStore.backendBugs)
@@ -2070,6 +2082,70 @@ async function exportToFile() {
     })
   } finally {
     isExportingToFile.value = false
+  }
+}
+
+async function exportToSwarm() {
+  if (finalizedBugs.value.length === 0) return
+
+  const count = finalizedBugs.value.length
+  const confirmed = await new Promise<boolean>(resolve => {
+    $q.dialog({
+      title: 'Export to Swarm Tickets',
+      message: `Create ${count} swarm ticket${count === 1 ? '' : 's'} from the ready bugs in this session?`,
+      ok: { label: 'Export', color: 'primary' },
+      cancel: { label: 'Cancel', flat: true },
+      persistent: true,
+    }).onOk(() => resolve(true)).onCancel(() => resolve(false))
+  })
+
+  if (!confirmed) return
+
+  isExportingToSwarm.value = true
+  let successCount = 0
+  let failCount = 0
+
+  try {
+    for (const bug of finalizedBugs.value) {
+      const title = bug.title || `Bug ${bug.display_id}`
+      const description = bug.description || bug.ai_description || bug.notes || 'No description available.'
+
+      try {
+        const ticketId = await createSwarmTicket(title, description)
+        successCount++
+        $q.notify({
+          type: 'positive',
+          message: `Created swarm ticket #${ticketId} for ${bug.display_id}`,
+          position: 'top',
+          timeout: 1500
+        })
+      } catch (err) {
+        failCount++
+        console.error(`Failed to create swarm ticket for bug ${bug.id}:`, err)
+        $q.notify({
+          type: 'negative',
+          message: `Failed to create ticket for ${bug.display_id}: ${err}`,
+          position: 'top',
+          timeout: 3000
+        })
+      }
+    }
+
+    if (failCount === 0) {
+      $q.notify({
+        type: 'positive',
+        message: `Exported ${successCount} bug${successCount === 1 ? '' : 's'} as swarm tickets`,
+        position: 'top'
+      })
+    } else {
+      $q.notify({
+        type: 'warning',
+        message: `Created ${successCount} ticket${successCount === 1 ? '' : 's'}, ${failCount} failed`,
+        position: 'top'
+      })
+    }
+  } finally {
+    isExportingToSwarm.value = false
   }
 }
 
