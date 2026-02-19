@@ -32,8 +32,6 @@ vi.mock('@/api/tauri', () => ({
   deleteSetting: vi.fn(),
   getClaudeStatus: vi.fn().mockResolvedValue({ status: 'notInstalled', message: 'No credentials' }),
   refreshClaudeStatus: vi.fn().mockResolvedValue({ status: 'notInstalled', message: 'No credentials' }),
-  setAnthropicApiKey: vi.fn().mockResolvedValue(undefined),
-  clearAnthropicApiKey: vi.fn().mockResolvedValue(undefined),
   ticketingGetCredentials: vi.fn().mockResolvedValue(null),
   ticketingCheckConnection: vi.fn().mockResolvedValue({ connected: false }),
   ticketingSaveCredentials: vi.fn().mockResolvedValue(undefined),

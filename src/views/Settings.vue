@@ -746,68 +746,29 @@
             >
               <template #avatar>
                 <q-icon
-                  :name="claudeStatus === 'available' ? 'check_circle' : 'warning'"
+                  :name="claudeStatus === 'available' ? 'check_circle' : 'info'"
                   color="white"
                 />
               </template>
               <div v-if="claudeStatus === 'available'">
-                Connected ({{ claudeSourceLabel }})
-              </div>
-              <div v-else-if="claudeStatus === 'not_authenticated'">
-                API key is set but credentials are invalid. Check your key.
+                Connected via Claude Code (uses your Claude subscription)
               </div>
               <div v-else-if="claudeStatus === 'not_found'">
-                No API key configured. Enter your Anthropic API key below.
+                Claude Code not found. Install Claude Code and sign in to enable AI features with your Claude subscription.
               </div>
               <div v-else>
-                Checking API status...
+                Checking Claude Code status...
               </div>
             </q-banner>
 
-            <q-input
-              v-model="localSettings.anthropic_api_key"
-              label="Anthropic API Key"
-              hint="Get your key from console.anthropic.com/settings/keys"
-              type="password"
-              outlined
-              dense
-            >
-              <template #prepend>
-                <q-icon name="vpn_key" />
-              </template>
-              <template #append>
-                <q-btn
-                  v-if="localSettings.anthropic_api_key"
-                  flat
-                  dense
-                  round
-                  icon="clear"
-                  @click="clearApiKey"
-                >
-                  <q-tooltip>Clear API key</q-tooltip>
-                </q-btn>
-              </template>
-            </q-input>
-
-            <div class="row q-gutter-sm">
-              <q-btn
-                outline
-                color="primary"
-                label="Save API Key"
-                icon="save"
-                :loading="savingApiKey"
-                :disable="!localSettings.anthropic_api_key"
-                @click="saveApiKey"
-              />
-              <q-btn
-                outline
-                color="primary"
-                label="Test Connection"
-                icon="refresh"
-                :loading="testingClaude"
-                @click="testClaudeConnection"
-              />
-            </div>
+            <q-btn
+              outline
+              color="primary"
+              label="Refresh Status"
+              icon="refresh"
+              :loading="testingClaude"
+              @click="testClaudeConnection"
+            />
 
             <q-toggle
               v-model="localSettings.ai_auto_generate"
@@ -1134,7 +1095,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { open as openUrl } from '@tauri-apps/plugin-shell'
 import { useRouter } from 'vue-router'
-import { getClaudeStatus, refreshClaudeStatus, setAnthropicApiKey, clearAnthropicApiKey } from '@/api/tauri'
+import { getClaudeStatus, refreshClaudeStatus } from '@/api/tauri'
 import type { QaProfile, AreaCategory, CustomMetadataField, CustomFieldType } from '@/types/backend'
 
 const settingsStore = useSettingsStore()
@@ -1164,7 +1125,6 @@ const localSettings = ref({
   annotation_stroke_width: 'medium',
 
   // AI
-  anthropic_api_key: '',
   ai_auto_generate: false,
 
   // Ticketing
@@ -1180,10 +1140,8 @@ const localSettings = ref({
 
 // UI state
 const hotkeyConflict = ref<string | null>(null)
-const claudeStatus = ref<'available' | 'not_found' | 'not_authenticated' | 'checking'>('checking')
-const claudeSourceLabel = ref<string>('')
+const claudeStatus = ref<'available' | 'not_found' | 'checking'>('checking')
 const testingClaude = ref(false)
-const savingApiKey = ref(false)
 const testingLinearConnection = ref(false)
 const appVersion = ref('1.0.0')
 const templateSource = ref<string>('Default')
@@ -1397,18 +1355,12 @@ async function checkClaudeStatus(): Promise<void> {
     const result = await getClaudeStatus()
     if (result.status === 'ready') {
       claudeStatus.value = 'available'
-      claudeSourceLabel.value = result.version ?? 'API'
-    } else if (result.status === 'notAuthenticated') {
-      claudeStatus.value = 'not_authenticated'
-      claudeSourceLabel.value = ''
     } else {
       claudeStatus.value = 'not_found'
-      claudeSourceLabel.value = ''
     }
   } catch (err) {
     console.error('Failed to check Claude status:', err)
     claudeStatus.value = 'not_found'
-    claudeSourceLabel.value = ''
   }
 }
 
@@ -1418,76 +1370,28 @@ async function testClaudeConnection(): Promise<void> {
     const result = await refreshClaudeStatus()
     if (result.status === 'ready') {
       claudeStatus.value = 'available'
-      claudeSourceLabel.value = result.version ?? 'API'
       $q.notify({
         type: 'positive',
-        message: 'Claude API connection successful!',
-        caption: result.version ? `Auth: ${result.version}` : undefined,
-      })
-    } else if (result.status === 'notAuthenticated') {
-      claudeStatus.value = 'not_authenticated'
-      claudeSourceLabel.value = ''
-      $q.notify({
-        type: 'warning',
-        message: 'API credentials invalid',
-        caption: result.message ?? 'Check your API key.',
+        message: 'Claude Code connected! AI features use your Claude subscription.',
       })
     } else {
       claudeStatus.value = 'not_found'
-      claudeSourceLabel.value = ''
       $q.notify({
-        type: 'negative',
-        message: 'No API credentials configured',
-        caption: result.message ?? 'Enter an Anthropic API key and save it.',
+        type: 'warning',
+        message: 'Claude Code not found',
+        caption: result.message ?? 'Install Claude Code and sign in to enable AI features.',
       })
     }
   } catch (err) {
-    console.error('Failed to test Claude connection:', err)
+    console.error('Failed to check Claude Code status:', err)
     claudeStatus.value = 'not_found'
-    claudeSourceLabel.value = ''
     $q.notify({
       type: 'negative',
-      message: 'Failed to connect to Claude API',
+      message: 'Failed to check Claude Code status',
       caption: err instanceof Error ? err.message : String(err),
     })
   } finally {
     testingClaude.value = false
-  }
-}
-
-async function saveApiKey(): Promise<void> {
-  if (!localSettings.value.anthropic_api_key) return
-  savingApiKey.value = true
-  try {
-    await setAnthropicApiKey(localSettings.value.anthropic_api_key)
-    $q.notify({ type: 'positive', message: 'API key saved' })
-    // Re-check status with the new key
-    await testClaudeConnection()
-  } catch (err) {
-    console.error('Failed to save API key:', err)
-    $q.notify({
-      type: 'negative',
-      message: 'Failed to save API key',
-      caption: err instanceof Error ? err.message : String(err),
-    })
-  } finally {
-    savingApiKey.value = false
-  }
-}
-
-async function clearApiKey(): Promise<void> {
-  try {
-    localSettings.value.anthropic_api_key = ''
-    await clearAnthropicApiKey()
-    $q.notify({ type: 'info', message: 'API key cleared' })
-    await checkClaudeStatus()
-  } catch (err) {
-    console.error('Failed to clear API key:', err)
-    $q.notify({
-      type: 'negative',
-      message: 'Failed to clear API key',
-      caption: err instanceof Error ? err.message : String(err),
-    })
   }
 }
 
@@ -1570,7 +1474,6 @@ async function loadSettings(): Promise<void> {
     annotation_stroke_width: settingsStore.getSetting('annotation_stroke_width', 'medium'),
 
     // AI
-    anthropic_api_key: settingsStore.getSetting('anthropic_api_key', ''),
     ai_auto_generate: settingsStore.getSetting('ai_auto_generate', 'false') === 'true',
 
     // Ticketing
@@ -1640,15 +1543,6 @@ async function saveSettings(): Promise<void> {
     // Save each setting
     for (const [key, value] of Object.entries(settingsToSave)) {
       await settingsStore.saveSetting(key, value)
-    }
-
-    // Save Anthropic API key via dedicated command (separate from generic settings)
-    if (localSettings.value.anthropic_api_key) {
-      try {
-        await setAnthropicApiKey(localSettings.value.anthropic_api_key)
-      } catch (err) {
-        console.warn('Failed to save Anthropic API key:', err)
-      }
     }
 
     // Save Linear credentials to ticketing table if API key is provided

@@ -3,7 +3,6 @@
 exports[`Tauri command registration contract > parsed backend handlers snapshot (informational) 1`] = `
 [
   "assign_capture_to_bug",
-  "clear_anthropic_api_key",
   "copy_bug_to_clipboard",
   "create_swarm_ticket",
   "delete_setting",
@@ -62,7 +61,6 @@ exports[`Tauri command registration contract > parsed backend handlers snapshot 
   "save_bug_description",
   "save_custom_template",
   "set_active_profile_id",
-  "set_anthropic_api_key",
   "set_custom_template_path",
   "set_setting",
   "start_bug_capture",
@@ -91,7 +89,6 @@ exports[`Tauri command registration contract > parsed backend handlers snapshot 
 exports[`Tauri command registration contract > parsed frontend commands snapshot (informational) 1`] = `
 [
   "assign_capture_to_bug",
-  "clear_anthropic_api_key",
   "copy_bug_to_clipboard",
   "create_swarm_ticket",
   "delete_setting",
@@ -136,7 +133,6 @@ exports[`Tauri command registration contract > parsed frontend commands snapshot
   "save_annotated_image",
   "save_bug_description",
   "set_active_profile_id",
-  "set_anthropic_api_key",
   "set_custom_template_path",
   "set_setting",
   "start_bug_capture",

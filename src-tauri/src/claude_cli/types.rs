@@ -3,21 +3,10 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// How the API credentials were obtained
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum TokenSource {
-    /// User-provided Anthropic API key (sk-ant-...)
-    ApiKey,
-    /// OAuth token from Claude Code (~/.claude/.credentials.json)
-    OAuthToken,
-}
-
-/// Credentials for calling the Anthropic Messages API
+/// Credentials for calling the Anthropic Messages API via Claude Code OAuth
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaudeCredentials {
     pub access_token: String,
-    pub token_source: TokenSource,
 }
 
 /// Claude CLI availability status

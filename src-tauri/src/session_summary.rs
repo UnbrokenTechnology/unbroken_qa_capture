@@ -37,11 +37,11 @@ pub struct SessionSummaryGenerator {
 
 impl SessionSummaryGenerator {
     /// Create a new generator with real file writer.
-    /// Attempts to load Claude credentials (API key or OAuth token) for AI summaries.
+    /// Attempts to load Claude Code OAuth credentials for AI summaries.
     /// If credentials are not available, claude_invoker is set to None and AI summaries
     /// are silently skipped.
     pub fn new(db_path: PathBuf) -> Self {
-        let claude_invoker = load_credentials(None)
+        let claude_invoker = load_credentials()
             .ok()
             .map(|creds| Arc::new(RealClaudeInvoker::new(creds)) as Arc<dyn ClaudeInvoker>);
         Self {

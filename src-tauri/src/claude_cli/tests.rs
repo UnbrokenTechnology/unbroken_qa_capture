@@ -10,12 +10,12 @@ mod claude_cli_tests {
     #[test]
     fn test_claude_status_is_ready() {
         let ready = ClaudeStatus::Ready {
-            version: "API Key".to_string(),
+            version: "Claude Code".to_string(),
         };
         assert!(ready.is_ready());
 
         let not_auth = ClaudeStatus::NotAuthenticated {
-            version: "API Key".to_string(),
+            version: "Claude Code".to_string(),
             message: "test".to_string(),
         };
         assert!(!not_auth.is_ready());
@@ -296,52 +296,27 @@ mod claude_cli_tests {
     }
 
     #[test]
-    fn test_load_credentials_with_api_key() {
-        let result = load_credentials(Some("sk-ant-test-key".to_string()));
-        assert!(result.is_ok());
-        let creds = result.unwrap();
-        assert_eq!(creds.access_token, "sk-ant-test-key");
-        assert_eq!(creds.token_source, TokenSource::ApiKey);
-    }
-
-    #[test]
-    fn test_load_credentials_empty_api_key_falls_through() {
-        // Empty API key should not be treated as valid
-        let result = load_credentials(Some("".to_string()));
-        // This will either find OAuth credentials or fail — either is valid for this test
-        // The important thing is it doesn't return Ok with an empty token
+    fn test_load_credentials_returns_oauth_or_error() {
+        // load_credentials() checks for OAuth token from Claude Code
+        let result = load_credentials();
         match &result {
             Ok(creds) => {
-                // OAuth credentials were found
-                assert_eq!(creds.token_source, TokenSource::OAuthToken);
+                // OAuth credentials were found on this machine
                 assert!(!creds.access_token.is_empty());
             }
             Err(_) => {
-                // No credentials found — expected when no OAuth either
+                // No credentials found — expected when Claude Code isn't installed
             }
         }
     }
 
     #[test]
-    fn test_check_api_configured_with_key() {
-        let status = check_api_configured(Some("sk-ant-test-key".to_string()));
+    fn test_check_api_configured_returns_status() {
+        // With no OAuth file, should return NotInstalled; with OAuth, Ready
+        let status = check_api_configured();
         match status {
             ClaudeStatus::Ready { version } => {
-                assert_eq!(version, "API Key");
-            }
-            other => panic!("Expected Ready status, got: {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_check_api_configured_no_credentials() {
-        // With no API key and no OAuth file, should return NotInstalled
-        // (This test may pass or fail depending on whether the test machine has
-        // Claude Code installed; we just verify it doesn't panic)
-        let status = check_api_configured(None);
-        match status {
-            ClaudeStatus::Ready { .. } => {
-                // OAuth credentials found on this machine — that's fine
+                assert_eq!(version, "Claude Code");
             }
             ClaudeStatus::NotInstalled { message } => {
                 assert!(!message.is_empty());
@@ -353,27 +328,14 @@ mod claude_cli_tests {
     }
 
     #[test]
-    fn test_token_source_serialization() {
-        let api = TokenSource::ApiKey;
-        let json = serde_json::to_string(&api).unwrap();
-        assert_eq!(json, "\"apikey\"");
-
-        let oauth = TokenSource::OAuthToken;
-        let json = serde_json::to_string(&oauth).unwrap();
-        assert_eq!(json, "\"oauthtoken\"");
-    }
-
-    #[test]
     fn test_claude_credentials_serialization() {
         let creds = ClaudeCredentials {
             access_token: "test-token".to_string(),
-            token_source: TokenSource::ApiKey,
         };
 
         let json = serde_json::to_string(&creds).unwrap();
         let deserialized: ClaudeCredentials = serde_json::from_str(&json).unwrap();
 
         assert_eq!(deserialized.access_token, "test-token");
-        assert_eq!(deserialized.token_source, TokenSource::ApiKey);
     }
 }

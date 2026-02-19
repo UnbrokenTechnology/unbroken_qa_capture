@@ -35,7 +35,8 @@ The original PRD is in the repository as `Unbroken_QA_Capture_PRD.md`.
 - **Kill the app before rebuilding.** Cargo cannot overwrite the running exe (`Access is denied, os error 5`). Stop `unbroken-qa-capture.exe` before running `npm run tauri:dev` or `tauri:build`. The `swarm-pull.ps1` script handles this automatically.
 - **Port 5173 conflicts.** Vite will fail to start if a previous dev server is still bound to port 5173. Kill the old `node`/`vite` process first.
 - **Local commits can diverge from swarm.** If you commit locally while agents are also merging to the swarm's main, `git pull swarm main --ff-only` will fail. Rebase with `git rebase swarm/main`, then force-push to origin with `git push origin main --force-with-lease`.
-- **Hotkey double-registration bug.** On startup you'll see "HotKey already registered" errors. This is caused by `hotkey.rs:register_hotkey()` calling both `on_shortcut()` (which implicitly registers) and then `register()` (redundant). The hotkeys still work because `on_shortcut()` succeeds first, but the redundant `.register()` call should be removed.
+- **Claude AI uses Claude Code OAuth.** The app uses Claude Code's OAuth token (`~/.claude/.credentials.json`) for AI features — no API key needed. Users must have Claude Code installed and signed in. This uses their Claude subscription (no separate API costs).
+- **`verify.sh` must run like the swarm does.** After making changes, run `bash verify.sh` — it runs clippy, `cargo test`, vue-tsc, and vitest in sequence. The swarm agents run this on every commit. In manual mode you should too. Note: `cargo test` may hit 6 flaky platform::windows tests (T196) — these are pre-existing race conditions, not regressions. If they fail, re-run or use `cargo test -- --skip platform` to skip them.
 - **PowerShell execution policy.** Windows may block `.ps1` scripts by default. Always invoke with `powershell -ExecutionPolicy Bypass -File <script>`.
 - **NEVER set `font-family` on wildcard selectors (`*`, `:deep(*)`, etc.).** This clobbers `font-family: 'Material Icons'` on icon elements, causing all Quasar icons to render as plain text (e.g. "bug_report" instead of the bug icon). The app's typography font is configured via `$typography-font-family` in `src/quasar-variables.sass` — Quasar applies it properly without overriding icon fonts. If you need to set a font on a specific element, use a scoped class selector, never a wildcard.
 
@@ -93,17 +94,20 @@ Key differences from swarm mode:
 
 When ending a manual mode session, write a summary here so the next session can pick up cleanly. Delete the previous session's notes when starting fresh.
 
+**Session 2026-02-19 (session 3):**
+- **T197 — OAuth-only auth:** Removed Anthropic API key input from Settings UI and backend. AI features now use Claude Code OAuth exclusively (uses Claude subscription, no API token costs). Removed: `set_anthropic_api_key`/`clear_anthropic_api_key` Tauri commands, `TokenSource` enum, API key DB storage, `read_api_key_setting()` helper, API key UI in Settings.vue. Auth is now solely via `~/.claude/.credentials.json`.
+- **Ticket DB cleanup:** Marked 10 stale tickets (T184, T187-T195) as done — they were completed in session 2 but status wasn't updated.
+- **T196 created:** Flaky `cargo test` platform::windows registry_cache file lock race conditions (6 intermittent failures from shared temp dirs). Open for agents.
+- **CLAUDE.md cleanup:** Removed outdated hotkey double-registration bug (fixed in commit 6ea83ce). Added OAuth note.
+- Checks: vue-tsc clean, cargo clippy clean, vitest 599/599. **Remember to run `bash verify.sh`** as the swarm does — it runs all checks in sequence.
+- Remaining open tickets: T152 (human verify), T162 (human verify/proposal), T196 (flaky tests)
+
 **Session 2026-02-19 (session 2, completed):**
 - Completed 10 tickets: T184, T187, T188, T189, T190, T191, T192, T193, T194, T195
 - **Profile system (T189→T195 chain):** Full QA profile system — Rust data model, SQLite persistence (JSON blob), 7 CRUD Tauri commands, Pinia store, Settings UI with create/edit/delete/switch, generic custom_metadata on bugs replacing hardcoded meeting_id/software_version, profile-aware template rendering, profile-aware Linear ticket creation (assignee/state/labels from profile), Contio MeetingOS default profile seeded on first run, LINEAR_INTEGRATION.md deleted
-- **T187 — Claude API:** Replaced CLI subprocess with direct reqwest HTTP calls to Anthropic Messages API. Supports API key (user-entered in Settings) and auto-detected Claude Code OAuth token from ~/.claude/.credentials.json. Base64 image encoding for multimodal requests.
+- **T187 — Claude API:** Replaced CLI subprocess with direct reqwest HTTP calls to Anthropic Messages API. Now uses Claude Code OAuth only.
 - **T188 — Feedback workflow:** bug_type field persisted through BugUpdate/update_partial, feedback items excluded from Linear push pool, copy-to-clipboard message generation in SessionReview
 - **T184 — Self QA:** create_swarm_ticket Tauri command (subprocess to ticket.py), Export to Swarm button in SessionReview, configurable swarm DB path in Settings
-- Checks: vue-tsc clean, cargo clippy clean, vitest 599/599 (20 new profile store tests)
-- 6 pre-existing intermittent failures in `cargo test` (platform::windows registry_cache file lock race conditions on parallel test threads — not caused by our changes, not seen in clippy or filtered test runs)
-- Remaining open tickets: T152 (human verify), T162 (human verify/proposal) — no more work tickets for agents
-- All commits pushed to origin/main
-- Known issue: the 6 flaky platform tests should get a ticket for proper fix (use per-test temp dirs instead of shared files)
 
 <!-- Swarm CLI section below is still valid, just not actively used -->
 

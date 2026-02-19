@@ -1092,87 +1092,26 @@ fn get_linear_profile_defaults(app: tauri::AppHandle) -> Result<Option<profile::
     Ok(profile.and_then(|p| p.linear_config))
 }
 
-// Claude API commands
+// Claude API commands — uses Claude Code OAuth (no API key needed)
 
-/// Helper: read the `anthropic_api_key` setting from the database.
-fn read_api_key_setting(app: &tauri::AppHandle) -> Option<String> {
-    use database::{Database, SettingsRepository, SettingsOps};
-
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).ok()?;
-    let repo = SettingsRepository::new(db.connection());
-
-    repo.get("anthropic_api_key").ok().flatten()
+#[tauri::command]
+fn get_claude_status() -> claude_cli::ClaudeStatus {
+    claude_cli::get_claude_status()
 }
 
 #[tauri::command]
-fn get_claude_status(app: tauri::AppHandle) -> claude_cli::ClaudeStatus {
-    let api_key = read_api_key_setting(&app);
-    claude_cli::get_claude_status(api_key)
-}
-
-#[tauri::command]
-fn refresh_claude_status(app: tauri::AppHandle) -> claude_cli::ClaudeStatus {
-    let api_key = read_api_key_setting(&app);
-    claude_cli::refresh_claude_status(api_key)
-}
-
-#[tauri::command]
-fn set_anthropic_api_key(api_key: String, app: tauri::AppHandle) -> Result<(), String> {
-    use database::{Database, SettingsRepository, SettingsOps};
-
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
-
-    repo.set("anthropic_api_key", &api_key)
-        .map_err(|e: rusqlite::Error| e.to_string())?;
-
-    // Invalidate cached status so next check picks up the new key
-    claude_cli::invalidate_status_cache();
-
-    Ok(())
-}
-
-#[tauri::command]
-fn clear_anthropic_api_key(app: tauri::AppHandle) -> Result<(), String> {
-    use database::{Database, SettingsRepository, SettingsOps};
-
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
-
-    repo.delete("anthropic_api_key")
-        .map_err(|e: rusqlite::Error| e.to_string())?;
-
-    // Invalidate cached status
-    claude_cli::invalidate_status_cache();
-
-    Ok(())
+fn refresh_claude_status() -> claude_cli::ClaudeStatus {
+    claude_cli::refresh_claude_status()
 }
 
 #[tauri::command]
 async fn generate_bug_description(
     bug_context: claude_cli::BugContext,
-    app: tauri::AppHandle,
 ) -> Result<claude_cli::ClaudeResponse, String> {
     use claude_cli::{PromptBuilder, PromptTask, ClaudeRequest, RealClaudeInvoker, ClaudeInvoker};
 
-    // Load credentials
-    let api_key = read_api_key_setting(&app);
-    let creds = claude_cli::load_credentials(api_key)
+    // Load credentials from Claude Code OAuth
+    let creds = claude_cli::load_credentials()
         .map_err(|e| format!("Claude not ready: {}", e))?;
 
     // Build prompt
@@ -1200,14 +1139,12 @@ async fn generate_bug_description(
 #[tauri::command]
 async fn parse_console_screenshot(
     screenshot_path: String,
-    app: tauri::AppHandle,
 ) -> Result<claude_cli::ClaudeResponse, String> {
     use claude_cli::{PromptBuilder, PromptTask, ClaudeRequest, RealClaudeInvoker, ClaudeInvoker};
     use std::path::PathBuf;
 
-    // Load credentials
-    let api_key = read_api_key_setting(&app);
-    let creds = claude_cli::load_credentials(api_key)
+    // Load credentials from Claude Code OAuth
+    let creds = claude_cli::load_credentials()
         .map_err(|e| format!("Claude not ready: {}", e))?;
 
     // Build prompt
@@ -1232,13 +1169,11 @@ async fn refine_bug_description(
     current_description: String,
     refinement_instructions: String,
     bug_id: String,
-    app: tauri::AppHandle,
 ) -> Result<claude_cli::ClaudeResponse, String> {
     use claude_cli::{PromptBuilder, PromptTask, ClaudeRequest, RealClaudeInvoker, ClaudeInvoker};
 
-    // Load credentials
-    let api_key = read_api_key_setting(&app);
-    let creds = claude_cli::load_credentials(api_key)
+    // Load credentials from Claude Code OAuth
+    let creds = claude_cli::load_credentials()
         .map_err(|e| format!("Claude not ready: {}", e))?;
 
     // Build refinement prompt
@@ -2233,8 +2168,6 @@ pub fn run() {
             get_linear_profile_defaults,
             get_claude_status,
             refresh_claude_status,
-            set_anthropic_api_key,
-            clear_anthropic_api_key,
             generate_bug_description,
             parse_console_screenshot,
             refine_bug_description,

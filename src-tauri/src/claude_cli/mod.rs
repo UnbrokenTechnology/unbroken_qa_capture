@@ -20,29 +20,17 @@ mod prompts;
 #[cfg(test)]
 mod tests;
 
-pub use types::{ClaudeError, ClaudeStatus, BugContext, PromptTask, ClaudeResponse, ClaudeRequest, ClaudeCredentials, TokenSource};
+pub use types::{ClaudeError, ClaudeStatus, BugContext, PromptTask, ClaudeResponse, ClaudeRequest, ClaudeCredentials};
 pub use subprocess::{ClaudeInvoker, RealClaudeInvoker};
 pub use prompts::PromptBuilder;
 
 /// Global Claude status
 static CLAUDE_STATUS: Mutex<Option<ClaudeStatus>> = Mutex::new(None);
 
-/// Load credentials: first check for an API key setting, then fall back to Claude Code OAuth token.
+/// Load credentials from Claude Code OAuth token (~/.claude/.credentials.json).
 ///
-/// The `api_key_from_settings` parameter allows callers to pass in the API key
-/// from the app's settings DB without this module needing direct DB access.
-pub fn load_credentials(api_key_from_settings: Option<String>) -> Result<ClaudeCredentials, ClaudeError> {
-    // 1. Check for an explicit Anthropic API key from settings
-    if let Some(key) = api_key_from_settings {
-        if !key.is_empty() {
-            return Ok(ClaudeCredentials {
-                access_token: key,
-                token_source: TokenSource::ApiKey,
-            });
-        }
-    }
-
-    // 2. Fall back to Claude Code OAuth token (~/.claude/.credentials.json)
+/// Uses the Claude subscription (via Claude Code) — no API key needed.
+pub fn load_credentials() -> Result<ClaudeCredentials, ClaudeError> {
     if let Some(home_dir) = dirs::home_dir() {
         let credentials_path = home_dir.join(".claude").join(".credentials.json");
         if credentials_path.exists() {
@@ -57,7 +45,6 @@ pub fn load_credentials(api_key_from_settings: Option<String>) -> Result<ClaudeC
                                 if !token.is_empty() {
                                     return Ok(ClaudeCredentials {
                                         access_token: token.to_string(),
-                                        token_source: TokenSource::OAuthToken,
                                     });
                                 }
                             }
@@ -68,7 +55,6 @@ pub fn load_credentials(api_key_from_settings: Option<String>) -> Result<ClaudeC
                         if !token.is_empty() {
                             return Ok(ClaudeCredentials {
                                 access_token: token.to_string(),
-                                token_source: TokenSource::OAuthToken,
                             });
                         }
                     }
@@ -78,41 +64,31 @@ pub fn load_credentials(api_key_from_settings: Option<String>) -> Result<ClaudeC
     }
 
     Err(ClaudeError::NotAuthenticated(
-        "No API key configured and no Claude Code credentials found.".to_string()
+        "Claude Code not found. Install Claude Code and sign in to use AI features.".to_string()
     ))
 }
 
-/// Check if API credentials are available (without revealing the credentials themselves).
-///
-/// `api_key_from_settings`: the `anthropic_api_key` value from the settings DB, if any.
-pub fn check_api_configured(api_key_from_settings: Option<String>) -> ClaudeStatus {
-    match load_credentials(api_key_from_settings) {
-        Ok(creds) => {
-            let source_label = match creds.token_source {
-                TokenSource::ApiKey => "API Key".to_string(),
-                TokenSource::OAuthToken => "Claude Code OAuth".to_string(),
-            };
-            ClaudeStatus::Ready {
-                version: source_label,
-            }
-        }
+/// Check if Claude Code OAuth credentials are available.
+pub fn check_api_configured() -> ClaudeStatus {
+    match load_credentials() {
+        Ok(_) => ClaudeStatus::Ready {
+            version: "Claude Code".to_string(),
+        },
         Err(_) => ClaudeStatus::NotInstalled {
-            message: "No API key configured. Enter your Anthropic API key in Settings, or install Claude Code for auto-detection.".to_string(),
+            message: "Claude Code not found. Install Claude Code and sign in to use AI features with your Claude subscription.".to_string(),
         },
     }
 }
 
 /// Get cached Claude status or perform fresh check.
-///
-/// `api_key_from_settings`: the `anthropic_api_key` from the settings DB.
-pub fn get_claude_status(api_key_from_settings: Option<String>) -> ClaudeStatus {
+pub fn get_claude_status() -> ClaudeStatus {
     // Try to use cached status first
     if let Some(status) = CLAUDE_STATUS.lock().unwrap().as_ref() {
         return status.clone();
     }
 
     // Perform fresh check
-    let status = check_api_configured(api_key_from_settings);
+    let status = check_api_configured();
 
     // Cache the result
     *CLAUDE_STATUS.lock().unwrap() = Some(status.clone());
@@ -120,13 +96,7 @@ pub fn get_claude_status(api_key_from_settings: Option<String>) -> ClaudeStatus 
 }
 
 /// Refresh the cached Claude status
-pub fn refresh_claude_status(api_key_from_settings: Option<String>) -> ClaudeStatus {
+pub fn refresh_claude_status() -> ClaudeStatus {
     *CLAUDE_STATUS.lock().unwrap() = None;
-    get_claude_status(api_key_from_settings)
-}
-
-/// Invalidate the cached status so the next call re-checks credentials.
-/// Called when the user saves or clears the API key.
-pub fn invalidate_status_cache() {
-    *CLAUDE_STATUS.lock().unwrap() = None;
+    get_claude_status()
 }

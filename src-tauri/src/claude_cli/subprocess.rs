@@ -7,7 +7,7 @@
 //! - Timeout enforcement
 //! - Queue management (max 1 concurrent request)
 
-use super::types::{ClaudeCredentials, ClaudeError, ClaudeRequest, ClaudeResponse, TokenSource};
+use super::types::{ClaudeCredentials, ClaudeError, ClaudeRequest, ClaudeResponse};
 use base64::Engine;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -85,23 +85,15 @@ impl RealClaudeInvoker {
             }]
         });
 
-        // Build the request with auth headers
-        let mut req_builder = client
+        // Build the request with OAuth bearer auth
+        let req_builder = client
             .post("https://api.anthropic.com/v1/messages")
             .header("content-type", "application/json")
-            .header("anthropic-version", "2023-06-01");
-
-        match self.credentials.token_source {
-            TokenSource::ApiKey => {
-                req_builder = req_builder.header("x-api-key", &self.credentials.access_token);
-            }
-            TokenSource::OAuthToken => {
-                req_builder = req_builder.header(
-                    "Authorization",
-                    format!("Bearer {}", self.credentials.access_token),
-                );
-            }
-        }
+            .header("anthropic-version", "2023-06-01")
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.credentials.access_token),
+            );
 
         let response = req_builder
             .json(&body)

@@ -339,14 +339,6 @@ export async function refreshClaudeStatus(): Promise<ClaudeStatus> {
   return await invoke<ClaudeStatus>('refresh_claude_status')
 }
 
-export async function setAnthropicApiKey(apiKey: string): Promise<void> {
-  await invoke('set_anthropic_api_key', { apiKey })
-}
-
-export async function clearAnthropicApiKey(): Promise<void> {
-  await invoke('clear_anthropic_api_key')
-}
-
 export async function generateBugDescription(bugContext: BugContext): Promise<ClaudeResponse> {
   return await invoke<ClaudeResponse>('generate_bug_description', { bugContext })
 }
