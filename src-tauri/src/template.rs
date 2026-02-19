@@ -137,11 +137,38 @@ impl TemplateManager {
         output = output.replace("{bug.metadata.environment.dpiScaling}", &bug.metadata.environment.dpi_scaling);
         output = output.replace("{bug.metadata.environment.foregroundApp}", &bug.metadata.environment.foreground_app);
 
-        let version = bug.metadata.software_version.as_deref().unwrap_or("Unknown");
+        // Backwards-compatible softwareVersion: use explicit field first, then fall back to
+        // custom_fields["softwareVersion"] or custom_fields["software_version"]
+        let version = bug.metadata.software_version.as_deref()
+            .or_else(|| bug.metadata.custom_fields.get("softwareVersion").map(String::as_str))
+            .or_else(|| bug.metadata.custom_fields.get("software_version").map(String::as_str))
+            .unwrap_or("Unknown");
         output = output.replace("{bug.metadata.softwareVersion}", version);
 
+        // Backwards-compatible meetingId: use explicit field first, then fall back to
+        // custom_fields["meetingId"] or custom_fields["meeting_id"]
+        let meeting_id_from_custom = bug.metadata.custom_fields.get("meetingId")
+            .or_else(|| bug.metadata.custom_fields.get("meeting_id"))
+            .cloned();
+        let effective_meeting_id = bug.metadata.meeting_id.clone().or(meeting_id_from_custom);
+
         // Conditional fields (meeting ID)
-        output = Self::replace_conditional(&output, "bug.metadata.meetingId", &bug.metadata.meeting_id);
+        output = Self::replace_conditional(&output, "bug.metadata.meetingId", &effective_meeting_id);
+
+        // Generic custom field placeholders: replace both {key} and {{key}} for each
+        // entry in custom_fields. This allows templates to use either brace style.
+        // Keys mapped to the legacy structured fields above are skipped here to avoid
+        // double-replacement after the dedicated substitutions above have already run.
+        const LEGACY_KEYS: &[&str] = &["meetingId", "meeting_id", "softwareVersion", "software_version"];
+        for (key, value) in &bug.metadata.custom_fields {
+            if LEGACY_KEYS.contains(&key.as_str()) {
+                continue;
+            }
+            // Support double-brace style: {{key}}
+            output = output.replace(&format!("{{{{{}}}}}", key), value);
+            // Support single-brace style: {key}
+            output = output.replace(&format!("{{{}}}", key), value);
+        }
 
         // Captures
         let captures_count = bug.captures.len().to_string();
@@ -302,5 +329,104 @@ mod tests {
         assert!(result.contains("screenshot1.png"));
         assert!(result.contains("screenshot2.png"));
         assert!(result.contains("2 file(s)"));
+    }
+
+    #[test]
+    fn test_custom_fields_single_brace_replacement() {
+        let mut bug = create_test_bug();
+        bug.metadata.custom_fields.insert("buildNumber".to_string(), "42".to_string());
+
+        // Create a manager with an inline template that uses a generic custom field
+        let manager = TemplateManager::new();
+        let custom_template = "Build: {buildNumber}".to_string();
+        *manager.cached_template.lock().unwrap() = custom_template;
+
+        let result = manager.render(&bug).unwrap();
+        assert!(result.contains("Build: 42"));
+    }
+
+    #[test]
+    fn test_custom_fields_double_brace_replacement() {
+        let mut bug = create_test_bug();
+        bug.metadata.custom_fields.insert("sprint".to_string(), "Sprint 5".to_string());
+
+        let manager = TemplateManager::new();
+        let custom_template = "Sprint: {{sprint}}".to_string();
+        *manager.cached_template.lock().unwrap() = custom_template;
+
+        let result = manager.render(&bug).unwrap();
+        assert!(result.contains("Sprint: Sprint 5"));
+    }
+
+    #[test]
+    fn test_custom_fields_multiple_keys() {
+        let mut bug = create_test_bug();
+        bug.metadata.custom_fields.insert("env".to_string(), "staging".to_string());
+        bug.metadata.custom_fields.insert("region".to_string(), "us-west-2".to_string());
+
+        let manager = TemplateManager::new();
+        let custom_template = "Env: {env} | Region: {{region}}".to_string();
+        *manager.cached_template.lock().unwrap() = custom_template;
+
+        let result = manager.render(&bug).unwrap();
+        assert!(result.contains("Env: staging"));
+        assert!(result.contains("Region: us-west-2"));
+    }
+
+    #[test]
+    fn test_backwards_compat_software_version_from_custom_fields() {
+        let mut bug = create_test_bug();
+        // Clear legacy field, put value in custom_fields instead
+        bug.metadata.software_version = None;
+        bug.metadata.custom_fields.insert("softwareVersion".to_string(), "2.0.0-custom".to_string());
+
+        let manager = TemplateManager::new();
+        let result = manager.render(&bug).unwrap();
+
+        assert!(result.contains("2.0.0-custom"));
+    }
+
+    #[test]
+    fn test_backwards_compat_meeting_id_from_custom_fields() {
+        let mut bug = create_test_bug();
+        // Clear legacy field, put value in custom_fields instead
+        bug.metadata.meeting_id = None;
+        bug.metadata.custom_fields.insert("meetingId".to_string(), "MTG-from-custom".to_string());
+
+        let manager = TemplateManager::new();
+        let result = manager.render(&bug).unwrap();
+
+        assert!(result.contains("MTG-from-custom"));
+    }
+
+    #[test]
+    fn test_legacy_field_takes_priority_over_custom_field() {
+        let mut bug = create_test_bug();
+        // Both legacy field and custom_fields entry present — legacy wins
+        bug.metadata.software_version = Some("1.0.0-legacy".to_string());
+        bug.metadata.custom_fields.insert("softwareVersion".to_string(), "2.0.0-custom".to_string());
+
+        let manager = TemplateManager::new();
+        let result = manager.render(&bug).unwrap();
+
+        assert!(result.contains("1.0.0-legacy"));
+        assert!(!result.contains("2.0.0-custom"));
+    }
+
+    #[test]
+    fn test_legacy_keys_not_double_replaced() {
+        // meetingId and softwareVersion in custom_fields should NOT get an extra
+        // generic {meetingId} replacement on top of the dedicated replacement above.
+        let mut bug = create_test_bug();
+        bug.metadata.meeting_id = Some("MTG-123".to_string());
+        bug.metadata.custom_fields.insert("meetingId".to_string(), "SHOULD-NOT-APPEAR".to_string());
+
+        let manager = TemplateManager::new();
+        let custom_template = "Meeting: {bug.metadata.meetingId:- ID: {value}}".to_string();
+        *manager.cached_template.lock().unwrap() = custom_template;
+
+        let result = manager.render(&bug).unwrap();
+        assert!(result.contains("MTG-123"));
+        assert!(!result.contains("SHOULD-NOT-APPEAR"));
     }
 }

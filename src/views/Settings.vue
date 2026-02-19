@@ -314,6 +314,419 @@
         </q-card-section>
       </q-card>
 
+      <!-- QA Profiles Section -->
+      <q-card class="q-mb-md">
+        <q-card-section>
+          <div class="text-h6 q-mb-md">
+            <q-icon
+              name="manage_accounts"
+              class="q-mr-sm"
+            />
+            QA Profiles
+          </div>
+
+          <!-- Active Profile Selector -->
+          <div class="q-mb-md">
+            <q-select
+              :model-value="profileStore.activeProfileId"
+              :options="profileSelectOptions"
+              label="Active Profile"
+              hint="Select the active QA profile for this session"
+              outlined
+              emit-value
+              map-options
+              clearable
+              @update:model-value="onActiveProfileChange"
+            >
+              <template #prepend>
+                <q-icon name="person" />
+              </template>
+            </q-select>
+          </div>
+
+          <!-- Profile List -->
+          <div
+            v-if="profileStore.profiles.length > 0"
+            class="q-mb-md"
+          >
+            <div class="text-subtitle2 q-mb-sm">
+              Profiles
+            </div>
+            <q-list
+              bordered
+              separator
+            >
+              <q-item
+                v-for="profile in profileStore.profiles"
+                :key="profile.id"
+                class="q-pa-sm"
+              >
+                <q-item-section>
+                  <q-item-label>{{ profile.name }}</q-item-label>
+                  <q-item-label caption>
+                    {{ profile.custom_fields.length }} custom field{{ profile.custom_fields.length !== 1 ? 's' : '' }}
+                    <span v-if="profile.linear_config"> · Linear configured</span>
+                    <span v-else> · No Linear config</span>
+                    <span v-if="profile.id === profileStore.activeProfileId"> · Active</span>
+                  </q-item-label>
+                </q-item-section>
+                <q-item-section side>
+                  <div class="row q-gutter-xs">
+                    <q-btn
+                      flat
+                      dense
+                      icon="edit"
+                      color="primary"
+                      @click="openEditProfile(profile)"
+                    >
+                      <q-tooltip>Edit profile</q-tooltip>
+                    </q-btn>
+                    <q-btn
+                      flat
+                      dense
+                      icon="delete"
+                      color="negative"
+                      @click="confirmDeleteProfile(profile.id, profile.name)"
+                    >
+                      <q-tooltip>Delete profile</q-tooltip>
+                    </q-btn>
+                  </div>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </div>
+
+          <div
+            v-else
+            class="text-grey-6 q-mb-md"
+          >
+            No profiles yet. Create one to define custom fields, Linear config, and title conventions.
+          </div>
+
+          <!-- Create Profile Button -->
+          <q-btn
+            outline
+            color="primary"
+            icon="add"
+            label="New Profile"
+            @click="openCreateProfile"
+          />
+        </q-card-section>
+      </q-card>
+
+      <!-- Profile Create/Edit Dialog -->
+      <q-dialog
+        v-model="profileDialogOpen"
+        persistent
+        maximized
+      >
+        <q-card style="max-width: 700px; width: 100%; margin: 1rem auto; max-height: calc(100vh - 2rem); overflow-y: auto;">
+          <q-card-section class="row items-center q-pb-none">
+            <div class="text-h6">
+              {{ editingProfile ? 'Edit Profile' : 'New Profile' }}
+            </div>
+            <q-space />
+            <q-btn
+              v-close-popup
+              icon="close"
+              flat
+              round
+              dense
+            />
+          </q-card-section>
+
+          <q-card-section>
+            <!-- Profile Name -->
+            <q-input
+              v-model="profileForm.name"
+              label="Profile Name"
+              outlined
+              dense
+              class="q-mb-md"
+              :rules="[val => !!val || 'Profile name is required']"
+            >
+              <template #prepend>
+                <q-icon name="label" />
+              </template>
+            </q-input>
+
+            <!-- Linear Config Section -->
+            <q-expansion-item
+              label="Linear Configuration"
+              icon="integration_instructions"
+              class="q-mb-md"
+              header-class="text-subtitle2"
+            >
+              <q-card flat>
+                <q-card-section class="q-gutter-sm">
+                  <q-input
+                    v-model="profileForm.linearTeamId"
+                    label="Team ID"
+                    hint="Linear team ID"
+                    outlined
+                    dense
+                  >
+                    <template #prepend>
+                      <q-icon name="group" />
+                    </template>
+                  </q-input>
+
+                  <q-input
+                    v-model="profileForm.linearApiKey"
+                    label="API Key"
+                    type="password"
+                    hint="Linear API key for this profile"
+                    outlined
+                    dense
+                  >
+                    <template #prepend>
+                      <q-icon name="vpn_key" />
+                    </template>
+                  </q-input>
+
+                  <q-input
+                    v-model="profileForm.linearDefaultAssigneeId"
+                    label="Default Assignee ID"
+                    hint="Linear user ID to assign issues by default"
+                    outlined
+                    dense
+                  >
+                    <template #prepend>
+                      <q-icon name="person_outline" />
+                    </template>
+                  </q-input>
+
+                  <q-input
+                    v-model="profileForm.linearDefaultBugLabelIds"
+                    label="Default Bug Label IDs"
+                    hint="Comma-separated label IDs for bugs"
+                    outlined
+                    dense
+                  >
+                    <template #prepend>
+                      <q-icon name="bug_report" />
+                    </template>
+                  </q-input>
+
+                  <q-input
+                    v-model="profileForm.linearDefaultFeatureLabelIds"
+                    label="Default Feature Label IDs"
+                    hint="Comma-separated label IDs for features"
+                    outlined
+                    dense
+                  >
+                    <template #prepend>
+                      <q-icon name="star_outline" />
+                    </template>
+                  </q-input>
+
+                  <q-input
+                    v-model="profileForm.linearDefaultStateId"
+                    label="Default State ID"
+                    hint="Linear workflow state ID for new issues"
+                    outlined
+                    dense
+                  >
+                    <template #prepend>
+                      <q-icon name="radio_button_unchecked" />
+                    </template>
+                  </q-input>
+                </q-card-section>
+              </q-card>
+            </q-expansion-item>
+
+            <!-- Title Conventions Section -->
+            <q-expansion-item
+              label="Title Conventions"
+              icon="title"
+              class="q-mb-md"
+              header-class="text-subtitle2"
+            >
+              <q-card flat>
+                <q-card-section class="q-gutter-sm">
+                  <q-input
+                    v-model="profileForm.titleBugPrefix"
+                    label="Bug Prefix"
+                    hint="Prefix for bug ticket titles (e.g. [BUG])"
+                    outlined
+                    dense
+                  >
+                    <template #prepend>
+                      <q-icon name="bug_report" />
+                    </template>
+                  </q-input>
+
+                  <q-input
+                    v-model="profileForm.titleFeaturePrefix"
+                    label="Feature Prefix"
+                    hint="Prefix for feature ticket titles (e.g. [FEAT])"
+                    outlined
+                    dense
+                  >
+                    <template #prepend>
+                      <q-icon name="star_outline" />
+                    </template>
+                  </q-input>
+                </q-card-section>
+              </q-card>
+            </q-expansion-item>
+
+            <!-- Area Categories Section -->
+            <q-expansion-item
+              label="Area Categories"
+              icon="category"
+              class="q-mb-md"
+              header-class="text-subtitle2"
+            >
+              <q-card flat>
+                <q-card-section>
+                  <div
+                    v-for="(cat, index) in profileForm.areaCategories"
+                    :key="index"
+                    class="row q-gutter-sm q-mb-sm items-center"
+                  >
+                    <q-input
+                      v-model="cat.code"
+                      label="Code"
+                      outlined
+                      dense
+                      class="col-2"
+                    />
+                    <q-input
+                      v-model="cat.name"
+                      label="Name"
+                      outlined
+                      dense
+                      class="col"
+                    />
+                    <q-input
+                      v-model="cat.description"
+                      label="Description"
+                      outlined
+                      dense
+                      class="col"
+                    />
+                    <q-btn
+                      flat
+                      dense
+                      icon="remove_circle_outline"
+                      color="negative"
+                      @click="removeAreaCategory(index)"
+                    >
+                      <q-tooltip>Remove category</q-tooltip>
+                    </q-btn>
+                  </div>
+                  <q-btn
+                    outline
+                    dense
+                    icon="add"
+                    label="Add Category"
+                    color="primary"
+                    class="q-mt-sm"
+                    @click="addAreaCategory"
+                  />
+                </q-card-section>
+              </q-card>
+            </q-expansion-item>
+
+            <!-- Custom Fields Section -->
+            <q-expansion-item
+              label="Custom Metadata Fields"
+              icon="tune"
+              class="q-mb-md"
+              header-class="text-subtitle2"
+            >
+              <q-card flat>
+                <q-card-section>
+                  <div
+                    v-for="(field, index) in profileForm.customFields"
+                    :key="index"
+                    class="q-mb-md"
+                    style="border: 1px solid rgba(0,0,0,0.12); border-radius: 4px; padding: 8px;"
+                  >
+                    <div class="row q-gutter-sm q-mb-sm">
+                      <q-input
+                        v-model="field.key"
+                        label="Key"
+                        outlined
+                        dense
+                        class="col"
+                      />
+                      <q-input
+                        v-model="field.label"
+                        label="Label"
+                        outlined
+                        dense
+                        class="col"
+                      />
+                    </div>
+                    <div class="row q-gutter-sm items-center">
+                      <q-select
+                        v-model="field.field_type"
+                        :options="customFieldTypeOptions"
+                        label="Type"
+                        outlined
+                        dense
+                        emit-value
+                        map-options
+                        class="col-3"
+                      />
+                      <q-input
+                        v-model="field.default_value"
+                        label="Default Value"
+                        outlined
+                        dense
+                        class="col"
+                      />
+                      <q-toggle
+                        v-model="field.required"
+                        label="Required"
+                        color="primary"
+                        class="col-auto"
+                      />
+                      <q-btn
+                        flat
+                        dense
+                        icon="remove_circle_outline"
+                        color="negative"
+                        class="col-auto"
+                        @click="removeCustomField(index)"
+                      >
+                        <q-tooltip>Remove field</q-tooltip>
+                      </q-btn>
+                    </div>
+                  </div>
+                  <q-btn
+                    outline
+                    dense
+                    icon="add"
+                    label="Add Field"
+                    color="primary"
+                    class="q-mt-sm"
+                    @click="addCustomField"
+                  />
+                </q-card-section>
+              </q-card>
+            </q-expansion-item>
+          </q-card-section>
+
+          <q-card-actions align="right">
+            <q-btn
+              flat
+              label="Cancel"
+              v-close-popup
+            />
+            <q-btn
+              color="primary"
+              label="Save Profile"
+              :loading="profileStore.loading"
+              :disable="!profileForm.name.trim()"
+              @click="saveProfile"
+            />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
+
       <!-- AI (Claude) Section -->
       <q-card class="q-mb-md">
         <q-card-section>
@@ -688,14 +1101,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
+import { useProfileStore } from '@/stores/profile'
 import { useQuasar } from 'quasar'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { open as openUrl } from '@tauri-apps/plugin-shell'
 import { useRouter } from 'vue-router'
 import { getClaudeStatus, refreshClaudeStatus, setAnthropicApiKey, clearAnthropicApiKey } from '@/api/tauri'
+import type { QaProfile, AreaCategory, CustomMetadataField, CustomFieldType } from '@/types/backend'
 
 const settingsStore = useSettingsStore()
+const profileStore = useProfileStore()
 const $q = useQuasar()
 const router = useRouter()
 
@@ -1283,12 +1699,258 @@ function confirmReset(): void {
   })
 }
 
+// ============================================================================
+// Profile Management
+// ============================================================================
+
+// Profile select options (for the active profile dropdown)
+const profileSelectOptions = computed(() => {
+  return profileStore.profiles.map(p => ({ label: p.name, value: p.id }))
+})
+
+// Custom field type options
+const customFieldTypeOptions = [
+  { label: 'Text', value: 'text' },
+  { label: 'Number', value: 'number' },
+  { label: 'Select', value: 'select' },
+]
+
+// Dialog state
+const profileDialogOpen = ref(false)
+const editingProfile = ref<QaProfile | null>(null)
+
+// Form state for create/edit dialog
+interface ProfileFormState {
+  name: string
+  linearTeamId: string
+  linearApiKey: string
+  linearDefaultAssigneeId: string
+  linearDefaultBugLabelIds: string
+  linearDefaultFeatureLabelIds: string
+  linearDefaultStateId: string
+  titleBugPrefix: string
+  titleFeaturePrefix: string
+  areaCategories: Array<{ code: string; name: string; description: string }>
+  customFields: Array<{
+    key: string
+    label: string
+    field_type: CustomFieldType
+    default_value: string
+    required: boolean
+  }>
+}
+
+function makeEmptyProfileForm(): ProfileFormState {
+  return {
+    name: '',
+    linearTeamId: '',
+    linearApiKey: '',
+    linearDefaultAssigneeId: '',
+    linearDefaultBugLabelIds: '',
+    linearDefaultFeatureLabelIds: '',
+    linearDefaultStateId: '',
+    titleBugPrefix: '',
+    titleFeaturePrefix: '',
+    areaCategories: [],
+    customFields: [],
+  }
+}
+
+const profileForm = ref<ProfileFormState>(makeEmptyProfileForm())
+
+function openCreateProfile(): void {
+  editingProfile.value = null
+  profileForm.value = makeEmptyProfileForm()
+  profileDialogOpen.value = true
+}
+
+function openEditProfile(profile: QaProfile): void {
+  editingProfile.value = profile
+  profileForm.value = {
+    name: profile.name,
+    linearTeamId: profile.linear_config?.team_id ?? '',
+    linearApiKey: profile.linear_config?.api_key ?? '',
+    linearDefaultAssigneeId: profile.linear_config?.default_assignee_id ?? '',
+    linearDefaultBugLabelIds: profile.linear_config?.default_bug_label_ids.join(', ') ?? '',
+    linearDefaultFeatureLabelIds: profile.linear_config?.default_feature_label_ids.join(', ') ?? '',
+    linearDefaultStateId: profile.linear_config?.default_state_id ?? '',
+    titleBugPrefix: profile.title_conventions?.bug_prefix ?? '',
+    titleFeaturePrefix: profile.title_conventions?.feature_prefix ?? '',
+    areaCategories: profile.area_categories.map(c => ({
+      code: c.code,
+      name: c.name,
+      description: c.description ?? '',
+    })),
+    customFields: profile.custom_fields.map(f => ({
+      key: f.key,
+      label: f.label,
+      field_type: f.field_type,
+      default_value: f.default_value ?? '',
+      required: f.required,
+    })),
+  }
+  profileDialogOpen.value = true
+}
+
+function addAreaCategory(): void {
+  profileForm.value.areaCategories.push({ code: '', name: '', description: '' })
+}
+
+function removeAreaCategory(index: number): void {
+  profileForm.value.areaCategories.splice(index, 1)
+}
+
+function addCustomField(): void {
+  profileForm.value.customFields.push({
+    key: '',
+    label: '',
+    field_type: 'text',
+    default_value: '',
+    required: false,
+  })
+}
+
+function removeCustomField(index: number): void {
+  profileForm.value.customFields.splice(index, 1)
+}
+
+function buildProfileFromForm(id: string, now: string): QaProfile {
+  const form = profileForm.value
+
+  const hasLinearConfig = form.linearTeamId.trim() || form.linearApiKey.trim()
+  const linearConfig = hasLinearConfig
+    ? {
+        team_id: form.linearTeamId.trim(),
+        api_key: form.linearApiKey.trim(),
+        default_assignee_id: form.linearDefaultAssigneeId.trim() || null,
+        default_bug_label_ids: form.linearDefaultBugLabelIds
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => s.length > 0),
+        default_feature_label_ids: form.linearDefaultFeatureLabelIds
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => s.length > 0),
+        default_state_id: form.linearDefaultStateId.trim() || null,
+      }
+    : null
+
+  const hasTitleConventions = form.titleBugPrefix.trim() || form.titleFeaturePrefix.trim()
+  const titleConventions = hasTitleConventions
+    ? {
+        bug_prefix: form.titleBugPrefix.trim(),
+        feature_prefix: form.titleFeaturePrefix.trim(),
+      }
+    : null
+
+  const areaCategories: AreaCategory[] = form.areaCategories
+    .filter(c => c.code.trim() || c.name.trim())
+    .map(c => ({
+      code: c.code.trim(),
+      name: c.name.trim(),
+      description: c.description.trim() || null,
+    }))
+
+  const customFields: CustomMetadataField[] = form.customFields
+    .filter(f => f.key.trim() || f.label.trim())
+    .map(f => ({
+      key: f.key.trim(),
+      label: f.label.trim(),
+      field_type: f.field_type,
+      default_value: f.default_value.trim() || null,
+      required: f.required,
+    }))
+
+  return {
+    id,
+    name: form.name.trim(),
+    linear_config: linearConfig,
+    area_categories: areaCategories,
+    custom_fields: customFields,
+    title_conventions: titleConventions,
+    created_at: now,
+    updated_at: now,
+  }
+}
+
+async function saveProfile(): Promise<void> {
+  if (!profileForm.value.name.trim()) return
+
+  try {
+    const now = new Date().toISOString()
+    if (editingProfile.value) {
+      const updated = buildProfileFromForm(editingProfile.value.id, now)
+      updated.created_at = editingProfile.value.created_at
+      await profileStore.updateProfile(updated)
+      $q.notify({ type: 'positive', message: 'Profile updated' })
+    } else {
+      const id = crypto.randomUUID()
+      const created = buildProfileFromForm(id, now)
+      await profileStore.createProfile(created)
+      $q.notify({ type: 'positive', message: 'Profile created' })
+    }
+    profileDialogOpen.value = false
+  } catch (err) {
+    console.error('Failed to save profile:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to save profile',
+      caption: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+function confirmDeleteProfile(id: string, name: string): void {
+  $q.dialog({
+    title: 'Delete Profile',
+    message: `Are you sure you want to delete the profile "${name}"? This cannot be undone.`,
+    cancel: true,
+    persistent: true,
+  }).onOk(async () => {
+    try {
+      await profileStore.deleteProfile(id)
+      $q.notify({ type: 'positive', message: 'Profile deleted' })
+    } catch (err) {
+      console.error('Failed to delete profile:', err)
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to delete profile',
+        caption: err instanceof Error ? err.message : String(err),
+      })
+    }
+  })
+}
+
+async function onActiveProfileChange(value: string | null): Promise<void> {
+  try {
+    if (value) {
+      await profileStore.setActiveProfile(value)
+    } else {
+      await profileStore.clearActiveProfile()
+    }
+  } catch (err) {
+    console.error('Failed to change active profile:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to change active profile',
+      caption: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
 // Initialize
 onMounted(async () => {
   await settingsStore.initialize()
   await loadSettings()
   await checkClaudeStatus()
   await loadTemplateInfo()
+
+  // Load profiles
+  try {
+    await profileStore.loadProfiles()
+  } catch (err) {
+    console.warn('Failed to load profiles:', err)
+  }
 
   // Load Linear credentials from ticketing table
   try {
