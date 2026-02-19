@@ -93,13 +93,21 @@ Key differences from swarm mode:
 
 When ending a manual mode session, write a summary here so the next session can pick up cleanly. Delete the previous session's notes when starting fresh.
 
-**Session 2026-02-19 (completed):**
-- Completed: T27 (polish — wired real Claude status in Settings.vue, ESLint cleanup, removed dead Home.vue), T186 (bug notes to SQLite — rewrote Tauri commands to use BugRepository, migration from notes.md, updated frontend + tests), T185 (decomposed into 7 sub-tickets: T189-T195)
-- All checks pass: vue-tsc clean, cargo clippy clean, vitest 579/579
-- Blocking graph set up: T188 blocked-by T186 (now done, so T188 is unblocked), T187 blocked-by T27 (now done, so T187 is unblocked), T184 blocked-by T185 (done, but now blocked-by the sub-tickets via T189-T195 chain)
-- Next unblocked work tickets: **T187** (Claude OAuth), **T188** (Feedback workflow), **T189** (QaProfile data model — first step of profile system)
-- T187 and T188 can be worked in parallel (different files). T189 is independent.
-- Uncommitted changes in working tree — need to commit before next session
+**Session 2026-02-19 (session 2, completed):**
+- Completed 10 tickets in this session: T187, T188, T189, T190, T191, T192, T193, T194, T195, T184
+- **T189** — QaProfile data model: profile/ module with types, InMemoryProfileRepository, 12 tests
+- **T188** — Feedback workflow: bug_type persistence, update_bug_type command, feedback excluded from Linear push, copy-to-clipboard message generation
+- **T190** — Profile SQLite persistence: profiles table, SqliteProfileRepository, 7 Tauri CRUD commands, TypeScript types/API
+- **T187** — Claude OAuth: replaced CLI subprocess with direct Anthropic Messages API calls (reqwest), supports API key + Claude Code OAuth token auto-detect, Settings.vue API key input
+- **T191** — Custom metadata: added custom_metadata JSON column to bugs, generic metadata field rendering in SessionReview
+- **T193** — Profile-aware Linear: extended CreateTicketRequest with assignee_id/state_id, GraphQL mutation updated, get_linear_profile_defaults command
+- **T192** — Template rendering: generic custom field placeholder replacement with backwards-compatible fallback
+- **T194** — Profile management UI: Pinia profile store, full CRUD UI in Settings.vue, 20 new store tests
+- **T195** — Seed Contio profile: auto-creates default Contio MeetingOS profile on first run, deleted LINEAR_INTEGRATION.md
+- **T184** — Self QA / dogfooding: create_swarm_ticket command, Export to Swarm button in SessionReview, swarm DB path setting
+- All checks pass: vue-tsc clean, cargo clippy clean, vitest 599/599
+- Only remaining open tickets: T152 (human verify), T162 (human verify) — no more work tickets for agents
+- All commits pushed to main
 
 <!-- Swarm CLI section below is still valid, just not actively used -->
 
