@@ -287,10 +287,15 @@ impl RegistryCache {
 mod tests {
     use super::*;
     use std::fs;
+    use uuid::Uuid;
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("{}_{}", prefix, Uuid::new_v4()))
+    }
 
     #[test]
     fn test_cache_and_retrieve() {
-        let temp_dir = std::env::temp_dir().join("registry_cache_test");
+        let temp_dir = unique_test_dir("registry_cache_test");
         fs::create_dir_all(&temp_dir).unwrap();
         let db_path = temp_dir.join("test.db");
 
@@ -316,13 +321,14 @@ mod tests {
         let retrieved = cache.get_cached_original(registry_key).unwrap();
         assert_eq!(retrieved, None);
 
-        // Cleanup
+        // Drop cache before cleanup to release the SQLite file lock on Windows
+        drop(cache);
         fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
     fn test_list_active_redirects() {
-        let temp_dir = std::env::temp_dir().join("registry_cache_test2");
+        let temp_dir = unique_test_dir("registry_cache_test");
         fs::create_dir_all(&temp_dir).unwrap();
         let db_path = temp_dir.join("test.db");
 
@@ -339,13 +345,14 @@ mod tests {
         let redirects = cache.list_active_redirects().unwrap();
         assert_eq!(redirects.len(), 2);
 
-        // Cleanup
+        // Drop cache before cleanup to release the SQLite file lock on Windows
+        drop(cache);
         fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
     fn test_update_existing_redirect() {
-        let temp_dir = std::env::temp_dir().join("registry_cache_test3");
+        let temp_dir = unique_test_dir("registry_cache_test");
         fs::create_dir_all(&temp_dir).unwrap();
         let db_path = temp_dir.join("test.db");
 
@@ -374,7 +381,8 @@ mod tests {
         let redirects = cache.list_active_redirects().unwrap();
         assert_eq!(redirects.len(), 1); // Should be only one entry
 
-        // Cleanup
+        // Drop cache before cleanup to release the SQLite file lock on Windows
+        drop(cache);
         fs::remove_dir_all(&temp_dir).unwrap();
     }
 }

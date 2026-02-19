@@ -20,6 +20,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    exclude: [
+      'node_modules/**',
+      '.swarm/**',
+      'dist/**'
+    ],
     coverage: {
       reporter: ['text', 'json', 'html'],
       exclude: [
