@@ -94,20 +94,16 @@ Key differences from swarm mode:
 When ending a manual mode session, write a summary here so the next session can pick up cleanly. Delete the previous session's notes when starting fresh.
 
 **Session 2026-02-19 (session 2, completed):**
-- Completed 10 tickets in this session: T187, T188, T189, T190, T191, T192, T193, T194, T195, T184
-- **T189** — QaProfile data model: profile/ module with types, InMemoryProfileRepository, 12 tests
-- **T188** — Feedback workflow: bug_type persistence, update_bug_type command, feedback excluded from Linear push, copy-to-clipboard message generation
-- **T190** — Profile SQLite persistence: profiles table, SqliteProfileRepository, 7 Tauri CRUD commands, TypeScript types/API
-- **T187** — Claude OAuth: replaced CLI subprocess with direct Anthropic Messages API calls (reqwest), supports API key + Claude Code OAuth token auto-detect, Settings.vue API key input
-- **T191** — Custom metadata: added custom_metadata JSON column to bugs, generic metadata field rendering in SessionReview
-- **T193** — Profile-aware Linear: extended CreateTicketRequest with assignee_id/state_id, GraphQL mutation updated, get_linear_profile_defaults command
-- **T192** — Template rendering: generic custom field placeholder replacement with backwards-compatible fallback
-- **T194** — Profile management UI: Pinia profile store, full CRUD UI in Settings.vue, 20 new store tests
-- **T195** — Seed Contio profile: auto-creates default Contio MeetingOS profile on first run, deleted LINEAR_INTEGRATION.md
-- **T184** — Self QA / dogfooding: create_swarm_ticket command, Export to Swarm button in SessionReview, swarm DB path setting
-- All checks pass: vue-tsc clean, cargo clippy clean, vitest 599/599
-- Only remaining open tickets: T152 (human verify), T162 (human verify) — no more work tickets for agents
-- All commits pushed to main
+- Completed 10 tickets: T184, T187, T188, T189, T190, T191, T192, T193, T194, T195
+- **Profile system (T189→T195 chain):** Full QA profile system — Rust data model, SQLite persistence (JSON blob), 7 CRUD Tauri commands, Pinia store, Settings UI with create/edit/delete/switch, generic custom_metadata on bugs replacing hardcoded meeting_id/software_version, profile-aware template rendering, profile-aware Linear ticket creation (assignee/state/labels from profile), Contio MeetingOS default profile seeded on first run, LINEAR_INTEGRATION.md deleted
+- **T187 — Claude API:** Replaced CLI subprocess with direct reqwest HTTP calls to Anthropic Messages API. Supports API key (user-entered in Settings) and auto-detected Claude Code OAuth token from ~/.claude/.credentials.json. Base64 image encoding for multimodal requests.
+- **T188 — Feedback workflow:** bug_type field persisted through BugUpdate/update_partial, feedback items excluded from Linear push pool, copy-to-clipboard message generation in SessionReview
+- **T184 — Self QA:** create_swarm_ticket Tauri command (subprocess to ticket.py), Export to Swarm button in SessionReview, configurable swarm DB path in Settings
+- Checks: vue-tsc clean, cargo clippy clean, vitest 599/599 (20 new profile store tests)
+- 6 pre-existing intermittent failures in `cargo test` (platform::windows registry_cache file lock race conditions on parallel test threads — not caused by our changes, not seen in clippy or filtered test runs)
+- Remaining open tickets: T152 (human verify), T162 (human verify/proposal) — no more work tickets for agents
+- All commits pushed to origin/main
+- Known issue: the 6 flaky platform tests should get a ticket for proper fix (use per-test temp dirs instead of shared files)
 
 <!-- Swarm CLI section below is still valid, just not actively used -->
 
