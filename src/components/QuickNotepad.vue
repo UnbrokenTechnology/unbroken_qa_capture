@@ -50,7 +50,10 @@
             @mousedown.stop
           >
             <template #prepend>
-              <q-icon :name="meetingIdIsUrl ? 'link' : 'videocam'" :color="meetingIdIsUrl ? 'primary' : undefined" />
+              <q-icon
+                :name="meetingIdIsUrl ? 'link' : 'videocam'"
+                :color="meetingIdIsUrl ? 'primary' : undefined"
+              />
             </template>
             <template
               v-if="meetingIdIsUrl"
@@ -259,8 +262,7 @@ async function loadNotes() {
 
   try {
     const notes = await tauri.getBugNotes(
-      activeBug.value.id,
-      activeBug.value.folder_path
+      activeBug.value.id
     )
     localNotes.value = notes
 
@@ -300,7 +302,6 @@ async function saveNotes() {
   try {
     await tauri.updateBugNotes(
       activeBug.value.id,
-      activeBug.value.folder_path,
       localNotes.value
     )
     saveStatus.value = 'saved'
@@ -437,7 +438,6 @@ watch(
       try {
         await tauri.updateBugNotes(
           oldBug.id,
-          oldBug.folder_path,
           localNotes.value
         )
 

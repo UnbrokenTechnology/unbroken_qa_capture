@@ -174,7 +174,11 @@
                   style="text-decoration: none;"
                   @click.prevent="openMeetingUrl(bug.meeting_id!)"
                 >
-                  <q-icon name="open_in_new" size="xs" class="q-mr-xs" />{{ bug.meeting_id }}
+                  <q-icon
+                    name="open_in_new"
+                    size="xs"
+                    class="q-mr-xs"
+                  />{{ bug.meeting_id }}
                 </a>
               </div>
               <div
@@ -238,7 +242,12 @@
       >
         <q-card-section>
           <div class="row items-center q-mb-md">
-            <q-icon name="timeline" size="sm" color="primary" class="q-mr-sm" />
+            <q-icon
+              name="timeline"
+              size="sm"
+              color="primary"
+              class="q-mr-sm"
+            />
             <span class="text-h6">All Captures ({{ allCaptures.length }})</span>
             <q-space />
             <q-btn-toggle
@@ -312,7 +321,10 @@
                       >
                         <template #error>
                           <div class="absolute-full flex flex-center bg-grey-3">
-                            <q-icon name="broken_image" color="grey-6" />
+                            <q-icon
+                              name="broken_image"
+                              color="grey-6"
+                            />
                           </div>
                         </template>
                       </q-img>
@@ -377,7 +389,10 @@
 
           <!-- Carousel view (screenshots only) -->
           <div v-else>
-            <div v-if="screenshotCaptures.length === 0" class="text-body2 text-grey text-center q-py-md">
+            <div
+              v-if="screenshotCaptures.length === 0"
+              class="text-body2 text-grey text-center q-py-md"
+            >
               No screenshots to show in carousel view
             </div>
             <q-carousel
@@ -444,8 +459,13 @@
             </q-carousel>
 
             <!-- Videos shown below carousel -->
-            <div v-if="videoCaptures.length > 0" class="q-mt-md">
-              <div class="text-subtitle2 q-mb-sm">Videos ({{ videoCaptures.length }})</div>
+            <div
+              v-if="videoCaptures.length > 0"
+              class="q-mt-md"
+            >
+              <div class="text-subtitle2 q-mb-sm">
+                Videos ({{ videoCaptures.length }})
+              </div>
               <div class="column q-gutter-md">
                 <div
                   v-for="(capturePath, index) in videoCaptures"
@@ -633,7 +653,12 @@
     >
       <q-card style="min-width: 320px; max-width: 480px;">
         <q-card-section class="row items-center q-pb-none">
-          <q-icon name="swap_horiz" size="md" color="primary" class="q-mr-sm" />
+          <q-icon
+            name="swap_horiz"
+            size="md"
+            color="primary"
+            class="q-mr-sm"
+          />
           <div class="text-h6">
             Move Capture to Another Bug
           </div>
@@ -656,7 +681,12 @@
           />
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn flat label="Cancel" color="grey" @click="showReassignDialog = false" />
+          <q-btn
+            flat
+            label="Cancel"
+            color="grey"
+            @click="showReassignDialog = false"
+          />
           <q-btn
             unelevated
             label="Move"

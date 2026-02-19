@@ -180,16 +180,12 @@ export async function getBugsBySession(sessionId: string): Promise<Bug[]> {
   return await invoke<Bug[]>('get_bugs_by_session', { sessionId })
 }
 
-export async function getBugNotes(bugId: string, folderPath: string): Promise<string> {
-  return await invoke<string>('get_bug_notes', { bugId, folderPath })
+export async function getBugNotes(bugId: string): Promise<string> {
+  return await invoke<string>('get_bug_notes', { bugId })
 }
 
-export async function updateBugNotes(
-  bugId: string,
-  folderPath: string,
-  notes: string
-): Promise<void> {
-  await invoke('update_bug_notes', { bugId, folderPath, notes })
+export async function updateBugNotes(bugId: string, notes: string): Promise<void> {
+  await invoke('update_bug_notes', { bugId, notes })
 }
 
 export async function getSessionNotes(sessionId: string, folderPath: string): Promise<string> {

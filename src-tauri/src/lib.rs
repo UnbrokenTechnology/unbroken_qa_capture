@@ -526,41 +526,64 @@ async fn update_tray_tooltip(tooltip: String, app_handle: tauri::AppHandle) -> R
 }
 
 #[tauri::command]
-async fn get_bug_notes(_bug_id: String, folder_path: String) -> Result<String, String> {
-    use std::path::Path;
+fn get_bug_notes(bug_id: String, app: tauri::AppHandle) -> Result<String, String> {
+    use database::{Database, BugOps, BugRepository};
 
-    // First try to read from notes.md file
-    let notes_file = Path::new(&folder_path).join("notes.md");
-    if notes_file.exists() {
-        std::fs::read_to_string(&notes_file)
-            .map_err(|e| format!("Failed to read notes.md: {}", e))
-    } else {
-        // Return empty string if file doesn't exist yet
-        Ok(String::new())
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = BugRepository::new(db.connection());
+
+    let bug = repo.get(&bug_id)
+        .map_err(|e: rusqlite::Error| e.to_string())?
+        .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
+
+    // If DB notes are empty, attempt one-time migration from notes.md file
+    if bug.notes.as_ref().is_none_or(|n| n.is_empty()) {
+        let notes_file = std::path::Path::new(&bug.folder_path).join("notes.md");
+        if notes_file.exists() {
+            if let Ok(file_notes) = std::fs::read_to_string(&notes_file) {
+                if !file_notes.is_empty() {
+                    let update = database::BugUpdate {
+                        notes: Some(file_notes.clone()),
+                        ..Default::default()
+                    };
+                    let _ = repo.update_partial(&bug_id, &update);
+                    return Ok(file_notes);
+                }
+            }
+        }
     }
+
+    Ok(bug.notes.unwrap_or_default())
 }
 
 #[tauri::command]
-async fn update_bug_notes(
-    _bug_id: String,
-    folder_path: String,
+fn update_bug_notes(
+    bug_id: String,
     notes: String,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
-    use std::path::Path;
+    use database::{Database, BugOps, BugRepository};
 
-    // Ensure the folder exists
-    let bug_folder = Path::new(&folder_path);
-    if !bug_folder.exists() {
-        std::fs::create_dir_all(bug_folder)
-            .map_err(|e| format!("Failed to create bug folder: {}", e))?;
-    }
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
 
-    // Write notes to notes.md file
-    let notes_file = bug_folder.join("notes.md");
-    std::fs::write(&notes_file, notes)
-        .map_err(|e| format!("Failed to write notes.md: {}", e))?;
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = BugRepository::new(db.connection());
 
-    Ok(())
+    let update = database::BugUpdate {
+        notes: Some(notes),
+        ..Default::default()
+    };
+
+    repo.update_partial(&bug_id, &update)
+        .map_err(|e: rusqlite::Error| e.to_string())
 }
 
 #[tauri::command]

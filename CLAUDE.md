@@ -77,11 +77,35 @@ The original PRD is in the repository as `Unbroken_QA_Capture_PRD.md`.
 - **Organization:** Unbroken Technology (`UnbrokenTechnology`)
 - **Remotes:** `origin` (GitHub), `swarm` (local agent orchestration)
 
-## Swarm CLI
+## Current Workflow Mode: Manual Mode
+
+**The swarm is temporarily unavailable.** Work is being done in **manual mode** — tickets are worked directly through Claude Code by the human operator with sub-agents, rather than by autonomous swarm containers.
+
+Key differences from swarm mode:
+- Tickets are claimed as `claude-code` instead of `agent-1`, `agent-2`, etc.
+- Sub-agents are used within Claude Code sessions for parallel work (same as swarm agents but in-process)
+- The ticket database (`.swarm/tickets/tickets.db`) is kept in a swarm-compatible state — blocking relationships, comments, and status are maintained so the swarm can resume seamlessly
+- Commits go directly to `main` on origin (no bare repo intermediary)
+
+**To return to swarm mode:** Remove this section and run `swarm start`. The ticket DB will be in a clean state for agents to `claim-next`.
+
+### Session Notes
+
+When ending a manual mode session, write a summary here so the next session can pick up cleanly. Delete the previous session's notes when starting fresh.
+
+**Session 2026-02-19 (completed):**
+- Completed: T27 (polish — wired real Claude status in Settings.vue, ESLint cleanup, removed dead Home.vue), T186 (bug notes to SQLite — rewrote Tauri commands to use BugRepository, migration from notes.md, updated frontend + tests), T185 (decomposed into 7 sub-tickets: T189-T195)
+- All checks pass: vue-tsc clean, cargo clippy clean, vitest 579/579
+- Blocking graph set up: T188 blocked-by T186 (now done, so T188 is unblocked), T187 blocked-by T27 (now done, so T187 is unblocked), T184 blocked-by T185 (done, but now blocked-by the sub-tickets via T189-T195 chain)
+- Next unblocked work tickets: **T187** (Claude OAuth), **T188** (Feedback workflow), **T189** (QaProfile data model — first step of profile system)
+- T187 and T188 can be worked in parallel (different files). T189 is independent.
+- Uncommitted changes in working tree — need to commit before next session
+
+<!-- Swarm CLI section below is still valid, just not actively used -->
 
 The `swarm` CLI manages autonomous agent swarms. It must be run via PowerShell on Windows (e.g. `powershell.exe -Command "swarm <command>"`).
 
-### Commands
+#### Commands
 
 | Command | Description | Usage |
 |---------|-------------|-------|
@@ -95,7 +119,7 @@ The `swarm` CLI manages autonomous agent swarms. It must be run via PowerShell o
 | `swarm pull` | Pull latest changes from the swarm bare repo | `swarm pull` |
 | `swarm watch` | Watch for new commits and auto-pull | `swarm watch --interval 5` |
 
-### OAuth / Token Management
+#### OAuth / Token Management
 
 `swarm start` automatically extracts OAuth credentials from `~/.claude/.credentials.json` (on Windows) or the macOS Keychain. No `.env` file is needed. The flow:
 
@@ -108,7 +132,7 @@ The `swarm` CLI manages autonomous agent swarms. It must be run via PowerShell o
 
 Source: `C:\Users\steph\Repositories\claude-swarm\swarm\swarm.py` (the swarm CLI)
 
-### Pulling Agent Work
+#### Pulling Agent Work
 
 Agents push to a bare repo at `.swarm/repo.git`. The main branch is **`main`**. Agents work on feature branches named `ticket-<N>`.
 
@@ -138,7 +162,7 @@ git fetch swarm ticket-<N>
 git diff main swarm/ticket-<N> --stat
 ```
 
-### Configuration
+#### Configuration
 
 Config lives in `.swarm/config.json`:
 

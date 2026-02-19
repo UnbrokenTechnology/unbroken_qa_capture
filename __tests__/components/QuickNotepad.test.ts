@@ -116,7 +116,7 @@ describe('QuickNotepad.vue', () => {
     const wrapper = mountComponent()
     await flushPromises()
 
-    expect(vi.mocked(tauri.getBugNotes)).toHaveBeenCalledWith('bug-1', '/test/bugs/bug1')
+    expect(vi.mocked(tauri.getBugNotes)).toHaveBeenCalledWith('bug-1')
 
     // Check that textarea has the loaded notes
     const textarea = wrapper.find('textarea')
@@ -182,7 +182,6 @@ describe('QuickNotepad.vue', () => {
     // Should now have saved
     expect(vi.mocked(tauri.updateBugNotes)).toHaveBeenCalledWith(
       'bug-1',
-      '/test/bugs/bug1',
       'New notes content'
     )
 
@@ -311,7 +310,7 @@ describe('QuickNotepad.vue', () => {
     const wrapper = mountComponent()
     await flushPromises()
 
-    expect(vi.mocked(tauri.getBugNotes)).toHaveBeenCalledWith('bug-1', '/test/bugs/bug1')
+    expect(vi.mocked(tauri.getBugNotes)).toHaveBeenCalledWith('bug-1')
 
     // Change to a different bug
     const newBug: BackendBug = {
@@ -327,7 +326,7 @@ describe('QuickNotepad.vue', () => {
     await flushPromises()
 
     // Should load notes for new bug
-    expect(vi.mocked(tauri.getBugNotes)).toHaveBeenCalledWith('bug-2', '/test/bugs/bug2')
+    expect(vi.mocked(tauri.getBugNotes)).toHaveBeenCalledWith('bug-2')
 
     const textarea = wrapper.find('textarea')
     expect(textarea.element.value).toBe('Bug 2 notes')
@@ -364,7 +363,6 @@ describe('QuickNotepad.vue', () => {
     // Should have saved the old bug's notes
     expect(vi.mocked(tauri.updateBugNotes)).toHaveBeenCalledWith(
       'bug-1',
-      '/test/bugs/bug1',
       'Modified bug 1 notes'
     )
 
@@ -463,7 +461,6 @@ describe('QuickNotepad.vue', () => {
     expect(vi.mocked(tauri.updateBugNotes)).toHaveBeenCalledTimes(1)
     expect(vi.mocked(tauri.updateBugNotes)).toHaveBeenCalledWith(
       'bug-1',
-      '/test/bugs/bug1',
       'ABC'
     )
 

@@ -663,6 +663,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { open as openUrl } from '@tauri-apps/plugin-shell'
 import { useRouter } from 'vue-router'
+import { getClaudeStatus, refreshClaudeStatus } from '@/api/tauri'
 
 const settingsStore = useSettingsStore()
 const $q = useQuasar()
@@ -914,9 +915,14 @@ async function loadTemplateInfo(): Promise<void> {
 async function checkClaudeStatus(): Promise<void> {
   try {
     claudeStatus.value = 'checking'
-    // TODO: Implement backend command to check Claude CLI status
-    // For now, just set to 'available' as placeholder
-    claudeStatus.value = 'available'
+    const result = await getClaudeStatus()
+    if (result.status === 'ready') {
+      claudeStatus.value = 'available'
+    } else if (result.status === 'notAuthenticated') {
+      claudeStatus.value = 'not_authenticated'
+    } else {
+      claudeStatus.value = 'not_found'
+    }
   } catch (err) {
     console.error('Failed to check Claude status:', err)
     claudeStatus.value = 'not_found'
@@ -926,14 +932,32 @@ async function checkClaudeStatus(): Promise<void> {
 async function testClaudeConnection(): Promise<void> {
   try {
     testingClaude.value = true
-    // TODO: Implement backend command to test Claude CLI
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    $q.notify({
-      type: 'positive',
-      message: 'Claude CLI connection successful!',
-    })
+    const result = await refreshClaudeStatus()
+    if (result.status === 'ready') {
+      claudeStatus.value = 'available'
+      $q.notify({
+        type: 'positive',
+        message: 'Claude CLI connection successful!',
+        caption: result.version ? `Version: ${result.version}` : undefined,
+      })
+    } else if (result.status === 'notAuthenticated') {
+      claudeStatus.value = 'not_authenticated'
+      $q.notify({
+        type: 'warning',
+        message: 'Claude CLI found but not authenticated',
+        caption: result.message ?? 'Run `claude` in a terminal to log in.',
+      })
+    } else {
+      claudeStatus.value = 'not_found'
+      $q.notify({
+        type: 'negative',
+        message: 'Claude CLI not found',
+        caption: result.message ?? 'Install the Claude CLI and try again.',
+      })
+    }
   } catch (err) {
     console.error('Failed to test Claude connection:', err)
+    claudeStatus.value = 'not_found'
     $q.notify({
       type: 'negative',
       message: 'Failed to connect to Claude CLI',
