@@ -7,6 +7,7 @@ mod session_json;
 mod hotkey;
 mod claude_cli;
 mod ticketing;
+mod profile;
 
 #[cfg(test)]
 mod hotkey_tests;
@@ -1193,6 +1194,34 @@ fn update_bug_description(
 }
 
 #[tauri::command]
+fn update_bug_type(
+    bug_id: String,
+    bug_type: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use database::{Database, BugOps, BugRepository, BugType};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = BugRepository::new(db.connection());
+
+    let parsed_type = BugType::from_str(&bug_type)
+        .map_err(|e| format!("Invalid bug type: {}", e))?;
+
+    let update = database::BugUpdate {
+        bug_type: Some(parsed_type),
+        ..Default::default()
+    };
+
+    repo.update_partial(&bug_id, &update)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
 fn format_session_export(session_folder_path: String) -> Result<(), String> {
     use std::path::Path;
     use std::fs;
@@ -1966,6 +1995,7 @@ pub fn run() {
             assign_capture_to_bug,
             update_bug_console_parse,
             update_bug_description,
+            update_bug_type,
             update_capture_console_flag,
             get_app_version,
             enable_startup,

@@ -157,6 +157,10 @@ impl<'a> BugOps for BugRepository<'a> {
         let mut query = String::from("UPDATE bugs SET updated_at = datetime('now')");
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
+        if let Some(ref bug_type) = update.bug_type {
+            query.push_str(", type = ?");
+            params_vec.push(Box::new(bug_type.as_str().to_string()));
+        }
         if let Some(ref title) = update.title {
             query.push_str(", title = ?");
             params_vec.push(Box::new(title.clone()));

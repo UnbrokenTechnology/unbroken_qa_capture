@@ -233,6 +233,7 @@ pub struct SessionSummary {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BugUpdate {
+    pub bug_type: Option<BugType>,
     pub title: Option<String>,
     pub notes: Option<String>,
     pub description: Option<String>,

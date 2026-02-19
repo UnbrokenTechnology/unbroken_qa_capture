@@ -1140,6 +1140,58 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Feedback Items Section — feedback is NOT pushed to Linear; copy the message instead -->
+    <div
+      v-if="feedbackItems.length > 0"
+      class="q-mt-lg"
+    >
+      <div class="text-h6 q-mb-sm">
+        Feedback ({{ feedbackItems.length }})
+      </div>
+      <q-list
+        bordered
+        separator
+        class="rounded-borders"
+      >
+        <q-item
+          v-for="bug in feedbackItems"
+          :key="bug.id"
+          class="q-pa-md"
+        >
+          <q-item-section>
+            <q-item-label class="text-weight-bold">
+              {{ bug.title ?? bug.display_id }}
+            </q-item-label>
+            <q-item-label
+              v-if="bug.description || bug.ai_description"
+              caption
+              class="q-mt-xs"
+              style="white-space: pre-wrap;"
+            >
+              {{ bug.description ?? bug.ai_description }}
+            </q-item-label>
+            <q-item-label
+              v-if="bug.notes"
+              caption
+              class="q-mt-xs text-grey-7"
+            >
+              Notes: {{ bug.notes }}
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-btn
+              color="primary"
+              icon="content_copy"
+              label="Copy Message"
+              outline
+              size="sm"
+              @click="copyFeedbackToClipboard(bug)"
+            />
+          </q-item-section>
+        </q-item>
+      </q-list>
+    </div>
   </q-page>
 </template>
 
@@ -1149,7 +1201,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useBugStore } from '@/stores/bug'
 import { useSessionStore } from '@/stores/session'
-import type { BugType, BugStatus, Capture, TicketingCredentials } from '@/types/backend'
+import type { Bug, BugType, BugStatus, Capture, TicketingCredentials } from '@/types/backend'
 import * as tauri from '@/api/tauri'
 import { Notify } from 'quasar'
 import { open as shellOpen } from '@tauri-apps/plugin-shell'
@@ -1249,9 +1301,14 @@ const selectedBugVideos = computed(() =>
   selectedBugCaptures.value.filter(c => c.file_type === 'video')
 )
 
-// Only bugs that are "ready" status can be pushed
+// Only bugs that are "ready" status can be pushed — exclude feedback items
 const finalizedBugs = computed(() => {
-  return bugs.value.filter(b => b.status === 'ready' || b.status === 'reviewed')
+  return bugs.value.filter(b => (b.status === 'ready' || b.status === 'reviewed') && b.type !== 'feedback')
+})
+
+// Feedback items — ready/reviewed but type=feedback, handled separately (copy message, not Linear)
+const feedbackItems = computed(() => {
+  return bugs.value.filter(b => b.type === 'feedback' && (b.status === 'ready' || b.status === 'reviewed'))
 })
 
 // Parsed console data for the selected bug
@@ -1524,6 +1581,34 @@ function getBugStatusColor(status: BugStatus): string {
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
   return date.toLocaleString()
+}
+
+// Feedback handling — feedback items are NOT filed as Linear tickets.
+// Instead, a copyable plain-text message is generated for the user to paste manually.
+
+function generateFeedbackMessage(bug: Bug): string {
+  const content = bug.description ?? bug.ai_description ?? ''
+  const notesPart = bug.notes ? `\nNotes: ${bug.notes}` : ''
+  const capturedPart = `\nCaptured: ${bug.created_at}`
+  return `**Feedback** — ${bug.title ?? bug.display_id}\n\n${content}${notesPart}${capturedPart}`
+}
+
+async function copyFeedbackToClipboard(bug: Bug): Promise<void> {
+  const message = generateFeedbackMessage(bug)
+  try {
+    await navigator.clipboard.writeText(message)
+    $q.notify({
+      type: 'positive',
+      message: 'Feedback message copied to clipboard',
+      timeout: 2000
+    })
+  } catch (err) {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to copy to clipboard'
+    })
+    console.error('Clipboard write failed:', err)
+  }
 }
 
 // Linear push methods

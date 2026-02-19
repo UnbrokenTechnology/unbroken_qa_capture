@@ -8,6 +8,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   Bug,
+  BugType,
   BugUpdate,
   Session,
   SessionSummary,
@@ -186,6 +187,10 @@ export async function getBugNotes(bugId: string): Promise<string> {
 
 export async function updateBugNotes(bugId: string, notes: string): Promise<void> {
   await invoke('update_bug_notes', { bugId, notes })
+}
+
+export async function updateBugType(bugId: string, bugType: BugType): Promise<void> {
+  await invoke('update_bug_type', { bugId, bugType })
 }
 
 export async function getSessionNotes(sessionId: string, folderPath: string): Promise<string> {

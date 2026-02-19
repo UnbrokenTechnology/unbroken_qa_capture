@@ -81,6 +81,9 @@ export const useBugStore = defineStore('bug', () => {
     error.value = null
     try {
       await tauri.updateBug(id, update)
+      if (update.type !== undefined) {
+        await tauri.updateBugType(id, update.type)
+      }
       const bug = backendBugs.value.find(b => b.id === id)
       if (bug) {
         Object.assign(bug, update)
