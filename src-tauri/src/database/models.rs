@@ -67,6 +67,10 @@ pub struct Bug {
     pub software_version: Option<String>,
     pub console_parse_json: Option<String>,
     pub metadata_json: Option<String>,
+    /// Profile-driven custom field values stored as a JSON object (key → value).
+    /// Replaces the fixed meeting_id / software_version fields for new bugs.
+    /// Legacy fields are kept for backwards compatibility.
+    pub custom_metadata: Option<String>,
     pub folder_path: String,
     pub created_at: String,
     pub updated_at: String,
@@ -241,6 +245,8 @@ pub struct BugUpdate {
     pub status: Option<BugStatus>,
     pub meeting_id: Option<String>,
     pub software_version: Option<String>,
+    /// Profile-driven custom field values stored as a JSON object (key → value).
+    pub custom_metadata: Option<String>,
 }
 
 #[cfg(test)]
@@ -313,6 +319,7 @@ mod tests {
             software_version: None,
             console_parse_json: None,
             metadata_json: None,
+            custom_metadata: None,
             folder_path: "/test/bug".to_string(),
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),

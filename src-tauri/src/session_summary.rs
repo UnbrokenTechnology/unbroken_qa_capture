@@ -10,7 +10,7 @@ use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::claude_cli::{ClaudeInvoker, ClaudeRequest, PromptTask, RealClaudeInvoker};
+use crate::claude_cli::{ClaudeInvoker, ClaudeRequest, PromptTask, RealClaudeInvoker, load_credentials};
 use crate::database::{Bug, BugOps, BugRepository, Session, SessionOps, SessionRepository};
 
 /// Trait for file system operations (enables testing)
@@ -36,12 +36,18 @@ pub struct SessionSummaryGenerator {
 }
 
 impl SessionSummaryGenerator {
-    /// Create a new generator with real file writer
+    /// Create a new generator with real file writer.
+    /// Attempts to load Claude credentials (API key or OAuth token) for AI summaries.
+    /// If credentials are not available, claude_invoker is set to None and AI summaries
+    /// are silently skipped.
     pub fn new(db_path: PathBuf) -> Self {
+        let claude_invoker = load_credentials(None)
+            .ok()
+            .map(|creds| Arc::new(RealClaudeInvoker::new(creds)) as Arc<dyn ClaudeInvoker>);
         Self {
             db_path,
             file_writer: Arc::new(RealFileWriter),
-            claude_invoker: Some(Arc::new(RealClaudeInvoker::new())),
+            claude_invoker,
         }
     }
 
@@ -344,6 +350,7 @@ mod tests {
                 software_version: Some("1.2.3".to_string()),
                 console_parse_json: None,
                 metadata_json: None,
+                custom_metadata: None,
                 folder_path: "/tmp/test-session/bug_001".to_string(),
                 created_at: "2024-01-15T10:15:00Z".to_string(),
                 updated_at: "2024-01-15T10:15:00Z".to_string(),
@@ -363,6 +370,7 @@ mod tests {
                 software_version: None,
                 console_parse_json: None,
                 metadata_json: None,
+                custom_metadata: None,
                 folder_path: "/tmp/test-session/bug_002".to_string(),
                 created_at: "2024-01-15T11:00:00Z".to_string(),
                 updated_at: "2024-01-15T11:00:00Z".to_string(),

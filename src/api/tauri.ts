@@ -18,7 +18,8 @@ import type {
   CreateTicketRequest,
   CreateTicketResponse,
   ConnectionStatus,
-  QaProfile
+  QaProfile,
+  LinearProfileConfig
 } from '../types/backend'
 
 // ============================================================================
@@ -194,6 +195,10 @@ export async function updateBugType(bugId: string, bugType: BugType): Promise<vo
   await invoke('update_bug_type', { bugId, bugType })
 }
 
+export async function updateBugMetadata(bugId: string, metadata: Record<string, string>): Promise<void> {
+  await invoke('update_bug_metadata', { bugId, metadataJson: JSON.stringify(metadata) })
+}
+
 export async function getSessionNotes(sessionId: string, folderPath: string): Promise<string> {
   return await invoke<string>('get_session_notes', { sessionId, folderPath })
 }
@@ -298,8 +303,12 @@ export async function ticketingSaveCredentials(credentials: TicketingCredentials
   await invoke('ticketing_save_credentials', { credentials })
 }
 
+export async function getLinearProfileDefaults(): Promise<LinearProfileConfig | null> {
+  return await invoke<LinearProfileConfig | null>('get_linear_profile_defaults')
+}
+
 // ============================================================================
-// Claude CLI Commands
+// Claude API Commands
 // ============================================================================
 
 export interface ClaudeStatus {
@@ -317,7 +326,7 @@ export interface BugContext {
 }
 
 export interface ClaudeResponse {
-  text: string
+  content: string
   task: string
   bug_id?: string
 }
@@ -328,6 +337,14 @@ export async function getClaudeStatus(): Promise<ClaudeStatus> {
 
 export async function refreshClaudeStatus(): Promise<ClaudeStatus> {
   return await invoke<ClaudeStatus>('refresh_claude_status')
+}
+
+export async function setAnthropicApiKey(apiKey: string): Promise<void> {
+  await invoke('set_anthropic_api_key', { apiKey })
+}
+
+export async function clearAnthropicApiKey(): Promise<void> {
+  await invoke('clear_anthropic_api_key')
 }
 
 export async function generateBugDescription(bugContext: BugContext): Promise<ClaudeResponse> {

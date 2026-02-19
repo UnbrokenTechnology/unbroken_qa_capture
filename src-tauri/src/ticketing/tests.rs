@@ -152,6 +152,8 @@ fn test_mock_integration_create_ticket_success() {
         attachments: vec![],
         priority: Some("1".to_string()),
         labels: vec![],
+        assignee_id: None,
+        state_id: None,
     };
 
     let result = integration.create_ticket(&request);
@@ -173,6 +175,8 @@ fn test_mock_integration_create_ticket_not_authenticated() {
         attachments: vec![],
         priority: None,
         labels: vec![],
+        assignee_id: None,
+        state_id: None,
     };
 
     let result = integration.create_ticket(&request);
@@ -205,6 +209,8 @@ fn test_mock_integration_create_ticket_with_attachments() {
         ],
         priority: Some("2".to_string()),
         labels: vec!["bug".to_string(), "ui".to_string()],
+        assignee_id: None,
+        state_id: None,
     };
 
     let result = integration.create_ticket(&request);
@@ -302,6 +308,8 @@ fn test_batch_push_multiple_bugs() {
             attachments: vec!["/path/screenshot1.png".to_string()],
             priority: Some("1".to_string()),
             labels: vec!["bug".to_string()],
+            assignee_id: None,
+            state_id: None,
         },
         CreateTicketRequest {
             title: "Bug 2: Performance Issue".to_string(),
@@ -309,6 +317,8 @@ fn test_batch_push_multiple_bugs() {
             attachments: vec![],
             priority: Some("2".to_string()),
             labels: vec!["bug".to_string(), "performance".to_string()],
+            assignee_id: None,
+            state_id: None,
         },
         CreateTicketRequest {
             title: "Feature Request".to_string(),
@@ -316,6 +326,8 @@ fn test_batch_push_multiple_bugs() {
             attachments: vec![],
             priority: Some("3".to_string()),
             labels: vec!["feature".to_string()],
+            assignee_id: None,
+            state_id: None,
         },
     ];
 
@@ -358,6 +370,8 @@ fn test_batch_push_with_failures() {
         attachments: vec![],
         priority: None,
         labels: vec![],
+        assignee_id: None,
+        state_id: None,
     };
     let result1 = integration.create_ticket(&bug1);
     assert!(result1.is_ok());
@@ -371,6 +385,8 @@ fn test_batch_push_with_failures() {
         attachments: vec![],
         priority: None,
         labels: vec![],
+        assignee_id: None,
+        state_id: None,
     };
     let result2 = integration.create_ticket(&bug2);
     assert!(result2.is_err());
@@ -391,6 +407,8 @@ fn test_authentication_error_handling() {
         attachments: vec![],
         priority: None,
         labels: vec![],
+        assignee_id: None,
+        state_id: None,
     };
 
     let result = integration.create_ticket(&request);
@@ -503,6 +521,8 @@ fn test_mock_integration_create_ticket_returns_attachment_results() {
         ],
         priority: None,
         labels: vec!["bug".to_string()],
+        assignee_id: None,
+        state_id: None,
     };
 
     let result = integration.create_ticket(&request).unwrap();
@@ -532,6 +552,8 @@ fn test_mock_integration_create_ticket_no_attachments_returns_empty_results() {
         attachments: vec![],
         priority: None,
         labels: vec![],
+        assignee_id: None,
+        state_id: None,
     };
 
     let result = integration.create_ticket(&request).unwrap();
@@ -559,6 +581,8 @@ fn test_linear_upload_attachment_fails_for_missing_file() {
         attachments: vec!["/nonexistent/path/screenshot.png".to_string()],
         priority: None,
         labels: vec![],
+        assignee_id: None,
+        state_id: None,
     };
 
     // create_ticket should fail because the missing file triggers a NetworkError

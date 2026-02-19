@@ -265,6 +265,7 @@ impl SessionManager {
             software_version: None,
             console_parse_json: None,
             metadata_json: None,
+            custom_metadata: None,
             folder_path: bug_folder_path.to_string_lossy().to_string(),
             created_at: now.to_rfc3339(),
             updated_at: now.to_rfc3339(),

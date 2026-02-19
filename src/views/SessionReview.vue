@@ -21,7 +21,7 @@
           label="Push to Linear"
           class="q-mr-md"
           :loading="isPushing"
-          @click="showPushDialog = true"
+          @click="openPushDialog"
         />
         <q-btn
           v-if="viewSession"
@@ -308,7 +308,35 @@
                 <div class="text-caption text-grey-7 q-mb-xs">
                   Metadata
                 </div>
-                <div class="row q-col-gutter-sm">
+                <!-- Profile-driven custom fields -->
+                <div
+                  v-if="activeProfileCustomFields.length > 0"
+                  class="row q-col-gutter-sm"
+                >
+                  <div
+                    v-for="field in activeProfileCustomFields"
+                    :key="field.key"
+                    class="col-12 col-sm-6"
+                  >
+                    <q-input
+                      :model-value="getCustomMetadataValue(selectedBug, field.key)"
+                      outlined
+                      dense
+                      :label="field.label"
+                      :placeholder="field.default_value || ''"
+                      @update:model-value="(val) => updateCustomMetadata(field.key, String(val || ''))"
+                    >
+                      <template #prepend>
+                        <q-icon name="tune" />
+                      </template>
+                    </q-input>
+                  </div>
+                </div>
+                <!-- Legacy fields shown when no active profile defines custom_fields -->
+                <div
+                  v-else
+                  class="row q-col-gutter-sm"
+                >
                   <div class="col-12 col-sm-6">
                     <q-input
                       :model-value="selectedBug.meeting_id || ''"
@@ -316,7 +344,7 @@
                       dense
                       label="Meeting ID / URL"
                       placeholder="e.g., Zoom meeting ID or URL"
-                      @update:model-value="(val) => updateMetadata('meeting_id', String(val || ''))"
+                      @update:model-value="(val) => updateLegacyMetadata('meeting_id', String(val || ''))"
                     >
                       <template #prepend>
                         <q-icon
@@ -348,7 +376,7 @@
                       dense
                       label="Software Version"
                       placeholder="e.g., 2.4.1"
-                      @update:model-value="(val) => updateMetadata('software_version', String(val || ''))"
+                      @update:model-value="(val) => updateLegacyMetadata('software_version', String(val || ''))"
                     >
                       <template #prepend>
                         <q-icon name="info" />
@@ -783,7 +811,7 @@
           icon="upload"
           label="Export to Linear"
           :disable="finalizedBugs.length === 0"
-          @click="showPushDialog = true"
+          @click="openPushDialog"
         />
         <q-btn
           color="secondary"
@@ -1201,7 +1229,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useBugStore } from '@/stores/bug'
 import { useSessionStore } from '@/stores/session'
-import type { Bug, BugType, BugStatus, Capture, TicketingCredentials } from '@/types/backend'
+import type { Bug, BugType, BugStatus, Capture, TicketingCredentials, LinearProfileConfig, CustomMetadataField, QaProfile } from '@/types/backend'
 import * as tauri from '@/api/tauri'
 import { Notify } from 'quasar'
 import { open as shellOpen } from '@tauri-apps/plugin-shell'
@@ -1237,6 +1265,16 @@ const linearCredentials = ref<TicketingCredentials>({
   api_key: '',
   team_id: null,
   workspace_id: null
+})
+// Profile defaults loaded from active QA profile (null if no profile or no Linear config)
+const linearProfileDefaults = ref<LinearProfileConfig | null>(null)
+
+// Active QA profile for custom metadata fields
+const activeProfile = ref<QaProfile | null>(null)
+
+// Custom fields defined by the active profile (empty if no profile is active)
+const activeProfileCustomFields = computed((): CustomMetadataField[] => {
+  return activeProfile.value?.custom_fields ?? []
 })
 
 interface PushResult {
@@ -1439,15 +1477,50 @@ async function updateNotes(notes: string) {
   }
 }
 
-async function updateMetadata(field: 'meeting_id' | 'software_version', value: string) {
+async function updateLegacyMetadata(field: 'meeting_id' | 'software_version', value: string) {
   if (!selectedBug.value) return
 
   try {
     await bugStore.updateBackendBug(selectedBug.value.id, {
-      [field]: value || null
+      [field]: value || undefined
     })
   } catch (err) {
-    console.error('Failed to update metadata:', err)
+    console.error('Failed to update legacy metadata:', err)
+  }
+}
+
+/**
+ * Get the value of a custom metadata field from a bug's custom_metadata JSON blob.
+ * Falls back to empty string if the field is not present.
+ */
+function getCustomMetadataValue(bug: Bug, key: string): string {
+  const meta = bug.custom_metadata
+  if (!meta) return ''
+  return meta[key] ?? ''
+}
+
+/**
+ * Update a single custom metadata field on the selected bug.
+ * Merges the new value into the existing custom_metadata blob.
+ */
+async function updateCustomMetadata(key: string, value: string) {
+  if (!selectedBug.value) return
+
+  try {
+    const existing: Record<string, string> = { ...(selectedBug.value.custom_metadata ?? {}) }
+    if (value) {
+      existing[key] = value
+    } else {
+      delete existing[key]
+    }
+    await tauri.updateBugMetadata(selectedBug.value.id, existing)
+    // Update local state so the UI reflects the change immediately
+    const bug = bugStore.backendBugs.find(b => b.id === selectedBug.value!.id)
+    if (bug) {
+      bug.custom_metadata = Object.keys(existing).length > 0 ? existing : null
+    }
+  } catch (err) {
+    console.error('Failed to update custom metadata:', err)
   }
 }
 
@@ -1612,6 +1685,14 @@ async function copyFeedbackToClipboard(bug: Bug): Promise<void> {
 }
 
 // Linear push methods
+
+/** Open the push dialog, loading credentials and profile defaults in parallel. */
+async function openPushDialog() {
+  await checkCredentials()
+  await loadLinearProfileDefaults()
+  showPushDialog.value = true
+}
+
 async function checkCredentials() {
   try {
     const creds = await tauri.ticketingGetCredentials()
@@ -1624,6 +1705,15 @@ async function checkCredentials() {
   } catch (err) {
     console.error('Failed to check credentials:', err)
     hasCredentials.value = false
+  }
+}
+
+async function loadLinearProfileDefaults() {
+  try {
+    linearProfileDefaults.value = await tauri.getLinearProfileDefaults()
+  } catch (err) {
+    console.error('Failed to load linear profile defaults:', err)
+    linearProfileDefaults.value = null
   }
 }
 
@@ -1677,12 +1767,21 @@ async function generatePreview() {
     // Read description from description.md if it exists
     const description = bug.description || bug.ai_description || bug.notes || 'No description available'
 
+    const profileLabelIds = linearProfileDefaults.value
+      ? (bug.type === 'bug'
+          ? linearProfileDefaults.value.default_bug_label_ids
+          : bug.type === 'feature'
+            ? linearProfileDefaults.value.default_feature_label_ids
+            : [])
+      : []
+    const previewLabels = profileLabelIds.length > 0 ? profileLabelIds : [bug.type]
+
     ticketPreviews.value.push({
       bugId: bug.id,
       bugTitle: bug.title || `Bug ${bug.display_id}`,
       title: bug.title || `Bug ${bug.display_id}`,
       description,
-      labels: [bug.type],
+      labels: previewLabels,
       attachmentCount: attachmentPaths.length
     })
   }
@@ -1711,12 +1810,24 @@ async function pushToLinear() {
       // Read description from description.md if it exists
       let description = bug.description || bug.ai_description || bug.notes || 'No description available'
 
-      // Create ticket request
+      // Determine label IDs from profile defaults based on bug type, or fall back to type name
+      const profileLabelIds = linearProfileDefaults.value
+        ? (bug.type === 'bug'
+            ? linearProfileDefaults.value.default_bug_label_ids
+            : bug.type === 'feature'
+              ? linearProfileDefaults.value.default_feature_label_ids
+              : [])
+        : []
+      const labels = profileLabelIds.length > 0 ? profileLabelIds : [bug.type]
+
+      // Create ticket request — include profile defaults for assignee and state if available
       const request = {
         title: bug.title || `Bug ${bug.display_id}`,
         description,
         attachments: attachmentPaths,
-        labels: [bug.type]
+        labels,
+        assignee_id: linearProfileDefaults.value?.default_assignee_id ?? null,
+        state_id: linearProfileDefaults.value?.default_state_id ?? null,
       }
 
       // Push to Linear
@@ -1825,7 +1936,7 @@ async function generateDescription() {
 
     // Call Claude CLI
     const response = await tauri.generateBugDescription(bugContext)
-    aiDescription.value = response.text
+    aiDescription.value = response.content
 
     $q.notify({
       type: 'positive',
@@ -1856,7 +1967,7 @@ async function refineDescription() {
       refinementInstructions.value,
       selectedBug.value.id
     )
-    aiDescription.value = response.text
+    aiDescription.value = response.content
     refinementInstructions.value = ''
 
     $q.notify({
@@ -2020,7 +2131,7 @@ async function generateAllDescriptions() {
         const response = await tauri.generateBugDescription(bugContext)
 
         // Save description
-        await tauri.saveBugDescription(bug.folder_path, response.text)
+        await tauri.saveBugDescription(bug.folder_path, response.content)
 
         successCount++
       } catch (err) {
@@ -2238,6 +2349,16 @@ async function closeSession() {
 
 // Lifecycle
 onMounted(async () => {
+  // Load active QA profile for custom metadata field definitions
+  try {
+    const activeProfileId = await tauri.getActiveProfileId()
+    if (activeProfileId) {
+      activeProfile.value = await tauri.getProfile(activeProfileId)
+    }
+  } catch {
+    // Profile loading is non-critical — silently skip if unavailable
+  }
+
   // Check Claude CLI status
   await checkClaudeStatus()
 

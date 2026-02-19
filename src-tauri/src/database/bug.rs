@@ -29,8 +29,8 @@ impl<'a> BugRepository<'a> {
 impl<'a> BugOps for BugRepository<'a> {
     fn create(&self, bug: &Bug) -> SqlResult<()> {
         self.conn.execute(
-            "INSERT INTO bugs (id, session_id, bug_number, display_id, type, title, notes, description, ai_description, status, meeting_id, software_version, console_parse_json, metadata_json, folder_path, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            "INSERT INTO bugs (id, session_id, bug_number, display_id, type, title, notes, description, ai_description, status, meeting_id, software_version, console_parse_json, metadata_json, custom_metadata, folder_path, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             params![
                 bug.id,
                 bug.session_id,
@@ -46,6 +46,7 @@ impl<'a> BugOps for BugRepository<'a> {
                 bug.software_version,
                 bug.console_parse_json,
                 bug.metadata_json,
+                bug.custom_metadata,
                 bug.folder_path,
                 bug.created_at,
                 bug.updated_at,
@@ -56,7 +57,7 @@ impl<'a> BugOps for BugRepository<'a> {
 
     fn get(&self, id: &str) -> SqlResult<Option<Bug>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, session_id, bug_number, display_id, type, title, notes, description, ai_description, status, meeting_id, software_version, console_parse_json, metadata_json, folder_path, created_at, updated_at
+            "SELECT id, session_id, bug_number, display_id, type, title, notes, description, ai_description, status, meeting_id, software_version, console_parse_json, metadata_json, custom_metadata, folder_path, created_at, updated_at
              FROM bugs WHERE id = ?1"
         )?;
 
@@ -80,9 +81,10 @@ impl<'a> BugOps for BugRepository<'a> {
                 software_version: row.get(11)?,
                 console_parse_json: row.get(12)?,
                 metadata_json: row.get(13)?,
-                folder_path: row.get(14)?,
-                created_at: row.get(15)?,
-                updated_at: row.get(16)?,
+                custom_metadata: row.get(14)?,
+                folder_path: row.get(15)?,
+                created_at: row.get(16)?,
+                updated_at: row.get(17)?,
             }))
         } else {
             Ok(None)
@@ -91,7 +93,7 @@ impl<'a> BugOps for BugRepository<'a> {
 
     fn update(&self, bug: &Bug) -> SqlResult<()> {
         self.conn.execute(
-            "UPDATE bugs SET session_id = ?2, bug_number = ?3, display_id = ?4, type = ?5, title = ?6, notes = ?7, description = ?8, ai_description = ?9, status = ?10, meeting_id = ?11, software_version = ?12, console_parse_json = ?13, metadata_json = ?14, folder_path = ?15, updated_at = datetime('now')
+            "UPDATE bugs SET session_id = ?2, bug_number = ?3, display_id = ?4, type = ?5, title = ?6, notes = ?7, description = ?8, ai_description = ?9, status = ?10, meeting_id = ?11, software_version = ?12, console_parse_json = ?13, metadata_json = ?14, custom_metadata = ?15, folder_path = ?16, updated_at = datetime('now')
              WHERE id = ?1",
             params![
                 bug.id,
@@ -108,6 +110,7 @@ impl<'a> BugOps for BugRepository<'a> {
                 bug.software_version,
                 bug.console_parse_json,
                 bug.metadata_json,
+                bug.custom_metadata,
                 bug.folder_path,
             ],
         )?;
@@ -121,7 +124,7 @@ impl<'a> BugOps for BugRepository<'a> {
 
     fn list_by_session(&self, session_id: &str) -> SqlResult<Vec<Bug>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, session_id, bug_number, display_id, type, title, notes, description, ai_description, status, meeting_id, software_version, console_parse_json, metadata_json, folder_path, created_at, updated_at
+            "SELECT id, session_id, bug_number, display_id, type, title, notes, description, ai_description, status, meeting_id, software_version, console_parse_json, metadata_json, custom_metadata, folder_path, created_at, updated_at
              FROM bugs WHERE session_id = ?1 ORDER BY bug_number ASC"
         )?;
 
@@ -143,9 +146,10 @@ impl<'a> BugOps for BugRepository<'a> {
                 software_version: row.get(11)?,
                 console_parse_json: row.get(12)?,
                 metadata_json: row.get(13)?,
-                folder_path: row.get(14)?,
-                created_at: row.get(15)?,
-                updated_at: row.get(16)?,
+                custom_metadata: row.get(14)?,
+                folder_path: row.get(15)?,
+                created_at: row.get(16)?,
+                updated_at: row.get(17)?,
             })
         })?;
 
@@ -188,6 +192,10 @@ impl<'a> BugOps for BugRepository<'a> {
         if let Some(ref software_version) = update.software_version {
             query.push_str(", software_version = ?");
             params_vec.push(Box::new(software_version.clone()));
+        }
+        if let Some(ref custom_metadata) = update.custom_metadata {
+            query.push_str(", custom_metadata = ?");
+            params_vec.push(Box::new(custom_metadata.clone()));
         }
 
         query.push_str(" WHERE id = ?");
@@ -250,6 +258,7 @@ mod tests {
             software_version: None,
             console_parse_json: None,
             metadata_json: None,
+            custom_metadata: None,
             folder_path: format!("/test/bugs/bug-{}", bug_number),
             created_at: "2024-01-01T10:00:00Z".to_string(),
             updated_at: "2024-01-01T10:00:00Z".to_string(),

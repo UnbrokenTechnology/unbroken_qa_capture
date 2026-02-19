@@ -45,6 +45,8 @@ export interface Bug {
   software_version: string | null
   console_parse_json: string | null
   metadata_json: string | null
+  /** Profile-driven custom field values. Replaces the fixed meeting_id/software_version fields. */
+  custom_metadata?: Record<string, string> | null
   folder_path: string
   created_at: string
   updated_at: string
@@ -59,6 +61,8 @@ export interface BugUpdate {
   status?: BugStatus
   meeting_id?: string
   software_version?: string
+  /** Profile-driven custom field values stored as a JSON object (key → value). */
+  custom_metadata?: Record<string, string>
 }
 
 // Capture types
@@ -117,6 +121,8 @@ export interface CreateTicketRequest {
   attachments: string[]
   priority?: string | null
   labels: string[]
+  assignee_id?: string | null
+  state_id?: string | null
 }
 
 export interface AttachmentUploadResult {

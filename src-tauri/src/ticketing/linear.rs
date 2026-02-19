@@ -389,6 +389,16 @@ impl TicketingIntegration for LinearIntegration {
             variables["input"]["labelIds"] = json!(request.labels);
         }
 
+        // Add assignee if specified (from profile defaults)
+        if let Some(assignee_id) = &request.assignee_id {
+            variables["input"]["assigneeId"] = json!(assignee_id);
+        }
+
+        // Add workflow state if specified (from profile defaults)
+        if let Some(state_id) = &request.state_id {
+            variables["input"]["stateId"] = json!(state_id);
+        }
+
         let response = self.send_graphql_query(query, variables)?;
 
         // Extract issue data from response

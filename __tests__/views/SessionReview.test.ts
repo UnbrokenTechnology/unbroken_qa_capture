@@ -528,7 +528,7 @@ describe('SessionReview', () => {
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
       vi.mocked(tauri.getBugCaptures).mockResolvedValue([capture])
       vi.mocked(tauri.generateBugDescription).mockResolvedValue({
-        text: 'AI-generated description text',
+        content: 'AI-generated description text',
         task: 'DescribeBug',
         bug_id: 'bug-1'
       })
@@ -586,7 +586,7 @@ describe('SessionReview', () => {
         expect(wrapper.text()).toContain('Generating description with Claude')
 
         resolveGenerate!({
-          text: 'Generated description',
+          content: 'Generated description',
           task: 'DescribeBug'
         })
         await flushPromises()
@@ -606,7 +606,7 @@ describe('SessionReview', () => {
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
       vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
       vi.mocked(tauri.generateBugDescription).mockResolvedValue({
-        text: 'AI-generated description',
+        content: 'AI-generated description',
         task: 'DescribeBug'
       })
 
@@ -636,7 +636,7 @@ describe('SessionReview', () => {
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
       vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
       vi.mocked(tauri.generateBugDescription).mockResolvedValue({
-        text: 'AI-generated description',
+        content: 'AI-generated description',
         task: 'DescribeBug'
       })
       vi.mocked(tauri.saveBugDescription).mockResolvedValue(undefined)
@@ -691,11 +691,11 @@ describe('SessionReview', () => {
       vi.mocked(tauri.getBugsBySession).mockResolvedValue([bug])
       vi.mocked(tauri.getBugCaptures).mockResolvedValue([])
       vi.mocked(tauri.generateBugDescription).mockResolvedValue({
-        text: 'Initial description',
+        content: 'Initial description',
         task: 'DescribeBug'
       })
       vi.mocked(tauri.refineBugDescription).mockResolvedValue({
-        text: 'Refined description',
+        content: 'Refined description',
         task: 'RefineDescription'
       })
 

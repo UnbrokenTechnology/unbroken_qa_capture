@@ -245,6 +245,7 @@ mod tests {
             software_version: None,
             console_parse_json: None,
             metadata_json: None,
+            custom_metadata: None,
             folder_path: "/test/bugs/bug-1".to_string(),
             created_at: "2024-01-01T10:00:00Z".to_string(),
             updated_at: "2024-01-01T10:00:00Z".to_string(),

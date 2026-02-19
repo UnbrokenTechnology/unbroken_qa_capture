@@ -3,6 +3,7 @@
 exports[`Tauri command registration contract > parsed backend handlers snapshot (informational) 1`] = `
 [
   "assign_capture_to_bug",
+  "clear_anthropic_api_key",
   "copy_bug_to_clipboard",
   "delete_setting",
   "disable_startup",
@@ -25,6 +26,7 @@ exports[`Tauri command registration contract > parsed backend handlers snapshot 
   "get_capture_folder_path",
   "get_claude_status",
   "get_hotkey_config",
+  "get_linear_profile_defaults",
   "get_session_notes",
   "get_session_summaries",
   "get_setting",
@@ -59,6 +61,7 @@ exports[`Tauri command registration contract > parsed backend handlers snapshot 
   "save_bug_description",
   "save_custom_template",
   "set_active_profile_id",
+  "set_anthropic_api_key",
   "set_custom_template_path",
   "set_setting",
   "start_bug_capture",
@@ -71,6 +74,7 @@ exports[`Tauri command registration contract > parsed backend handlers snapshot 
   "trigger_screenshot",
   "update_bug_console_parse",
   "update_bug_description",
+  "update_bug_metadata",
   "update_bug_notes",
   "update_bug_type",
   "update_capture_console_flag",
@@ -86,6 +90,7 @@ exports[`Tauri command registration contract > parsed backend handlers snapshot 
 exports[`Tauri command registration contract > parsed frontend commands snapshot (informational) 1`] = `
 [
   "assign_capture_to_bug",
+  "clear_anthropic_api_key",
   "copy_bug_to_clipboard",
   "delete_setting",
   "end_bug_capture",
@@ -100,6 +105,7 @@ exports[`Tauri command registration contract > parsed frontend commands snapshot
   "get_bugs_by_session",
   "get_capture_folder_path",
   "get_claude_status",
+  "get_linear_profile_defaults",
   "get_session_notes",
   "get_session_summaries",
   "get_setting",
@@ -128,6 +134,7 @@ exports[`Tauri command registration contract > parsed frontend commands snapshot
   "save_annotated_image",
   "save_bug_description",
   "set_active_profile_id",
+  "set_anthropic_api_key",
   "set_custom_template_path",
   "set_setting",
   "start_bug_capture",
@@ -140,6 +147,7 @@ exports[`Tauri command registration contract > parsed frontend commands snapshot
   "trigger_screenshot",
   "update_bug_console_parse",
   "update_bug_description",
+  "update_bug_metadata",
   "update_bug_notes",
   "update_bug_type",
   "update_capture_console_flag",

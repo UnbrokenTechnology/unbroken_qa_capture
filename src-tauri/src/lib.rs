@@ -587,6 +587,33 @@ fn update_bug_notes(
         .map_err(|e: rusqlite::Error| e.to_string())
 }
 
+/// Update the custom_metadata JSON blob on a bug.
+/// `metadata_json` must be a valid JSON object string (e.g. `{"key":"value"}`).
+#[tauri::command]
+fn update_bug_metadata(
+    bug_id: String,
+    metadata_json: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use database::{Database, BugOps, BugRepository};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = BugRepository::new(db.connection());
+
+    let update = database::BugUpdate {
+        custom_metadata: Some(metadata_json),
+        ..Default::default()
+    };
+
+    repo.update_partial(&bug_id, &update)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
 #[tauri::command]
 async fn get_session_notes(_session_id: String, folder_path: String) -> Result<String, String> {
     use std::path::Path;
@@ -1039,29 +1066,114 @@ fn ticketing_save_credentials(
     Ok(())
 }
 
-// Claude CLI commands
-
 #[tauri::command]
-fn get_claude_status() -> claude_cli::ClaudeStatus {
-    claude_cli::get_claude_status()
+fn get_linear_profile_defaults(app: tauri::AppHandle) -> Result<Option<profile::LinearProfileConfig>, String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+    use profile::{SqliteProfileRepository, ProfileRepository};
+
+    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
+    let settings_repo = SettingsRepository::new(db.connection());
+
+    // Get active profile ID from settings
+    let active_id = settings_repo
+        .get("active_profile_id")
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+
+    let profile_id = match active_id {
+        Some(id) => id,
+        None => return Ok(None),
+    };
+
+    // Load the profile from SQLite
+    let db2 = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
+    let profile_repo = SqliteProfileRepository::new(db2.connection());
+    let profile = profile_repo.get(&profile_id)?;
+
+    Ok(profile.and_then(|p| p.linear_config))
+}
+
+// Claude API commands
+
+/// Helper: read the `anthropic_api_key` setting from the database.
+fn read_api_key_setting(app: &tauri::AppHandle) -> Option<String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).ok()?;
+    let repo = SettingsRepository::new(db.connection());
+
+    repo.get("anthropic_api_key").ok().flatten()
 }
 
 #[tauri::command]
-fn refresh_claude_status() -> claude_cli::ClaudeStatus {
-    claude_cli::refresh_claude_status()
+fn get_claude_status(app: tauri::AppHandle) -> claude_cli::ClaudeStatus {
+    let api_key = read_api_key_setting(&app);
+    claude_cli::get_claude_status(api_key)
+}
+
+#[tauri::command]
+fn refresh_claude_status(app: tauri::AppHandle) -> claude_cli::ClaudeStatus {
+    let api_key = read_api_key_setting(&app);
+    claude_cli::refresh_claude_status(api_key)
+}
+
+#[tauri::command]
+fn set_anthropic_api_key(api_key: String, app: tauri::AppHandle) -> Result<(), String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+
+    repo.set("anthropic_api_key", &api_key)
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+
+    // Invalidate cached status so next check picks up the new key
+    claude_cli::invalidate_status_cache();
+
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_anthropic_api_key(app: tauri::AppHandle) -> Result<(), String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+
+    repo.delete("anthropic_api_key")
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+
+    // Invalidate cached status
+    claude_cli::invalidate_status_cache();
+
+    Ok(())
 }
 
 #[tauri::command]
 async fn generate_bug_description(
     bug_context: claude_cli::BugContext,
+    app: tauri::AppHandle,
 ) -> Result<claude_cli::ClaudeResponse, String> {
     use claude_cli::{PromptBuilder, PromptTask, ClaudeRequest, RealClaudeInvoker, ClaudeInvoker};
 
-    // Check if Claude is ready
-    let status = claude_cli::get_claude_status();
-    if !status.is_ready() {
-        return Err(format!("Claude CLI not ready: {:?}", status));
-    }
+    // Load credentials
+    let api_key = read_api_key_setting(&app);
+    let creds = claude_cli::load_credentials(api_key)
+        .map_err(|e| format!("Claude not ready: {}", e))?;
 
     // Build prompt
     let prompt = PromptBuilder::build_prompt(
@@ -1078,8 +1190,8 @@ async fn generate_bug_description(
     )
     .with_bug_id(bug_context.bug_id.clone());
 
-    // Invoke Claude
-    let invoker = RealClaudeInvoker::new();
+    // Invoke Claude API
+    let invoker = RealClaudeInvoker::new(creds);
     invoker
         .invoke(request)
         .map_err(|e| format!("Failed to generate description: {}", e))
@@ -1088,15 +1200,15 @@ async fn generate_bug_description(
 #[tauri::command]
 async fn parse_console_screenshot(
     screenshot_path: String,
+    app: tauri::AppHandle,
 ) -> Result<claude_cli::ClaudeResponse, String> {
     use claude_cli::{PromptBuilder, PromptTask, ClaudeRequest, RealClaudeInvoker, ClaudeInvoker};
     use std::path::PathBuf;
 
-    // Check if Claude is ready
-    let status = claude_cli::get_claude_status();
-    if !status.is_ready() {
-        return Err(format!("Claude CLI not ready: {:?}", status));
-    }
+    // Load credentials
+    let api_key = read_api_key_setting(&app);
+    let creds = claude_cli::load_credentials(api_key)
+        .map_err(|e| format!("Claude not ready: {}", e))?;
 
     // Build prompt
     let prompt = PromptBuilder::build_console_parse_prompt();
@@ -1108,8 +1220,8 @@ async fn parse_console_screenshot(
         PromptTask::ParseConsole,
     );
 
-    // Invoke Claude
-    let invoker = RealClaudeInvoker::new();
+    // Invoke Claude API
+    let invoker = RealClaudeInvoker::new(creds);
     invoker
         .invoke(request)
         .map_err(|e| format!("Failed to parse console: {}", e))
@@ -1120,14 +1232,14 @@ async fn refine_bug_description(
     current_description: String,
     refinement_instructions: String,
     bug_id: String,
+    app: tauri::AppHandle,
 ) -> Result<claude_cli::ClaudeResponse, String> {
     use claude_cli::{PromptBuilder, PromptTask, ClaudeRequest, RealClaudeInvoker, ClaudeInvoker};
 
-    // Check if Claude is ready
-    let status = claude_cli::get_claude_status();
-    if !status.is_ready() {
-        return Err(format!("Claude CLI not ready: {:?}", status));
-    }
+    // Load credentials
+    let api_key = read_api_key_setting(&app);
+    let creds = claude_cli::load_credentials(api_key)
+        .map_err(|e| format!("Claude not ready: {}", e))?;
 
     // Build refinement prompt
     let prompt = PromptBuilder::build_refinement_prompt(
@@ -1139,8 +1251,8 @@ async fn refine_bug_description(
     let request = ClaudeRequest::new_text(prompt, PromptTask::RefineDescription)
         .with_bug_id(bug_id);
 
-    // Invoke Claude
-    let invoker = RealClaudeInvoker::new();
+    // Invoke Claude API
+    let invoker = RealClaudeInvoker::new(creds);
     invoker
         .invoke(request)
         .map_err(|e| format!("Failed to refine description: {}", e))
@@ -2035,6 +2147,7 @@ pub fn run() {
             update_tray_tooltip,
             get_bug_notes,
             update_bug_notes,
+            update_bug_metadata,
             get_session_notes,
             update_session_notes,
             open_session_notes_window,
@@ -2060,8 +2173,11 @@ pub fn run() {
             ticketing_check_connection,
             ticketing_get_credentials,
             ticketing_save_credentials,
+            get_linear_profile_defaults,
             get_claude_status,
             refresh_claude_status,
+            set_anthropic_api_key,
+            clear_anthropic_api_key,
             generate_bug_description,
             parse_console_screenshot,
             refine_bug_description,

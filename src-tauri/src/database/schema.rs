@@ -82,6 +82,30 @@ pub fn init_database(conn: &Connection) -> SqlResult<()> {
         [],
     )?;
 
+    // Migration: add custom_metadata column to bugs table (if not already present)
+    // This column stores profile-driven custom field values as a JSON blob.
+    // The legacy meeting_id and software_version columns are kept for backwards compatibility.
+    let has_custom_metadata: bool = {
+        let mut stmt = conn.prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('bugs') WHERE name = 'custom_metadata'"
+        )?;
+        stmt.query_row([], |row| row.get::<_, i64>(0)).map(|c| c > 0)?
+    };
+
+    if !has_custom_metadata {
+        conn.execute(
+            "ALTER TABLE bugs ADD COLUMN custom_metadata TEXT",
+            [],
+        )?;
+
+        // Migrate existing meeting_id / software_version data into the JSON blob
+        conn.execute(
+            "UPDATE bugs SET custom_metadata = json_object('meeting_id', meeting_id, 'software_version', software_version)
+             WHERE meeting_id IS NOT NULL OR software_version IS NOT NULL",
+            [],
+        )?;
+    }
+
     // Create indices
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_bugs_session ON bugs(session_id)",

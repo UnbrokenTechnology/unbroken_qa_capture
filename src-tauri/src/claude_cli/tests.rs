@@ -1,6 +1,6 @@
-/// Comprehensive tests for Claude CLI integration
+/// Comprehensive tests for Claude API integration
 ///
-/// Tests with mocked subprocess to avoid requiring Claude CLI to be installed
+/// Tests with mocked invoker to avoid requiring real API credentials
 #[cfg(test)]
 mod claude_cli_tests {
     use crate::claude_cli::*;
@@ -10,12 +10,12 @@ mod claude_cli_tests {
     #[test]
     fn test_claude_status_is_ready() {
         let ready = ClaudeStatus::Ready {
-            version: "1.0.0".to_string(),
+            version: "API Key".to_string(),
         };
         assert!(ready.is_ready());
 
         let not_auth = ClaudeStatus::NotAuthenticated {
-            version: "1.0.0".to_string(),
+            version: "API Key".to_string(),
             message: "test".to_string(),
         };
         assert!(!not_auth.is_ready());
@@ -56,6 +56,9 @@ mod claude_cli_tests {
             task: "test task".to_string(),
         };
         assert!(timeout.to_string().contains("30s"));
+
+        let api_error = ClaudeError::ApiError("rate limit".to_string());
+        assert!(api_error.to_string().contains("API error"));
     }
 
     #[test]
@@ -293,47 +296,84 @@ mod claude_cli_tests {
     }
 
     #[test]
-    #[cfg(target_os = "windows")]
-    fn test_find_claude_executable_checks_fallback_locations() {
-        // This test verifies that find_claude_executable() checks the Windows fallback locations
-        // We can't easily test the actual file existence without mocking, but we can verify
-        // the function doesn't panic and returns a proper Option type
-        let result = find_claude_executable();
+    fn test_load_credentials_with_api_key() {
+        let result = load_credentials(Some("sk-ant-test-key".to_string()));
+        assert!(result.is_ok());
+        let creds = result.unwrap();
+        assert_eq!(creds.access_token, "sk-ant-test-key");
+        assert_eq!(creds.token_source, TokenSource::ApiKey);
+    }
 
-        // The result should be an Option - either Some(path) if found or None if not
-        // We just verify the function runs without panic
-        match result {
-            Some(_path) => {
-                // Claude CLI was found - good!
+    #[test]
+    fn test_load_credentials_empty_api_key_falls_through() {
+        // Empty API key should not be treated as valid
+        let result = load_credentials(Some("".to_string()));
+        // This will either find OAuth credentials or fail — either is valid for this test
+        // The important thing is it doesn't return Ok with an empty token
+        match &result {
+            Ok(creds) => {
+                // OAuth credentials were found
+                assert_eq!(creds.token_source, TokenSource::OAuthToken);
+                assert!(!creds.access_token.is_empty());
             }
-            None => {
-                // Claude CLI was not found - also fine for this test
-                // The important thing is that the function checked fallback locations
+            Err(_) => {
+                // No credentials found — expected when no OAuth either
             }
         }
     }
 
     #[test]
-    fn test_check_cli_available_returns_proper_error_when_not_found() {
-        // This test verifies that when Claude CLI is not found,
-        // we get a proper NotFound error, not a spawn error
-        let result = check_cli_available();
+    fn test_check_api_configured_with_key() {
+        let status = check_api_configured(Some("sk-ant-test-key".to_string()));
+        match status {
+            ClaudeStatus::Ready { version } => {
+                assert_eq!(version, "API Key");
+            }
+            other => panic!("Expected Ready status, got: {:?}", other),
+        }
+    }
 
-        // If Claude is not installed, we should get a NotFound error
-        // If it is installed, we should get a version string
-        match result {
-            Ok(version) => {
-                // Claude is installed, version should not be empty
-                assert!(!version.is_empty());
+    #[test]
+    fn test_check_api_configured_no_credentials() {
+        // With no API key and no OAuth file, should return NotInstalled
+        // (This test may pass or fail depending on whether the test machine has
+        // Claude Code installed; we just verify it doesn't panic)
+        let status = check_api_configured(None);
+        match status {
+            ClaudeStatus::Ready { .. } => {
+                // OAuth credentials found on this machine — that's fine
             }
-            Err(ClaudeError::NotFound(msg)) => {
-                // Claude not found - this is expected if not installed
-                // The message should be helpful
-                assert!(!msg.is_empty());
+            ClaudeStatus::NotInstalled { message } => {
+                assert!(!message.is_empty());
             }
-            Err(other) => {
-                panic!("Expected NotFound error, got: {:?}", other);
+            ClaudeStatus::NotAuthenticated { .. } => {
+                // Also acceptable
             }
         }
+    }
+
+    #[test]
+    fn test_token_source_serialization() {
+        let api = TokenSource::ApiKey;
+        let json = serde_json::to_string(&api).unwrap();
+        assert_eq!(json, "\"apikey\"");
+
+        let oauth = TokenSource::OAuthToken;
+        let json = serde_json::to_string(&oauth).unwrap();
+        assert_eq!(json, "\"oauthtoken\"");
+    }
+
+    #[test]
+    fn test_claude_credentials_serialization() {
+        let creds = ClaudeCredentials {
+            access_token: "test-token".to_string(),
+            token_source: TokenSource::ApiKey,
+        };
+
+        let json = serde_json::to_string(&creds).unwrap();
+        let deserialized: ClaudeCredentials = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.access_token, "test-token");
+        assert_eq!(deserialized.token_source, TokenSource::ApiKey);
     }
 }

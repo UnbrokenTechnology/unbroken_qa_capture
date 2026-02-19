@@ -56,6 +56,10 @@ pub struct CreateTicketRequest {
     pub priority: Option<String>,
     /// Optional labels/tags
     pub labels: Vec<String>,
+    /// Optional Linear assignee ID (from profile defaults)
+    pub assignee_id: Option<String>,
+    /// Optional Linear workflow state ID (from profile defaults)
+    pub state_id: Option<String>,
 }
 
 /// Result of uploading a single attachment

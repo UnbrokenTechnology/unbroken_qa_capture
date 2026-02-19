@@ -1,7 +1,24 @@
-//! Type definitions for Claude CLI integration
+//! Type definitions for Claude CLI / Anthropic API integration
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+/// How the API credentials were obtained
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TokenSource {
+    /// User-provided Anthropic API key (sk-ant-...)
+    ApiKey,
+    /// OAuth token from Claude Code (~/.claude/.credentials.json)
+    OAuthToken,
+}
+
+/// Credentials for calling the Anthropic Messages API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeCredentials {
+    pub access_token: String,
+    pub token_source: TokenSource,
+}
 
 /// Claude CLI availability status
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +40,7 @@ pub enum ClaudeStatus {
 }
 
 impl ClaudeStatus {
+    #[allow(dead_code)]
     pub fn is_ready(&self) -> bool {
         matches!(self, ClaudeStatus::Ready { .. })
     }

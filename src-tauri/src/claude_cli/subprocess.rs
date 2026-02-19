@@ -1,165 +1,177 @@
-//! Subprocess management for Claude CLI invocation
+//! Anthropic Messages API client
 //!
 //! Handles:
-//! - Queueing requests (max 1 concurrent)
+//! - Building multimodal API requests (text + images)
+//! - Authentication via API key or OAuth token
+//! - Response parsing
 //! - Timeout enforcement
-//! - Process cleanup
-//! - Stdout/stderr capture
+//! - Queue management (max 1 concurrent request)
 
-use super::types::{ClaudeError, ClaudeRequest, ClaudeResponse};
+use super::types::{ClaudeCredentials, ClaudeError, ClaudeRequest, ClaudeResponse, TokenSource};
+use base64::Engine;
 use std::collections::VecDeque;
-use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-/// Trait for invoking Claude CLI (enables mocking in tests)
+/// Trait for invoking the Anthropic API (enables mocking in tests)
 pub trait ClaudeInvoker: Send + Sync {
     fn invoke(&self, request: ClaudeRequest) -> Result<ClaudeResponse, ClaudeError>;
 }
 
-/// Real implementation that spawns actual Claude CLI subprocess
-pub struct RealClaudeInvoker;
+/// Real implementation that calls the Anthropic Messages API via HTTP
+pub struct RealClaudeInvoker {
+    /// Pre-loaded credentials — set at construction time from settings + OAuth fallback
+    credentials: ClaudeCredentials,
+}
 
 impl RealClaudeInvoker {
-    pub fn new() -> Self {
-        Self
+    pub fn new(credentials: ClaudeCredentials) -> Self {
+        Self { credentials }
     }
 
-    /// Spawn claude subprocess with the given request
-    fn spawn_claude(&self, request: &ClaudeRequest) -> Result<Child, ClaudeError> {
-        // Find the Claude CLI executable (supports Windows fallback locations)
-        let claude_path = super::find_claude_executable()
-            .ok_or_else(|| ClaudeError::NotFound(
-                "Claude CLI not found. Install from https://claude.ai/download".to_string()
-            ))?;
+    /// Call the Anthropic Messages API
+    fn call_anthropic_api(&self, request: &ClaudeRequest) -> Result<ClaudeResponse, ClaudeError> {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(request.timeout_secs))
+            .build()
+            .map_err(|e| ClaudeError::ApiError(format!("Failed to create HTTP client: {}", e)))?;
 
-        let mut cmd = Command::new(&claude_path);
-        cmd.args(["--print", "--output-format", "json"])
-            .env_remove("CLAUDECODE");
+        // Build messages content array (images + text)
+        let mut content = Vec::new();
 
-        // Add image files if present
-        for img_path in &request.image_paths {
-            cmd.arg("--file");
-            cmd.arg(img_path);
+        // Add images as base64-encoded content blocks
+        for image_path in &request.image_paths {
+            let bytes = std::fs::read(image_path)
+                .map_err(|e| ClaudeError::InvocationFailed(format!(
+                    "Failed to read image {}: {}", image_path.display(), e
+                )))?;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+            let ext = image_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("png")
+                .to_lowercase();
+            let media_type = match ext.as_str() {
+                "jpg" | "jpeg" => "image/jpeg",
+                "gif" => "image/gif",
+                "webp" => "image/webp",
+                _ => "image/png", // default to PNG
+            };
+
+            content.push(serde_json::json!({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": b64
+                }
+            }));
         }
 
-        // Add the prompt text as a positional argument
-        cmd.arg(&request.prompt);
+        // Add text prompt
+        content.push(serde_json::json!({
+            "type": "text",
+            "text": request.prompt
+        }));
 
-        // Setup I/O
-        cmd.stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        let body = serde_json::json!({
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 4096,
+            "messages": [{
+                "role": "user",
+                "content": content
+            }]
+        });
 
-        cmd.spawn()
-            .map_err(|e| ClaudeError::InvocationFailed(format!("Failed to spawn claude: {}", e)))
-    }
+        // Build the request with auth headers
+        let mut req_builder = client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("content-type", "application/json")
+            .header("anthropic-version", "2023-06-01");
 
-    /// Wait for process with timeout
-    fn wait_with_timeout(
-        &self,
-        mut child: Child,
-        timeout_secs: u64,
-    ) -> Result<(String, String), ClaudeError> {
-        let start = Instant::now();
-        let timeout = Duration::from_secs(timeout_secs);
-
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) => {
-                    // Process finished
-                    let mut stdout = String::new();
-                    let mut stderr = String::new();
-
-                    if let Some(mut out) = child.stdout.take() {
-                        use std::io::Read;
-                        out.read_to_string(&mut stdout)
-                            .map_err(|e| ClaudeError::InvocationFailed(format!("Failed to read stdout: {}", e)))?;
-                    }
-
-                    if let Some(mut err) = child.stderr.take() {
-                        use std::io::Read;
-                        err.read_to_string(&mut stderr)
-                            .map_err(|e| ClaudeError::InvocationFailed(format!("Failed to read stderr: {}", e)))?;
-                    }
-
-                    if !status.success() {
-                        return Err(ClaudeError::InvocationFailed(format!(
-                            "Claude exited with status {}: {}",
-                            status, stderr
-                        )));
-                    }
-
-                    return Ok((stdout, stderr));
-                }
-                Ok(None) => {
-                    // Still running, check timeout
-                    if start.elapsed() >= timeout {
-                        // Timeout - kill the process
-                        let _ = child.kill();
-                        let _ = child.wait(); // Clean up zombie
-
-                        return Err(ClaudeError::Timeout {
-                            seconds: timeout_secs,
-                            task: format!("{:?}", child),
-                        });
-                    }
-
-                    // Sleep briefly before checking again
-                    thread::sleep(Duration::from_millis(100));
-                }
-                Err(e) => {
-                    return Err(ClaudeError::InvocationFailed(format!(
-                        "Error waiting for process: {}",
-                        e
-                    )));
-                }
+        match self.credentials.token_source {
+            TokenSource::ApiKey => {
+                req_builder = req_builder.header("x-api-key", &self.credentials.access_token);
+            }
+            TokenSource::OAuthToken => {
+                req_builder = req_builder.header(
+                    "Authorization",
+                    format!("Bearer {}", self.credentials.access_token),
+                );
             }
         }
+
+        let response = req_builder
+            .json(&body)
+            .send()
+            .map_err(|e| {
+                if e.is_timeout() {
+                    ClaudeError::Timeout {
+                        seconds: request.timeout_secs,
+                        task: format!("{:?}", request.task),
+                    }
+                } else {
+                    ClaudeError::ApiError(format!("HTTP request failed: {}", e))
+                }
+            })?;
+
+        // Check HTTP status
+        let status = response.status();
+        let resp_text = response
+            .text()
+            .map_err(|e| ClaudeError::ApiError(format!("Failed to read response body: {}", e)))?;
+
+        if !status.is_success() {
+            if status.as_u16() == 401 {
+                return Err(ClaudeError::NotAuthenticated(
+                    "Invalid or expired API credentials. Check your API key.".to_string(),
+                ));
+            }
+            if status.as_u16() == 429 {
+                return Err(ClaudeError::ApiError(
+                    "Rate limit exceeded. Please wait and try again.".to_string(),
+                ));
+            }
+            return Err(ClaudeError::ApiError(format!(
+                "HTTP {}: {}",
+                status, resp_text
+            )));
+        }
+
+        // Parse Messages API response: { "content": [{ "type": "text", "text": "..." }] }
+        let resp_json: serde_json::Value = serde_json::from_str(&resp_text)
+            .map_err(|e| ClaudeError::ParseError(format!("Invalid JSON response: {}", e)))?;
+
+        let text = resp_json
+            .get("content")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|block| block.get("text"))
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| {
+                ClaudeError::ParseError(format!(
+                    "Unexpected response structure: {}",
+                    &resp_text[..resp_text.len().min(200)]
+                ))
+            })?;
+
+        Ok(ClaudeResponse {
+            content: text.to_string(),
+            task: request.task.clone(),
+            bug_id: request.bug_id.clone(),
+        })
     }
 }
 
 impl ClaudeInvoker for RealClaudeInvoker {
     fn invoke(&self, request: ClaudeRequest) -> Result<ClaudeResponse, ClaudeError> {
-        // Spawn the process
-        let child = self.spawn_claude(&request)?;
-
-        // Wait with timeout
-        let (stdout, _stderr) = self.wait_with_timeout(child, request.timeout_secs)?;
-
-        // Parse response
-        // For --output-format json, Claude returns JSON with a "content" field
-        // But we'll also handle plain text responses
-        let content = if stdout.trim().starts_with('{') {
-            // Try to parse as JSON
-            match serde_json::from_str::<serde_json::Value>(&stdout) {
-                Ok(json) => {
-                    // Extract content field if present
-                    json.get("content")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(stdout.trim())
-                        .to_string()
-                }
-                Err(_) => {
-                    // Not valid JSON despite starting with {, use as-is
-                    stdout.trim().to_string()
-                }
-            }
-        } else {
-            // Plain text response
-            stdout.trim().to_string()
-        };
-
-        Ok(ClaudeResponse {
-            content,
-            task: request.task,
-            bug_id: request.bug_id,
-        })
+        self.call_anthropic_api(&request)
     }
 }
 
-/// Queued invoker that ensures max 1 concurrent subprocess
+/// Queued invoker that ensures max 1 concurrent request
 /// Note: This is a placeholder for future async implementation
 #[allow(dead_code)]
 pub struct QueuedClaudeInvoker {
