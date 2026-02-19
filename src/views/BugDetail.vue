@@ -313,7 +313,7 @@
                   <div v-if="!isVideoPath(capture.file_path) && !capture.is_console_capture">
                     <div class="capture-thumbnail-row">
                       <q-img
-                        :src="capture.annotated_path || capture.file_path"
+                        :src="toAssetUrl(capture.annotated_path || capture.file_path)"
                         :alt="capture.file_name"
                         class="capture-thumbnail rounded-borders"
                         fit="cover"
@@ -415,7 +415,7 @@
               >
                 <div class="full-width full-height flex flex-center screenshot-slide">
                   <q-img
-                    :src="capturePath"
+                    :src="toAssetUrl(capturePath)"
                     :alt="`Screenshot ${index + 1}`"
                     fit="contain"
                     class="full-width full-height"
@@ -723,6 +723,10 @@ interface ConsoleParsed {
 
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi']
 
+function toAssetUrl(path: string): string {
+  return 'asset://localhost/' + path.replace(/\\/g, '/')
+}
+
 function isVideoPath(path: string): boolean {
   const lower = path.toLowerCase()
   return VIDEO_EXTENSIONS.some(ext => lower.endsWith(ext))
@@ -791,7 +795,7 @@ const screenshotCaptures = computed(() =>
 )
 
 const videoCaptures = computed(() =>
-  allCaptures.value.filter(c => isVideoPath(c.file_path)).map(c => c.file_path)
+  allCaptures.value.filter(c => isVideoPath(c.file_path)).map(c => toAssetUrl(c.file_path))
 )
 
 // For the reassign dialog: list all other bugs in the session

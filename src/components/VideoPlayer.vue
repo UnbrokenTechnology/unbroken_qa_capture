@@ -2,7 +2,7 @@
   <div class="video-player-container">
     <video
       ref="videoEl"
-      :src="`file://${filePath}`"
+      :src="filePath"
       controls
       preload="metadata"
       class="video-player"

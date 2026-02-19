@@ -157,7 +157,7 @@
                         <!-- Screenshot thumbnail -->
                         <q-img
                           v-else
-                          :src="`file://${capture.file_path}`"
+                          :src="'asset://localhost/' + capture.file_path.replace(/\\/g, '/')"
                           class="thumbnail"
                           fit="cover"
                           @click.stop="viewScreenshot(bug.id, getScreenshotIndex(bug.id, capture.id))"
@@ -525,7 +525,7 @@
                     style="position: relative;"
                   >
                     <q-img
-                      :src="`file://${capture.file_path}`"
+                      :src="'asset://localhost/' + capture.file_path.replace(/\\/g, '/')"
                       class="screenshot"
                       fit="contain"
                       @click="viewScreenshot(selectedBug.id, index)"
@@ -939,7 +939,7 @@
         <q-card-section class="flex flex-center full-height">
           <q-img
             v-if="selectedBugScreenshots[currentScreenshotIndex]"
-            :src="`file://${selectedBugScreenshots[currentScreenshotIndex]!.file_path}`"
+            :src="'asset://localhost/' + selectedBugScreenshots[currentScreenshotIndex]!.file_path.replace(/\\/g, '/')"
             fit="contain"
             class="full-width"
           >
