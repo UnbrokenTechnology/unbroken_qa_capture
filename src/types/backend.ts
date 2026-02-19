@@ -137,3 +137,47 @@ export interface ConnectionStatus {
   message?: string | null
   integration_name: string
 }
+
+// QA Profile types
+// Source: src-tauri/src/profile/types.rs
+
+export type CustomFieldType = 'text' | 'number' | 'select'
+
+export interface LinearProfileConfig {
+  team_id: string
+  api_key: string
+  default_assignee_id: string | null
+  default_bug_label_ids: string[]
+  default_feature_label_ids: string[]
+  default_state_id: string | null
+}
+
+export interface AreaCategory {
+  code: string
+  name: string
+  description: string | null
+}
+
+export interface CustomMetadataField {
+  key: string
+  label: string
+  field_type: CustomFieldType
+  default_value: string | null
+  required: boolean
+}
+
+export interface TitleConventions {
+  bug_prefix: string
+  feature_prefix: string
+}
+
+export interface QaProfile {
+  id: string
+  name: string
+  linear_config: LinearProfileConfig | null
+  area_categories: AreaCategory[]
+  custom_fields: CustomMetadataField[]
+  title_conventions: TitleConventions | null
+  created_at: string
+  updated_at: string
+}

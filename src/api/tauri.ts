@@ -17,7 +17,8 @@ import type {
   TicketingCredentials,
   CreateTicketRequest,
   CreateTicketResponse,
-  ConnectionStatus
+  ConnectionStatus,
+  QaProfile
 } from '../types/backend'
 
 // ============================================================================
@@ -381,4 +382,36 @@ export async function saveAnnotatedImage(
     saveMode,
     captureId: captureId ?? null,
   })
+}
+
+// ============================================================================
+// Profile Commands
+// ============================================================================
+
+export async function listProfiles(): Promise<QaProfile[]> {
+  return await invoke<QaProfile[]>('profile_list')
+}
+
+export async function getProfile(id: string): Promise<QaProfile | null> {
+  return await invoke<QaProfile | null>('profile_get', { id })
+}
+
+export async function createProfile(profile: QaProfile): Promise<void> {
+  await invoke('profile_create', { profileJson: JSON.stringify(profile) })
+}
+
+export async function updateProfile(profile: QaProfile): Promise<void> {
+  await invoke('profile_update', { profileJson: JSON.stringify(profile) })
+}
+
+export async function deleteProfile(id: string): Promise<void> {
+  await invoke('profile_delete', { id })
+}
+
+export async function getActiveProfileId(): Promise<string | null> {
+  return await invoke<string | null>('get_active_profile_id')
+}
+
+export async function setActiveProfileId(profileId: string): Promise<void> {
+  await invoke('set_active_profile_id', { profileId })
 }

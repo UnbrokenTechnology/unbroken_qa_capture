@@ -1,9 +1,10 @@
 use super::types::QaProfile;
+use rusqlite::{Connection, params};
 use std::sync::Mutex;
 
 /// Trait defining profile CRUD operations
 #[allow(dead_code)]
-pub trait ProfileRepository: Send + Sync {
+pub trait ProfileRepository {
     fn create(&self, profile: &QaProfile) -> Result<(), String>;
     fn get(&self, id: &str) -> Result<Option<QaProfile>, String>;
     fn list(&self) -> Result<Vec<QaProfile>, String>;
@@ -64,6 +65,121 @@ impl ProfileRepository for InMemoryProfileRepository {
         if profiles.len() == original_len {
             return Err(format!("Profile with id '{}' not found", id));
         }
+        Ok(())
+    }
+}
+
+/// SQLite-backed profile repository
+#[allow(dead_code)]
+pub struct SqliteProfileRepository<'a> {
+    conn: &'a Connection,
+}
+
+impl<'a> SqliteProfileRepository<'a> {
+    #[allow(dead_code)]
+    pub fn new(conn: &'a Connection) -> Self {
+        SqliteProfileRepository { conn }
+    }
+}
+
+impl<'a> ProfileRepository for SqliteProfileRepository<'a> {
+    fn create(&self, profile: &QaProfile) -> Result<(), String> {
+        let data = serde_json::to_string(profile)
+            .map_err(|e| format!("Failed to serialize profile: {}", e))?;
+
+        self.conn
+            .execute(
+                "INSERT INTO profiles (id, name, data, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    profile.id,
+                    profile.name,
+                    data,
+                    profile.created_at,
+                    profile.updated_at,
+                ],
+            )
+            .map_err(|e| format!("Failed to create profile: {}", e))?;
+
+        Ok(())
+    }
+
+    fn get(&self, id: &str) -> Result<Option<QaProfile>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT data FROM profiles WHERE id = ?1")
+            .map_err(|e| format!("Failed to prepare get profile query: {}", e))?;
+
+        let mut rows = stmt
+            .query(params![id])
+            .map_err(|e| format!("Failed to execute get profile query: {}", e))?;
+
+        if let Some(row) = rows
+            .next()
+            .map_err(|e| format!("Failed to read profile row: {}", e))?
+        {
+            let data: String = row
+                .get(0)
+                .map_err(|e| format!("Failed to read profile data column: {}", e))?;
+            let profile: QaProfile = serde_json::from_str(&data)
+                .map_err(|e| format!("Failed to deserialize profile: {}", e))?;
+            Ok(Some(profile))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn list(&self) -> Result<Vec<QaProfile>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT data FROM profiles ORDER BY created_at ASC")
+            .map_err(|e| format!("Failed to prepare list profiles query: {}", e))?;
+
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("Failed to execute list profiles query: {}", e))?;
+
+        let mut profiles = Vec::new();
+        for row in rows {
+            let data = row.map_err(|e| format!("Failed to read profile row: {}", e))?;
+            let profile: QaProfile = serde_json::from_str(&data)
+                .map_err(|e| format!("Failed to deserialize profile: {}", e))?;
+            profiles.push(profile);
+        }
+
+        Ok(profiles)
+    }
+
+    fn update(&self, profile: &QaProfile) -> Result<(), String> {
+        let data = serde_json::to_string(profile)
+            .map_err(|e| format!("Failed to serialize profile: {}", e))?;
+
+        let rows_affected = self
+            .conn
+            .execute(
+                "UPDATE profiles SET name = ?2, data = ?3, updated_at = datetime('now')
+                 WHERE id = ?1",
+                params![profile.id, profile.name, data],
+            )
+            .map_err(|e| format!("Failed to update profile: {}", e))?;
+
+        if rows_affected == 0 {
+            return Err(format!("Profile with id '{}' not found", profile.id));
+        }
+
+        Ok(())
+    }
+
+    fn delete(&self, id: &str) -> Result<(), String> {
+        let rows_affected = self
+            .conn
+            .execute("DELETE FROM profiles WHERE id = ?1", params![id])
+            .map_err(|e| format!("Failed to delete profile: {}", e))?;
+
+        if rows_affected == 0 {
+            return Err(format!("Profile with id '{}' not found", id));
+        }
+
         Ok(())
     }
 }
@@ -196,5 +312,95 @@ mod tests {
         // Original is unchanged
         let retrieved = repo.get("profile-1").unwrap().unwrap();
         assert_eq!(retrieved.name, "First");
+    }
+
+    // ── SqliteProfileRepository tests ──────────────────────────────────────
+
+    fn create_sqlite_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::database::init_database(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_sqlite_create_and_get() {
+        let conn = create_sqlite_db();
+        let repo = SqliteProfileRepository::new(&conn);
+        let profile = make_profile("sqlite-1", "SQLite Profile");
+
+        repo.create(&profile).unwrap();
+
+        let retrieved = repo.get("sqlite-1").unwrap();
+        assert!(retrieved.is_some());
+        let p = retrieved.unwrap();
+        assert_eq!(p.id, "sqlite-1");
+        assert_eq!(p.name, "SQLite Profile");
+    }
+
+    #[test]
+    fn test_sqlite_get_returns_none_for_missing() {
+        let conn = create_sqlite_db();
+        let repo = SqliteProfileRepository::new(&conn);
+        let result = repo.get("nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_sqlite_list_profiles() {
+        let conn = create_sqlite_db();
+        let repo = SqliteProfileRepository::new(&conn);
+
+        repo.create(&make_profile("sqlite-1", "Alpha")).unwrap();
+        repo.create(&make_profile("sqlite-2", "Beta")).unwrap();
+
+        let profiles = repo.list().unwrap();
+        assert_eq!(profiles.len(), 2);
+    }
+
+    #[test]
+    fn test_sqlite_update_profile() {
+        let conn = create_sqlite_db();
+        let repo = SqliteProfileRepository::new(&conn);
+        let profile = make_profile("sqlite-1", "Original");
+        repo.create(&profile).unwrap();
+
+        let mut updated = profile.clone();
+        updated.name = "Updated".to_string();
+        repo.update(&updated).unwrap();
+
+        let retrieved = repo.get("sqlite-1").unwrap().unwrap();
+        assert_eq!(retrieved.name, "Updated");
+    }
+
+    #[test]
+    fn test_sqlite_update_nonexistent_fails() {
+        let conn = create_sqlite_db();
+        let repo = SqliteProfileRepository::new(&conn);
+        let profile = make_profile("ghost", "Ghost");
+        let result = repo.update(&profile);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_sqlite_delete_profile() {
+        let conn = create_sqlite_db();
+        let repo = SqliteProfileRepository::new(&conn);
+        let profile = make_profile("sqlite-1", "To Delete");
+        repo.create(&profile).unwrap();
+
+        repo.delete("sqlite-1").unwrap();
+
+        let retrieved = repo.get("sqlite-1").unwrap();
+        assert!(retrieved.is_none());
+    }
+
+    #[test]
+    fn test_sqlite_delete_nonexistent_fails() {
+        let conn = create_sqlite_db();
+        let repo = SqliteProfileRepository::new(&conn);
+        let result = repo.delete("nonexistent");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
     }
 }

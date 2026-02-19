@@ -70,6 +70,18 @@ pub fn init_database(conn: &Connection) -> SqlResult<()> {
         [],
     )?;
 
+    // Create profiles table (stores QA testing profiles as JSON blobs)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS profiles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            data TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )?;
+
     // Create indices
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_bugs_session ON bugs(session_id)",
@@ -112,6 +124,7 @@ mod tests {
         assert!(tables.contains(&"bugs".to_string()));
         assert!(tables.contains(&"captures".to_string()));
         assert!(tables.contains(&"settings".to_string()));
+        assert!(tables.contains(&"profiles".to_string()));
     }
 
     #[test]

@@ -1729,6 +1729,90 @@ fn save_annotated_image(
     Ok(save_path)
 }
 
+// ─── Profile Commands ────────────────────────────────────────────────────
+
+/// Returns the db_path for profile commands (shared helper)
+fn get_db_path(app: &tauri::AppHandle) -> std::path::PathBuf {
+    app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    }).join("qa_capture.db")
+}
+
+#[tauri::command]
+fn profile_list(app: tauri::AppHandle) -> Result<Vec<profile::QaProfile>, String> {
+    use database::Database;
+    use profile::{SqliteProfileRepository, ProfileRepository};
+
+    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
+    let repo = SqliteProfileRepository::new(db.connection());
+    repo.list()
+}
+
+#[tauri::command]
+fn profile_get(id: String, app: tauri::AppHandle) -> Result<Option<profile::QaProfile>, String> {
+    use database::Database;
+    use profile::{SqliteProfileRepository, ProfileRepository};
+
+    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
+    let repo = SqliteProfileRepository::new(db.connection());
+    repo.get(&id)
+}
+
+#[tauri::command]
+fn profile_create(profile_json: String, app: tauri::AppHandle) -> Result<(), String> {
+    use database::Database;
+    use profile::{SqliteProfileRepository, ProfileRepository};
+
+    let profile: profile::QaProfile = serde_json::from_str(&profile_json)
+        .map_err(|e| format!("Failed to parse profile JSON: {}", e))?;
+
+    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
+    let repo = SqliteProfileRepository::new(db.connection());
+    repo.create(&profile)
+}
+
+#[tauri::command]
+fn profile_update(profile_json: String, app: tauri::AppHandle) -> Result<(), String> {
+    use database::Database;
+    use profile::{SqliteProfileRepository, ProfileRepository};
+
+    let profile: profile::QaProfile = serde_json::from_str(&profile_json)
+        .map_err(|e| format!("Failed to parse profile JSON: {}", e))?;
+
+    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
+    let repo = SqliteProfileRepository::new(db.connection());
+    repo.update(&profile)
+}
+
+#[tauri::command]
+fn profile_delete(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    use database::Database;
+    use profile::{SqliteProfileRepository, ProfileRepository};
+
+    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
+    let repo = SqliteProfileRepository::new(db.connection());
+    repo.delete(&id)
+}
+
+#[tauri::command]
+fn get_active_profile_id(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+    repo.get("active_profile_id").map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn set_active_profile_id(profile_id: String, app: tauri::AppHandle) -> Result<(), String> {
+    use database::{Database, SettingsRepository, SettingsOps};
+
+    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
+    let repo = SettingsRepository::new(db.connection());
+    repo.set("active_profile_id", &profile_id)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2003,7 +2087,14 @@ pub fn run() {
             emit_screenshot_captured,
             open_annotation_window,
             save_annotated_image,
-            trigger_screenshot
+            trigger_screenshot,
+            profile_list,
+            profile_get,
+            profile_create,
+            profile_update,
+            profile_delete,
+            get_active_profile_id,
+            set_active_profile_id
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
