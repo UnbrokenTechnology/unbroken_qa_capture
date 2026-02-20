@@ -241,6 +241,7 @@ impl CaptureWatcher {
                 "filePath": dest_path.to_string_lossy(),
                 "captureId": capture_id,
                 "bugId": bug_id,
+                "sessionId": session_id,
                 "timestamp": Utc::now().timestamp_millis(),
             }),
         );

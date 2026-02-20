@@ -1,7 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import VideoPlayer from '@/components/VideoPlayer.vue'
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
+}))
 
 describe('VideoPlayer', () => {
   const mountComponent = (filePath: string) =>
@@ -15,11 +20,11 @@ describe('VideoPlayer', () => {
       }
     })
 
-  it('renders a video element with the correct src', () => {
+  it('renders a video element with the correct src converted to asset URL', () => {
     const wrapper = mountComponent('/path/to/video.mp4')
     const video = wrapper.find('video')
     expect(video.exists()).toBe(true)
-    expect(video.attributes('src')).toBe('/path/to/video.mp4')
+    expect(video.attributes('src')).toBe('asset://localhost//path/to/video.mp4')
   })
 
   it('has controls and preload="metadata" on the video element', () => {

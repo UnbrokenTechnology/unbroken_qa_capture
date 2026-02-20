@@ -2465,8 +2465,8 @@ onMounted(async () => {
 
   // Listen for new captures (both unsorted and bug-assigned) in real-time
   const { listen } = await import('@tauri-apps/api/event')
-  const unlisten = await listen<{ filePath: string; captureId: string; sessionId: string; bugId: string | null; type: string }>(
-    'capture:file-detected',
+  const unlisten = await listen<{ filePath: string; captureId: string; sessionId: string; bugId: string | null; timestamp: number }>(
+    'screenshot:captured',
     (event) => {
       if (viewSessionId.value !== event.payload.sessionId) return
       if (event.payload.bugId === null) {

@@ -2,7 +2,7 @@
   <div class="video-player-container">
     <video
       ref="videoEl"
-      :src="filePath"
+      :src="assetSrc"
       controls
       preload="metadata"
       class="video-player"
@@ -34,11 +34,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { toAssetUrl } from '@/utils/paths'
 
-defineProps<{
+const props = defineProps<{
   filePath: string
 }>()
+
+const assetSrc = computed(() => toAssetUrl(props.filePath))
 
 const emit = defineEmits<{
   (e: 'loaded', duration: number): void

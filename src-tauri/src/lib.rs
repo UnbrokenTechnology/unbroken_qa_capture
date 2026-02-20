@@ -746,7 +746,7 @@ pub(crate) fn make_capture_filename(source_path: &std::path::Path, capture_numbe
         .unwrap_or("png")
         .to_lowercase();
     match extension.as_str() {
-        "mp4" | "webm" | "mkv" => (
+        "mp4" | "webm" | "mkv" | "avi" | "mov" => (
             format!("recording-{:03}.{}", capture_number, extension),
             CaptureType::Video,
         ),
@@ -3050,6 +3050,24 @@ mod tests {
         let (name, ctype) = make_capture_filename(path, 99);
         assert_eq!(name, "capture-099.jpg");
         assert_eq!(ctype, CaptureType::Screenshot);
+    }
+
+    #[test]
+    fn test_make_capture_filename_video_avi() {
+        use database::CaptureType;
+        let path = std::path::Path::new("screen_recording.avi");
+        let (name, ctype) = make_capture_filename(path, 3);
+        assert_eq!(name, "recording-003.avi");
+        assert_eq!(ctype, CaptureType::Video);
+    }
+
+    #[test]
+    fn test_make_capture_filename_video_mov() {
+        use database::CaptureType;
+        let path = std::path::Path::new("iphone_clip.mov");
+        let (name, ctype) = make_capture_filename(path, 7);
+        assert_eq!(name, "recording-007.mov");
+        assert_eq!(ctype, CaptureType::Video);
     }
 
     #[test]

@@ -792,7 +792,7 @@ const screenshotCaptures = computed(() =>
 )
 
 const videoCaptures = computed(() =>
-  allCaptures.value.filter(c => isVideoPath(c.file_path)).map(c => toAssetUrl(c.file_path))
+  allCaptures.value.filter(c => isVideoPath(c.file_path)).map(c => c.file_path)
 )
 
 // For the reassign dialog: list all other bugs in the session
