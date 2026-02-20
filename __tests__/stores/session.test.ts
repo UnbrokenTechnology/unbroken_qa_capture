@@ -23,6 +23,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 // Mock Tauri core invoke
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
 }))
 
 import * as tauri from '@/api/tauri'

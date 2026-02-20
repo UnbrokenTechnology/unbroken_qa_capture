@@ -72,6 +72,111 @@
         </q-card-section>
       </q-card>
 
+      <!-- Unsorted Screenshot Tray -->
+      <q-card
+        v-if="captureStore.unsortedCount > 0"
+        flat
+        bordered
+        class="unsorted-tray q-mb-md"
+      >
+        <q-card-section class="q-py-sm">
+          <div class="row items-center q-mb-sm">
+            <q-icon
+              name="photo_library"
+              color="orange"
+              size="sm"
+              class="q-mr-xs"
+            />
+            <span class="text-subtitle2">Unsorted Screenshots ({{ captureStore.unsortedCount }})</span>
+          </div>
+          <div
+            class="row q-gutter-sm"
+            style="overflow-x: auto; flex-wrap: nowrap;"
+          >
+            <div
+              v-for="capture in captureStore.unsortedCaptures"
+              :key="capture.id"
+              class="unsorted-thumb"
+              style="flex-shrink: 0; position: relative;"
+            >
+              <q-img
+                :src="toAssetUrl(capture.file_path)"
+                style="width: 120px; height: 80px; border-radius: 4px; cursor: pointer;"
+                fit="cover"
+              />
+
+              <!-- AI suggestion badge: suggests an existing bug -->
+              <q-badge
+                v-if="captureStore.getAiSuggestion(capture.id)?.suggestedBugId"
+                color="blue"
+                floating
+                style="cursor: pointer; font-size: 10px; top: 2px; left: 2px;"
+                @click="handleAcceptAiSuggestion(capture.id)"
+              >
+                AI: {{ captureStore.getAiSuggestion(capture.id)?.suggestedBugDisplayId }}
+                <q-tooltip>{{ captureStore.getAiSuggestion(capture.id)?.reasoning }}</q-tooltip>
+              </q-badge>
+
+              <!-- AI suggestion badge: suggests creating a new bug -->
+              <q-badge
+                v-else-if="captureStore.getAiSuggestion(capture.id) && !captureStore.getAiSuggestion(capture.id)?.suggestedBugId"
+                color="green"
+                floating
+                style="font-size: 10px; top: 2px; left: 2px;"
+              >
+                AI: New Bug?
+                <q-tooltip>{{ captureStore.getAiSuggestion(capture.id)?.reasoning }}</q-tooltip>
+              </q-badge>
+
+              <!-- AI loading spinner while waiting for suggestion -->
+              <q-spinner-dots
+                v-else-if="captureStore.isAiPending(capture.id)"
+                color="white"
+                size="16px"
+                style="position: absolute; top: 4px; left: 4px;"
+              />
+
+              <q-btn-dropdown
+                flat
+                dense
+                icon="label"
+                size="xs"
+                color="white"
+                style="position: absolute; bottom: 2px; right: 2px; background: rgba(0,0,0,0.5); border-radius: 4px;"
+              >
+                <q-list dense>
+                  <q-item
+                    v-for="bug in sessionBugs"
+                    :key="bug.id"
+                    clickable
+                    v-close-popup
+                    @click="handleAssignCapture(capture.id, bug.id)"
+                  >
+                    <q-item-section>{{ bug.display_id }}: {{ bug.title || 'Untitled' }}</q-item-section>
+                  </q-item>
+                  <q-separator />
+                  <q-item
+                    clickable
+                    v-close-popup
+                    @click="handleCreateBugFromCapture(capture)"
+                  >
+                    <q-item-section>
+                      <q-item-label>
+                        <q-icon
+                          name="add"
+                          size="xs"
+                          class="q-mr-xs"
+                        />New Bug from This
+                      </q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </q-list>
+              </q-btn-dropdown>
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+
       <!-- Bug Card List -->
       <div class="bug-list-section q-mb-md">
         <div class="section-header q-mb-sm">
@@ -191,7 +296,7 @@
                   <q-tooltip>Has notes</q-tooltip>
                 </q-icon>
                 <q-icon
-                  v-if="(bugCaptureCounts.get(bug.id)?.videos ?? 0) > 0"
+                  v-if="(captureStore.bugCaptureCounts.get(bug.id)?.videos ?? 0) > 0"
                   name="videocam"
                   size="xs"
                   color="purple-6"
@@ -282,68 +387,6 @@
       </q-expansion-item>
     </div>
 
-    <!-- Unsorted screenshot dialog: shown when a screenshot is taken with no active bug -->
-    <q-dialog
-      v-model="showUnsortedDialog"
-      persistent
-    >
-      <q-card style="min-width: 320px; max-width: 480px;">
-        <q-card-section class="row items-center q-pb-none">
-          <q-icon
-            name="photo_camera"
-            size="md"
-            color="orange"
-            class="q-mr-sm"
-          />
-          <div class="text-h6">
-            Screenshot captured
-          </div>
-        </q-card-section>
-
-        <q-card-section>
-          <p class="text-body2">
-            No bug is currently active. Which bug should this screenshot be associated with?
-          </p>
-
-          <q-select
-            v-model="selectedBugForUnsorted"
-            :options="sessionBugs.map(b => ({ label: b.display_id + (b.title ? ' — ' + b.title : ''), value: b.id }))"
-            option-label="label"
-            option-value="value"
-            emit-value
-            map-options
-            label="Select a bug"
-            outlined
-            dense
-            class="q-mt-sm"
-          />
-        </q-card-section>
-
-        <q-card-actions align="right">
-          <q-btn
-            flat
-            label="Ignore"
-            color="grey"
-            @click="handleDismissUnsortedDialog"
-          />
-          <q-btn
-            v-if="sessionBugs.length > 0"
-            unelevated
-            label="Assign"
-            color="primary"
-            :disable="!selectedBugForUnsorted"
-            @click="handleAssignUnsortedScreenshot"
-          />
-          <q-btn
-            unelevated
-            label="Start New Bug"
-            color="red"
-            icon="bug_report"
-            @click="() => { showUnsortedDialog = false; handleNewBugCapture() }"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
   </q-page>
 </template>
 
@@ -353,19 +396,17 @@ import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useSessionStore } from '@/stores/session'
 import { useBugStore } from '@/stores/bug'
+import { useCaptureStore } from '@/stores/capture'
 import SessionNotepad from '@/components/SessionNotepad.vue'
-import { getBugCaptures, getCaptureFolderPath } from '@/api/tauri'
-import type { Bug as BackendBug } from '@/types/backend'
+import { getCaptureFolderPath, getClaudeStatus } from '@/api/tauri'
+import type { Bug as BackendBug, Capture } from '@/types/backend'
+import { toAssetUrl } from '@/utils/paths'
 
 const router = useRouter()
 const $q = useQuasar()
 const sessionStore = useSessionStore()
 const bugStore = useBugStore()
-
-// Dialog for associating unsorted screenshots with a bug
-const showUnsortedDialog = ref(false)
-const unsortedFilePath = ref('')
-const selectedBugForUnsorted = ref<string | null>(null)
+const captureStore = useCaptureStore()
 
 const showFirstRunWizard = inject<Ref<boolean>>('showFirstRunWizard', ref(false))
 
@@ -373,7 +414,6 @@ const showFirstRunWizard = inject<Ref<boolean>>('showFirstRunWizard', ref(false)
 const notepadExpanded = ref(false)
 const sessionDuration = ref('00:00')
 const captureFolderPath = ref<string>('')
-const bugCaptureCounts = ref<Map<string, { screenshots: number; videos: number; thumbnail: string | null }>>(new Map())
 
 let durationInterval: number | null = null
 
@@ -423,11 +463,11 @@ function updateSessionDuration() {
 }
 
 function getBugThumbnail(bug: BackendBug): string | null {
-  return bugCaptureCounts.value.get(bug.id)?.thumbnail ?? null
+  return captureStore.bugCaptureCounts.get(bug.id)?.thumbnail ?? null
 }
 
 function getCaptureCountText(bug: BackendBug): string {
-  const counts = bugCaptureCounts.value.get(bug.id)
+  const counts = captureStore.bugCaptureCounts.get(bug.id)
   if (!counts) return 'Loading...'
 
   const parts: string[] = []
@@ -439,32 +479,6 @@ function getCaptureCountText(bug: BackendBug): string {
   }
 
   return parts.length > 0 ? parts.join(', ') : 'No captures yet'
-}
-
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi']
-
-function isVideoPath(path: string): boolean {
-  const lower = path.toLowerCase()
-  return VIDEO_EXTENSIONS.some(ext => lower.endsWith(ext))
-}
-
-async function loadBugCaptureCounts(bugs: BackendBug[]): Promise<void> {
-  for (const bug of bugs) {
-    try {
-      const captures = await getBugCaptures(bug.id)
-      const screenshots = captures.filter(c => !isVideoPath(c.file_path))
-      const videos = captures.filter(c => isVideoPath(c.file_path))
-      const thumbnail = screenshots[0]?.file_path ?? null
-      bugCaptureCounts.value.set(bug.id, {
-        screenshots: screenshots.length,
-        videos: videos.length,
-        thumbnail,
-      })
-    } catch {
-      // Non-fatal: show zero counts if load fails
-      bugCaptureCounts.value.set(bug.id, { screenshots: 0, videos: 0, thumbnail: null })
-    }
-  }
 }
 
 function getNotesPreview(notes: string): string {
@@ -627,7 +641,7 @@ async function loadSessionBugs() {
 
   try {
     await bugStore.loadBugsBySession(activeSession.value.id)
-    await loadBugCaptureCounts(sessionBugs.value)
+    await captureStore.refreshAll(activeSession.value.id, sessionBugs.value)
 
     // Recover activeBug after a crash/restart: the Rust backend restores active_bug
     // in resume_session, but Pinia state is ephemeral. If a bug is still in 'capturing'
@@ -638,12 +652,12 @@ async function loadSessionBugs() {
         bugStore.setActiveBug(capturingBug)
       }
     }
-  } catch (error) {
-    console.error('Failed to load session bugs:', error)
+  } catch (err) {
+    console.error('Failed to load session bugs:', err)
     $q.notify({
       type: 'negative',
       message: 'Failed to load bugs for this session',
-      caption: error instanceof Error ? error.message : String(error),
+      caption: err instanceof Error ? err.message : String(err),
       position: 'bottom-right',
       timeout: 4000,
     })
@@ -686,6 +700,9 @@ watch(
   async (event) => {
     if (!event) return
 
+    const session = activeSession.value
+    if (!session) return
+
     if (event.bugDisplayId) {
       // Screenshot was captured for an active bug — show success toast
       $q.notify({
@@ -698,76 +715,124 @@ watch(
       // Refresh capture counts for the active bug
       const activeBug = bugStore.activeBug
       if (activeBug) {
-        await loadBugCaptureCounts([activeBug])
+        await captureStore.loadBugCaptureCounts([activeBug])
       }
     } else {
-      // Screenshot taken with no active bug — prompt user to associate it
-      unsortedFilePath.value = event.filePath
-      selectedBugForUnsorted.value = null
-      showUnsortedDialog.value = true
+      // Screenshot taken with no active bug — non-blocking toast instead of modal
+      // Refresh unsorted captures so the tray updates
+      await captureStore.loadUnsortedCaptures(session.id)
+
+      // Auto-trigger AI suggestion for the newly arrived unsorted capture
+      try {
+        const claudeStatus = await getClaudeStatus()
+        if (claudeStatus.status === 'ready' && bugStore.backendBugs.length > 0) {
+          const latest = captureStore.unsortedCaptures[captureStore.unsortedCaptures.length - 1]
+          if (latest) {
+            void captureStore.requestAiSuggestion(latest.id, session.id)
+          }
+        }
+      } catch {
+        // Non-fatal: AI suggestion is best-effort
+      }
+
+      $q.notify({
+        type: 'warning',
+        icon: 'photo_camera',
+        message: 'Screenshot saved (unsorted)',
+        caption: 'Assign it to a bug from the tray below',
+        position: 'top',
+        timeout: 5000,
+        actions: [
+          {
+            label: 'New Bug',
+            color: 'white',
+            handler: () => {
+              // Find the most recently added unsorted capture
+              const latestCapture = captureStore.unsortedCaptures[captureStore.unsortedCaptures.length - 1]
+              if (latestCapture) {
+                void handleCreateBugFromCapture(latestCapture)
+              }
+            },
+          },
+        ],
+      })
     }
   }
 )
 
-async function handleAssignUnsortedScreenshot() {
-  if (!selectedBugForUnsorted.value || !unsortedFilePath.value) {
-    showUnsortedDialog.value = false
-    return
-  }
-
+async function handleAcceptAiSuggestion(captureId: string) {
   try {
-    const { getUnsortedCaptures, assignCaptureToBug } = await import('@/api/tauri')
-    const session = activeSession.value
-    if (!session) return
+    await captureStore.acceptAiSuggestion(captureId)
+    // Refresh counts after assignment
+    if (sessionStore.activeSession) {
+      await captureStore.refreshAll(sessionStore.activeSession.id, bugStore.backendBugs)
+    }
+  } catch (err) {
+    console.error('Failed to accept AI suggestion:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to accept AI suggestion',
+      position: 'bottom-right',
+      timeout: 4000,
+    })
+  }
+}
 
-    const unsorted = await getUnsortedCaptures(session.id)
-    const fileName = unsortedFilePath.value.replace(/\\/g, '/').split('/').pop() ?? ''
-    const capture = unsorted.find(c =>
-      c.file_path === unsortedFilePath.value ||
-      c.file_path.endsWith(fileName)
-    )
-
-    if (capture) {
-      await assignCaptureToBug(capture.id, selectedBugForUnsorted.value)
-      const bug = sessionBugs.value.find(b => b.id === selectedBugForUnsorted.value)
+async function handleAssignCapture(captureId: string, bugId: string) {
+  try {
+    await captureStore.assignCaptureToBug(captureId, bugId)
+    // Refresh the bug's capture count
+    const bug = sessionBugs.value.find(b => b.id === bugId)
+    if (bug) {
+      await captureStore.loadBugCaptureCounts([bug])
       $q.notify({
         type: 'positive',
         icon: 'photo_camera',
-        message: `Screenshot assigned to ${bug?.display_id ?? 'bug'}`,
+        message: `Screenshot assigned to ${bug.display_id}`,
         position: 'top',
         timeout: 3000,
       })
-      // Refresh capture counts for the selected bug
-      if (bug) {
-        await loadBugCaptureCounts([bug])
-      }
     }
   } catch (err) {
-    console.error('Failed to assign screenshot to bug:', err)
+    console.error('Failed to assign capture to bug:', err)
     $q.notify({
       type: 'negative',
       message: 'Failed to assign screenshot to bug',
       position: 'bottom-right',
       timeout: 4000,
     })
-  } finally {
-    showUnsortedDialog.value = false
-    unsortedFilePath.value = ''
-    selectedBugForUnsorted.value = null
   }
 }
 
-function handleDismissUnsortedDialog() {
-  showUnsortedDialog.value = false
-  unsortedFilePath.value = ''
-  selectedBugForUnsorted.value = null
-  $q.notify({
-    type: 'warning',
-    icon: 'photo_camera',
-    message: 'Screenshot saved without a bug — start a bug capture to associate future screenshots',
-    position: 'top',
-    timeout: 4000,
-  })
+async function handleCreateBugFromCapture(capture: Capture) {
+  if (!activeSession.value) return
+
+  try {
+    // Create a new bug, then assign the capture to it
+    const newBug = await bugStore.startBugCapture({
+      session_id: activeSession.value.id,
+      status: 'capturing',
+    })
+    await captureStore.assignCaptureToBug(capture.id, newBug.id)
+    await bugStore.completeBugCapture(newBug.id)
+    await captureStore.loadBugCaptureCounts([newBug])
+    $q.notify({
+      type: 'positive',
+      icon: 'bug_report',
+      message: `New bug ${newBug.display_id} created with screenshot`,
+      position: 'top',
+      timeout: 3000,
+    })
+  } catch (err) {
+    console.error('Failed to create bug from capture:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to create bug from screenshot',
+      caption: err instanceof Error ? err.message : String(err),
+      position: 'bottom-right',
+      timeout: 4000,
+    })
+  }
 }
 </script>
 
@@ -806,6 +871,20 @@ function handleDismissUnsortedDialog() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.unsorted-tray {
+  background: white;
+  border-radius: 8px;
+  animation: fadeIn 0.3s ease-in;
+}
+
+.unsorted-thumb {
+  transition: transform 0.15s ease;
+}
+
+.unsorted-thumb:hover {
+  transform: scale(1.05);
 }
 
 .bug-list-section {

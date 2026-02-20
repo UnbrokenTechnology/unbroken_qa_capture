@@ -9,7 +9,8 @@ import type { Bug as BackendBug, Capture } from '@/types/backend'
 
 // Mock Tauri invoke
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn()
+  invoke: vi.fn(),
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
 }))
 
 // Mock the tauri API module (used for getBugCaptures)

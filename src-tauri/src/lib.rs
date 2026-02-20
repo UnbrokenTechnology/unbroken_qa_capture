@@ -8,6 +8,7 @@ mod hotkey;
 mod claude_cli;
 mod ticketing;
 mod profile;
+mod capture_watcher;
 
 #[cfg(test)]
 mod hotkey_tests;
@@ -40,6 +41,9 @@ static TICKETING_INTEGRATION: Mutex<Option<Arc<dyn TicketingIntegration>>> = Mut
 
 // Global capture bridge (platform-specific screenshot implementation)
 static CAPTURE_BRIDGE: Mutex<Option<Box<dyn platform::CaptureBridge>>> = Mutex::new(None);
+
+// Global capture watcher (monitors _captures/ for new files)
+static CAPTURE_WATCHER: Mutex<Option<capture_watcher::CaptureWatcher>> = Mutex::new(None);
 
 // Tauri event emitter implementation
 struct TauriEventEmitter {
@@ -681,6 +685,54 @@ async fn open_session_notes_window(app: tauri::AppHandle) -> Result<(), String> 
     Ok(())
 }
 
+// ─── Capture Watcher Helpers ─────────────────────────────────────────────
+
+/// Start the capture watcher for the given session.
+fn start_capture_watcher_for_session(session: &database::Session, app: &AppHandle) {
+    let session_folder = std::path::PathBuf::from(&session.folder_path);
+    let captures_dir = session_folder.join("_captures");
+
+    // Ensure the _captures directory exists.
+    let _ = std::fs::create_dir_all(&captures_dir);
+
+    let active_bug = {
+        let guard = SESSION_MANAGER.lock().unwrap();
+        guard
+            .as_ref()
+            .map(|m| m.active_bug_arc())
+            .unwrap_or_else(|| std::sync::Arc::new(std::sync::Mutex::new(None)))
+    };
+
+    let db_path = {
+        let guard = SESSION_MANAGER.lock().unwrap();
+        guard
+            .as_ref()
+            .map(|m| m.db_path.clone())
+            .unwrap_or_default()
+    };
+
+    match capture_watcher::CaptureWatcher::start(
+        captures_dir,
+        session.id.clone(),
+        session_folder,
+        active_bug,
+        db_path,
+        app.clone(),
+    ) {
+        Ok(watcher) => {
+            *CAPTURE_WATCHER.lock().unwrap() = Some(watcher);
+        }
+        Err(e) => {
+            eprintln!("Warning: Failed to start capture watcher: {e}");
+        }
+    }
+}
+
+/// Stop the capture watcher (drops the file-system watch).
+fn stop_capture_watcher() {
+    *CAPTURE_WATCHER.lock().unwrap() = None;
+}
+
 // ─── Session Manager Commands ────────────────────────────────────────────
 
 /// Determine capture type and generate PRD-compliant file name.
@@ -724,16 +776,23 @@ pub(crate) fn next_capture_number(dir: &std::path::Path) -> u32 {
 }
 
 #[tauri::command]
-fn start_session() -> Result<database::Session, String> {
-    let manager_guard = SESSION_MANAGER.lock().unwrap();
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Session manager not initialized")?;
-    manager.start_session()
+fn start_session(app: AppHandle) -> Result<database::Session, String> {
+    let session = {
+        let manager_guard = SESSION_MANAGER.lock().unwrap();
+        let manager = manager_guard
+            .as_ref()
+            .ok_or("Session manager not initialized")?;
+        manager.start_session()?
+    };
+
+    start_capture_watcher_for_session(&session, &app);
+    Ok(session)
 }
 
 #[tauri::command]
 async fn end_session(session_id: String) -> Result<(), String> {
+    stop_capture_watcher();
+
     tauri::async_runtime::spawn_blocking(move || {
         let manager_guard = SESSION_MANAGER.lock().unwrap();
         let manager = manager_guard
@@ -746,12 +805,17 @@ async fn end_session(session_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn resume_session(session_id: String) -> Result<database::Session, String> {
-    let manager_guard = SESSION_MANAGER.lock().unwrap();
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Session manager not initialized")?;
-    manager.resume_session(&session_id)
+fn resume_session(session_id: String, app: AppHandle) -> Result<database::Session, String> {
+    let session = {
+        let manager_guard = SESSION_MANAGER.lock().unwrap();
+        let manager = manager_guard
+            .as_ref()
+            .ok_or("Session manager not initialized")?;
+        manager.resume_session(&session_id)?
+    };
+
+    start_capture_watcher_for_session(&session, &app);
+    Ok(session)
 }
 
 #[tauri::command]
@@ -892,6 +956,23 @@ fn get_bugs_by_session(session_id: String, app: tauri::AppHandle) -> Result<Vec<
     let repo = BugRepository::new(db.connection());
     repo.list_by_session(&session_id)
         .map_err(|e| format!("Failed to get bugs for session: {}", e))
+}
+
+#[tauri::command]
+fn get_bug(bug_id: String, app: tauri::AppHandle) -> Result<Option<database::Bug>, String> {
+    use database::{Database, BugRepository, BugOps};
+
+    let db_path = app.path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?
+        .join("qa_capture.db");
+
+    let db = Database::new(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+
+    let repo = BugRepository::new(db.connection());
+    repo.get(&bug_id)
+        .map_err(|e| format!("Failed to get bug: {}", e))
 }
 
 #[tauri::command]
@@ -1194,6 +1275,182 @@ async fn refine_bug_description(
 }
 
 #[tauri::command]
+async fn suggest_capture_assignment(
+    capture_id: String,
+    session_id: String,
+    app: tauri::AppHandle,
+) -> Result<claude_cli::CaptureAssignmentSuggestion, String> {
+    use claude_cli::{
+        BugSummary, CaptureAssignmentSuggestion, ClaudeInvoker, ClaudeRequest, PromptBuilder,
+        PromptTask, RealClaudeInvoker,
+    };
+    use database::{BugOps, BugRepository, CaptureOps, CaptureRepository, Database};
+    use std::path::PathBuf;
+
+    const MAX_IMAGE_SIZE: u64 = 1_048_576; // 1 MB
+    const MAX_BUGS_WITH_IMAGES: usize = 5;
+
+    // 1. Load credentials
+    let creds = claude_cli::load_credentials()
+        .map_err(|e| format!("Claude not ready: {}", e))?;
+
+    // 2. Open database and fetch capture + bugs
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::current_dir().unwrap().join("data"));
+    let db_path = data_dir.join("qa_capture.db");
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+
+    let capture_repo = CaptureRepository::new(db.connection());
+    let capture = capture_repo
+        .get(&capture_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Capture not found: {}", capture_id))?;
+
+    let bug_repo = BugRepository::new(db.connection());
+    let bugs = bug_repo
+        .list_by_session(&session_id)
+        .map_err(|e| e.to_string())?;
+
+    // 3. Build the multimodal content array: unsorted screenshot first, then bug reference images
+    let mut image_paths: Vec<PathBuf> = Vec::new();
+
+    // Add the unsorted screenshot (always image #1)
+    let capture_path = PathBuf::from(&capture.file_path);
+    if !capture_path.exists() {
+        return Err(format!(
+            "Capture file not found: {}",
+            capture_path.display()
+        ));
+    }
+    let capture_file_size = std::fs::metadata(&capture_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    if capture_file_size > MAX_IMAGE_SIZE {
+        return Err(format!(
+            "Capture file too large ({} bytes, max {}). Cannot send to AI.",
+            capture_file_size, MAX_IMAGE_SIZE
+        ));
+    }
+    image_paths.push(capture_path);
+
+    // 4. For each bug, build a summary and optionally collect a reference screenshot
+    let mut bug_summaries: Vec<BugSummary> = Vec::new();
+    // image index 1 is the unsorted screenshot; bug images start at 2
+    let mut next_image_index: usize = 2;
+
+    for bug in &bugs {
+        let mut summary = BugSummary {
+            display_id: bug.display_id.clone(),
+            title: bug.title.clone(),
+            notes: bug.notes.clone(),
+            has_reference_image: false,
+            reference_image_index: None,
+        };
+
+        // Only include reference images for up to MAX_BUGS_WITH_IMAGES bugs
+        if image_paths.len() - 1 < MAX_BUGS_WITH_IMAGES {
+            // Find first screenshot for this bug
+            if let Ok(bug_captures) = capture_repo.list_by_bug(&bug.id) {
+                for bc in &bug_captures {
+                    let bc_path = PathBuf::from(&bc.file_path);
+                    if !bc_path.exists() {
+                        continue;
+                    }
+                    let size = std::fs::metadata(&bc_path).map(|m| m.len()).unwrap_or(0);
+                    if size > MAX_IMAGE_SIZE || size == 0 {
+                        continue;
+                    }
+                    // Only include images (not videos)
+                    let ext = bc_path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp") {
+                        image_paths.push(bc_path);
+                        summary.has_reference_image = true;
+                        summary.reference_image_index = Some(next_image_index);
+                        next_image_index += 1;
+                        break; // Only first screenshot per bug
+                    }
+                }
+            }
+        }
+
+        bug_summaries.push(summary);
+    }
+
+    // 5. Build the text prompt
+    let prompt = PromptBuilder::build_capture_assignment_prompt(&bug_summaries);
+
+    // 6. Create request with images and call Claude API
+    let request = ClaudeRequest::new_with_images(prompt, image_paths, PromptTask::Custom);
+
+    let invoker = RealClaudeInvoker::new(creds);
+    let response = invoker
+        .invoke(request)
+        .map_err(|e| format!("AI suggestion failed: {}", e))?;
+
+    // 7. Parse JSON response from Claude
+    // Strip markdown code fences if present
+    let raw = response.content.trim();
+    let json_str = if raw.starts_with("```") {
+        // Remove opening fence (optionally with "json" label) and closing fence
+        let without_opening = raw
+            .strip_prefix("```json")
+            .or_else(|| raw.strip_prefix("```"))
+            .unwrap_or(raw);
+        without_opening
+            .strip_suffix("```")
+            .unwrap_or(without_opening)
+            .trim()
+    } else {
+        raw
+    };
+
+    let parsed: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
+        format!(
+            "Failed to parse AI response as JSON: {}. Raw response: {}",
+            e,
+            &raw[..raw.len().min(300)]
+        )
+    })?;
+
+    let bug_display_id = parsed
+        .get("bug_display_id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let confidence = parsed
+        .get("confidence")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0) as f32;
+    let reasoning = parsed
+        .get("reasoning")
+        .and_then(|v| v.as_str())
+        .unwrap_or("No reasoning provided")
+        .to_string();
+
+    // 8. Map display_id back to bug id
+    let suggested_bug_id = if let Some(ref display_id) = bug_display_id {
+        bugs.iter()
+            .find(|b| b.display_id == *display_id)
+            .map(|b| b.id.clone())
+    } else {
+        None
+    };
+
+    Ok(CaptureAssignmentSuggestion {
+        capture_id,
+        suggested_bug_id,
+        suggested_bug_display_id: bug_display_id,
+        confidence,
+        reasoning,
+    })
+}
+
+#[tauri::command]
 async fn save_bug_description(
     folder_path: String,
     description: String,
@@ -1488,7 +1745,8 @@ fn get_unsorted_captures(session_id: String, app: tauri::AppHandle) -> Result<Ve
 
 #[tauri::command]
 fn assign_capture_to_bug(capture_id: String, bug_id: String, app: tauri::AppHandle) -> Result<(), String> {
-    use database::{Database, CaptureOps, CaptureRepository};
+    use database::{Database, BugOps, BugRepository, CaptureOps, CaptureRepository};
+    use tauri::Emitter;
 
     let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
         std::env::current_dir().unwrap().join("data")
@@ -1496,16 +1754,76 @@ fn assign_capture_to_bug(capture_id: String, bug_id: String, app: tauri::AppHand
     let db_path = data_dir.join("qa_capture.db");
 
     let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = CaptureRepository::new(db.connection());
+    let bug_repo = BugRepository::new(db.connection());
+    let capture_repo = CaptureRepository::new(db.connection());
 
-    let mut capture = repo.get(&capture_id)
+    let mut capture = capture_repo.get(&capture_id)
         .map_err(|e: rusqlite::Error| e.to_string())?
         .ok_or_else(|| format!("Capture not found: {}", capture_id))?;
 
-    capture.bug_id = Some(bug_id);
+    // Look up the target bug to get its folder path.
+    let bug = bug_repo.get(&bug_id)
+        .map_err(|e: rusqlite::Error| e.to_string())?
+        .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
 
-    repo.update(&capture)
-        .map_err(|e: rusqlite::Error| e.to_string())
+    let bug_folder = std::path::PathBuf::from(&bug.folder_path);
+
+    // Ensure the bug folder exists.
+    std::fs::create_dir_all(&bug_folder)
+        .map_err(|e| format!("Cannot create bug folder {:?}: {}", bug_folder, e))?;
+
+    // Move the primary capture file into the bug folder with a sequential name.
+    let old_path = std::path::PathBuf::from(&capture.file_path);
+    if old_path.exists() {
+        let capture_number = next_capture_number(&bug_folder);
+        let (new_file_name, _) = make_capture_filename(&old_path, capture_number);
+        let new_path = bug_folder.join(&new_file_name);
+
+        if std::fs::rename(&old_path, &new_path).is_err() {
+            // Cross-volume fallback: copy then delete.
+            std::fs::copy(&old_path, &new_path)
+                .map_err(|e| format!("Failed to copy capture file {:?} -> {:?}: {}", old_path, new_path, e))?;
+            let _ = std::fs::remove_file(&old_path);
+        }
+
+        capture.file_path = new_path.to_string_lossy().to_string();
+        capture.file_name = new_file_name;
+    }
+
+    // Move the annotated file (if any) into the bug folder as well.
+    if let Some(ref annotated) = capture.annotated_path.clone() {
+        let old_annotated = std::path::PathBuf::from(annotated);
+        if old_annotated.exists() {
+            let capture_number = next_capture_number(&bug_folder);
+            let (new_annotated_name, _) = make_capture_filename(&old_annotated, capture_number);
+            let new_annotated = bug_folder.join(&new_annotated_name);
+
+            if std::fs::rename(&old_annotated, &new_annotated).is_err() {
+                std::fs::copy(&old_annotated, &new_annotated)
+                    .map_err(|e| format!("Failed to copy annotated file {:?} -> {:?}: {}", old_annotated, new_annotated, e))?;
+                let _ = std::fs::remove_file(&old_annotated);
+            }
+
+            capture.annotated_path = Some(new_annotated.to_string_lossy().to_string());
+        }
+    }
+
+    capture.bug_id = Some(bug_id.clone());
+
+    capture_repo.update(&capture)
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+
+    // Notify the frontend so it can refresh capture lists.
+    let _ = app.emit(
+        "capture:moved",
+        serde_json::json!({
+            "captureId": capture.id,
+            "bugId": bug_id,
+            "filePath": capture.file_path,
+        }),
+    );
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -2155,6 +2473,7 @@ pub fn run() {
             list_sessions,
             update_session_status,
             get_bugs_by_session,
+            get_bug,
             get_session_summaries,
             generate_session_summary,
             get_hotkey_config,
@@ -2171,6 +2490,7 @@ pub fn run() {
             generate_bug_description,
             parse_console_screenshot,
             refine_bug_description,
+            suggest_capture_assignment,
             save_bug_description,
             format_session_export,
             get_setting,

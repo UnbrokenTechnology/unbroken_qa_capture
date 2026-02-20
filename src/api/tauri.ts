@@ -19,7 +19,8 @@ import type {
   CreateTicketResponse,
   ConnectionStatus,
   QaProfile,
-  LinearProfileConfig
+  LinearProfileConfig,
+  CaptureAssignmentSuggestion
 } from '../types/backend'
 
 // ============================================================================
@@ -143,9 +144,8 @@ export async function createBug(bug: Partial<Bug>): Promise<Bug> {
   return await invoke<Bug>('start_bug_capture', { sessionId: bug.session_id })
 }
 
-export async function getBug(_id: string): Promise<Bug | null> {
-  // Not implemented
-  return null
+export async function getBug(id: string): Promise<Bug | null> {
+  return await invoke<Bug | null>('get_bug', { bugId: id })
 }
 
 export async function updateBug(id: string, update: BugUpdate): Promise<void> {
@@ -369,6 +369,10 @@ export async function saveBugDescription(
 /** Trigger the OS screenshot tool (Snipping Tool on Windows). */
 export async function triggerScreenshot(): Promise<void> {
   await invoke('trigger_screenshot')
+}
+
+export async function suggestCaptureAssignment(captureId: string, sessionId: string): Promise<CaptureAssignmentSuggestion> {
+  return await invoke<CaptureAssignmentSuggestion>('suggest_capture_assignment', { captureId, sessionId })
 }
 
 // ============================================================================

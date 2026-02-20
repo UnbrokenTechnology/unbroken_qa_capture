@@ -32,6 +32,10 @@ vi.mock('@/api/tauri', () => ({
   deleteBug: vi.fn(),
   listBugs: vi.fn().mockResolvedValue([]),
   getBugsBySession: vi.fn().mockResolvedValue([]),
+  getBugCaptures: vi.fn().mockResolvedValue([]),
+  getUnsortedCaptures: vi.fn().mockResolvedValue([]),
+  assignCaptureToBug: vi.fn().mockResolvedValue(undefined),
+  getClaudeStatus: vi.fn().mockResolvedValue({ status: 'notInstalled' }),
   openAnnotationWindow: vi.fn(),
 }))
 
@@ -43,6 +47,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 // Mock Tauri core invoke
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
 }))
 
 // Mock Tauri window

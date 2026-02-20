@@ -48,7 +48,8 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 
 // Mock Tauri core
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn().mockResolvedValue('1.0.0')
+  invoke: vi.fn().mockResolvedValue('1.0.0'),
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
 }))
 
 // Mock Tauri shell

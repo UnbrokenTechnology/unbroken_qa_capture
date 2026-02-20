@@ -26,6 +26,7 @@ vi.mock('quasar', async () => {
 // Mock Tauri core (for direct invoke calls)
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
 }))
 
 // Mock Tauri dialog API

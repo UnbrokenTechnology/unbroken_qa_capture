@@ -20,9 +20,9 @@ mod prompts;
 #[cfg(test)]
 mod tests;
 
-pub use types::{ClaudeError, ClaudeStatus, BugContext, PromptTask, ClaudeResponse, ClaudeRequest, ClaudeCredentials};
+pub use types::{ClaudeError, ClaudeStatus, BugContext, PromptTask, ClaudeResponse, ClaudeRequest, ClaudeCredentials, CaptureAssignmentSuggestion};
 pub use subprocess::{ClaudeInvoker, RealClaudeInvoker};
-pub use prompts::PromptBuilder;
+pub use prompts::{PromptBuilder, BugSummary};
 
 /// Global Claude status
 static CLAUDE_STATUS: Mutex<Option<ClaudeStatus>> = Mutex::new(None);
@@ -36,21 +36,34 @@ pub fn load_credentials() -> Result<ClaudeCredentials, ClaudeError> {
         if credentials_path.exists() {
             if let Ok(contents) = std::fs::read_to_string(&credentials_path) {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
-                    // The credentials file stores { "claudeAiOauth": { "<url>": { "accessToken": "...", ... } } }
-                    // or it may have a top-level "accessToken" field.
-                    // Try nested structure first (Claude Code format)
-                    if let Some(oauth_obj) = json.get("claudeAiOauth").and_then(|v| v.as_object()) {
-                        for (_key, entry) in oauth_obj {
-                            if let Some(token) = entry.get("accessToken").and_then(|v| v.as_str()) {
-                                if !token.is_empty() {
-                                    return Ok(ClaudeCredentials {
-                                        access_token: token.to_string(),
-                                    });
+                    // The credentials file has several possible formats:
+                    // 1. Flat OAuth: { "claudeAiOauth": { "accessToken": "...", ... } }
+                    // 2. URL-keyed OAuth: { "claudeAiOauth": { "<url>": { "accessToken": "...", ... } } }
+                    // 3. Top-level: { "accessToken": "..." }
+
+                    if let Some(oauth_val) = json.get("claudeAiOauth") {
+                        // Format 1: accessToken directly inside claudeAiOauth
+                        if let Some(token) = oauth_val.get("accessToken").and_then(|v| v.as_str()) {
+                            if !token.is_empty() {
+                                return Ok(ClaudeCredentials {
+                                    access_token: token.to_string(),
+                                });
+                            }
+                        }
+                        // Format 2: URL-keyed sub-objects inside claudeAiOauth
+                        if let Some(oauth_obj) = oauth_val.as_object() {
+                            for (_key, entry) in oauth_obj {
+                                if let Some(token) = entry.get("accessToken").and_then(|v| v.as_str()) {
+                                    if !token.is_empty() {
+                                        return Ok(ClaudeCredentials {
+                                            access_token: token.to_string(),
+                                        });
+                                    }
                                 }
                             }
                         }
                     }
-                    // Try flat structure
+                    // Format 3: top-level accessToken
                     if let Some(token) = json.get("accessToken").and_then(|v| v.as_str()) {
                         if !token.is_empty() {
                             return Ok(ClaudeCredentials {

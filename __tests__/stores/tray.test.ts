@@ -4,7 +4,8 @@ import { useTrayStore } from '@/stores/tray'
 
 // Mock Tauri invoke
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn().mockResolvedValue(undefined)
+  invoke: vi.fn().mockResolvedValue(undefined),
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
 }))
 
 describe('Tray Store', () => {

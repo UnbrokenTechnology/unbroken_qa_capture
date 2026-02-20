@@ -19,7 +19,7 @@ describe('VideoPlayer', () => {
     const wrapper = mountComponent('/path/to/video.mp4')
     const video = wrapper.find('video')
     expect(video.exists()).toBe(true)
-    expect(video.attributes('src')).toBe('file:///path/to/video.mp4')
+    expect(video.attributes('src')).toBe('/path/to/video.mp4')
   })
 
   it('has controls and preload="metadata" on the video element', () => {

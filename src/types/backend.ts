@@ -187,3 +187,12 @@ export interface QaProfile {
   created_at: string
   updated_at: string
 }
+
+// AI capture assignment suggestion
+export interface CaptureAssignmentSuggestion {
+  captureId: string
+  suggestedBugId: string | null
+  suggestedBugDisplayId: string | null
+  confidence: number
+  reasoning: string
+}

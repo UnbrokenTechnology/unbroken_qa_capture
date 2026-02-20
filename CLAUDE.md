@@ -94,15 +94,40 @@ Key differences from swarm mode:
 
 When ending a manual mode session, write a summary here so the next session can pick up cleanly. Delete the previous session's notes when starting fresh.
 
-**Session 2026-02-19 (session 4):**
+**Session 2026-02-19 (session 6):**
+- **Capture flow rework (T203-T210):** Major rework of the screenshot capture and bug association flow.
+  - **T203 — assign_capture_to_bug file move:** `assign_capture_to_bug` now moves the physical file (not just DB update), updates `file_path`/`file_name`/`annotated_path`, emits `capture:moved` event.
+  - **T204 — Thumbnail fix + toAssetUrl utility:** Created `src/utils/paths.ts` with shared `toAssetUrl()` using Tauri's `convertFileSrc()`. Deduplicated from BugDetail.vue, SessionReview.vue, ActiveSessionView.vue.
+  - **T205 — get_bug command:** Implemented real `get_bug` Tauri command replacing the null stub in `tauri.ts`.
+  - **T206 — Capture Pinia store:** New `src/stores/capture.ts` centralizing `unsortedCaptures`, `bugCaptureCounts`, assignment actions, AI suggestion state.
+  - **T207 — Unsorted screenshot tray:** Always-visible horizontal thumbnail strip in ActiveSessionView. One-click assign dropdown, "New Bug from This" option. Replaced blocking modal dialog with non-blocking toast notifications.
+  - **T208 — Write-flush heuristic:** Replaced 500ms sleep in `capture_watcher.rs` with `wait_for_write_complete()` polling (100ms intervals, 3 stable reads, 5s timeout).
+  - **T209 — AI suggestion backend:** New `suggest_capture_assignment` Tauri command. Sends unsorted screenshot + bug reference images to Claude vision API, returns `{ suggested_bug_id, confidence, reasoning }`. Multimodal prompt, structured JSON parsing.
+  - **T210 — AI suggestion frontend:** AI suggestion badges on unsorted thumbnails (blue "AI: BUG-001?" with accept, green "New Bug?" badge, spinner while pending). Auto-triggers when unsorted captures arrive and Claude is ready.
+- **Claude credential parser fix:** Fixed `load_credentials()` in `claude_cli/mod.rs` — now handles flat `claudeAiOauth.accessToken` format (was only handling nested URL-keyed format).
+- **Asset protocol fix:** Enabled `assetProtocol` in `tauri.conf.json` with `scope: ["**/*"]`. Added `http://asset.localhost` and `media-src` to CSP. Switched from manual URL construction to Tauri's `convertFileSrc()`.
+- **Test mock updates:** Added `convertFileSrc` mock to all 13 test files that mock `@tauri-apps/api/core`. Added missing `getUnsortedCaptures`/`assignCaptureToBug`/`getClaudeStatus` mocks to ActiveSessionView and SessionReview tests.
+- **T201/T202 closed:** Superseded by T209/T210 (AI suggestions) and T206/T207 (capture store + unsorted tray) respectively.
+- **T211 created:** Remaining screenshot display issues — one screenshot confirmed visible after `convertFileSrc` + asset protocol fix, but others still broken/blank. Needs devtools console investigation for specific CSP violations or path format issues. Priority for next session.
+- Checks: vue-tsc clean, cargo clippy clean, cargo test 206/206 (--lib, skip platform), vitest 582/582.
+- Remaining open tickets: T152 (human verify), T162 (human verify/proposal), T211 (screenshot display debugging — next session priority)
+
+**Session 2026-02-19 (session 5, completed):**
+- **T198/T199 — Capture file watcher:** Created `capture_watcher.rs` — watches `_captures/` for new media files (png/jpg/mp4/etc.), moves them to the active bug folder (or `_unsorted/`), creates `Capture` DB records via `CaptureRepository::create`, and emits `screenshot:captured` events to the frontend. Watcher starts/stops with session lifecycle (`start_session`, `resume_session`, `end_session`). Also processes unprocessed files on start (crash recovery).
+- **VideoPlayer test fix:** Updated stale test expectation in `VideoPlayer.test.ts` (was expecting `file://` prefix removed in session 4).
+- **T196 status:** Marked as done (was fixed in session 4 but ticket status wasn't updated).
+- **T201 created:** AI-powered screenshot-to-bug association — Claude suggests which bug unsorted screenshots belong to.
+- **T202 created:** Session review UI for unsorted screenshots — assign to bugs, create new bugs, discard, trigger AI sort.
+- Checks: vue-tsc clean, cargo clippy clean, cargo test 214/214, vitest 582/582.
+- Remaining open tickets: T152 (human verify), T162 (human verify/proposal), T201 (AI screenshot association, blocked by T202), T202 (unsorted screenshot review UI)
+
+**Session 2026-02-19 (session 4, completed):**
 - **T196 — Flaky platform tests:** Fixed 6 flaky `platform::windows` cargo tests. Root causes: SQLite file locks (tests called `remove_dir_all` while DB connection alive), shared hardcoded temp dir names (now UUID-suffixed), and incorrect test logic in `test_drop_trait_restores_registry`.
 - **Vitest config:** Added `test.exclude` for `.swarm/**` — swarm MCP tool tests (needing `tree-sitter`) were being picked up by main project's vitest. Test count now 582 (was 599 with swarm tests).
 - **Screenshot display fix:** BugDetail.vue, SessionReview.vue, and VideoPlayer.vue were passing raw Windows file paths or `file://` URLs as image/video `src`. All now use `asset://localhost/` URLs which Tauri's asset protocol serves correctly.
 - **Stuck bug capture after restart:** `active_bug` (Rust) and `activeBug` (Pinia) were ephemeral — never restored from DB on restart. Fixed: `resume_session` now restores `active_bug` from DB, auto-completes stale extra capturing bugs; frontend recovers `activeBug` on mount and crash recovery.
 - **T198 created:** Screenshots not associated with bugs during capture — `CaptureRepository::create` never called in production, only in tests. Captures land in `_captures` but no DB record links them to bugs.
 - **T199 created:** Screenshots still not displaying in BugDetail — likely downstream of T198 (no capture records = nothing to show).
-- Checks: vue-tsc clean, cargo clippy clean, cargo test 214/214, vitest 582/582.
-- Remaining open tickets: T152 (human verify), T162 (human verify/proposal), T198 (capture DB records), T199 (screenshot display)
 
 **Session 2026-02-19 (session 3, completed):**
 - **T197 — OAuth-only auth:** Removed Anthropic API key input from Settings UI and backend. AI features now use Claude Code OAuth exclusively (uses Claude subscription, no API token costs). Removed: `set_anthropic_api_key`/`clear_anthropic_api_key` Tauri commands, `TokenSource` enum, API key DB storage, `read_api_key_setting()` helper, API key UI in Settings.vue. Auth is now solely via `~/.claude/.credentials.json`.

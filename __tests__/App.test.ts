@@ -30,6 +30,7 @@ vi.mock('@/api/tauri', () => ({
 // Mock Tauri core invoke
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
 }))
 
 // Mock Tauri event API

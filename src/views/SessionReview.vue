@@ -157,7 +157,7 @@
                         <!-- Screenshot thumbnail -->
                         <q-img
                           v-else
-                          :src="'asset://localhost/' + capture.file_path.replace(/\\/g, '/')"
+                          :src="toAssetUrl(capture.file_path)"
                           class="thumbnail"
                           fit="cover"
                           @click.stop="viewScreenshot(bug.id, getScreenshotIndex(bug.id, capture.id))"
@@ -525,7 +525,7 @@
                     style="position: relative;"
                   >
                     <q-img
-                      :src="'asset://localhost/' + capture.file_path.replace(/\\/g, '/')"
+                      :src="toAssetUrl(capture.file_path)"
                       class="screenshot"
                       fit="contain"
                       @click="viewScreenshot(selectedBug.id, index)"
@@ -691,7 +691,7 @@
                     class="capture-thumbnail"
                   >
                     <q-img
-                      :src="'asset://localhost/' + capture.file_path.replace(/\\/g, '/')"
+                      :src="toAssetUrl(capture.file_path)"
                       fit="cover"
                       style="height: 120px; cursor: pointer;"
                       @click="viewUnsortedScreenshot(capture.file_path)"
@@ -939,7 +939,7 @@
         <q-card-section class="flex flex-center full-height">
           <q-img
             v-if="selectedBugScreenshots[currentScreenshotIndex]"
-            :src="'asset://localhost/' + selectedBugScreenshots[currentScreenshotIndex]!.file_path.replace(/\\/g, '/')"
+            :src="toAssetUrl(selectedBugScreenshots[currentScreenshotIndex]!.file_path)"
             fit="contain"
             class="full-width"
           >
@@ -1243,6 +1243,7 @@ import { createSwarmTicket } from '@/api/tauri'
 import { Notify } from 'quasar'
 import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import VideoPlayer from '@/components/VideoPlayer.vue'
+import { toAssetUrl } from '@/utils/paths'
 
 const router = useRouter()
 const route = useRoute()
@@ -1433,8 +1434,7 @@ async function loadUnsortedCaptures() {
 
 function viewUnsortedScreenshot(filePath: string) {
   // Reuse the existing screenshot dialog by temporarily selecting the file
-  const assetPath = 'asset://localhost/' + filePath.replace(/\\/g, '/')
-  window.open(assetPath, '_blank')
+  window.open(toAssetUrl(filePath), '_blank')
 }
 
 async function assignUnsortedCapture(captureId: string, bugId: string) {

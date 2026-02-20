@@ -23,11 +23,20 @@ vi.mock('quasar', async () => {
   }
 })
 
+// Mock Tauri core
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn().mockResolvedValue(undefined),
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
+}))
+
 // Mock Tauri API
 vi.mock('@/api/tauri', () => ({
   getBugCaptures: vi.fn(),
   updateBug: vi.fn(),
   getBugsBySession: vi.fn(),
+  getUnsortedCaptures: vi.fn().mockResolvedValue([]),
+  assignCaptureToBug: vi.fn().mockResolvedValue(undefined),
+  suggestCaptureAssignment: vi.fn().mockResolvedValue(undefined),
   ticketingGetCredentials: vi.fn(),
   ticketingSaveCredentials: vi.fn(),
   ticketingAuthenticate: vi.fn(),

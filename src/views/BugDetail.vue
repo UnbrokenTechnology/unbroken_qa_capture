@@ -714,6 +714,7 @@ import ScreenshotAnnotator from '@/components/ScreenshotAnnotator.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import * as tauri from '@/api/tauri'
 import type { Capture, Environment } from '@/types/backend'
+import { toAssetUrl } from '@/utils/paths'
 
 interface ConsoleParsed {
   errors: string[]
@@ -722,10 +723,6 @@ interface ConsoleParsed {
 }
 
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi']
-
-function toAssetUrl(path: string): string {
-  return 'asset://localhost/' + path.replace(/\\/g, '/')
-}
 
 function isVideoPath(path: string): boolean {
   const lower = path.toLowerCase()

@@ -4,8 +4,20 @@
 //! - Bug description generation
 //! - Console screenshot parsing
 //! - Description refinement
+//! - Capture-to-bug assignment suggestion
 
 use super::types::{BugContext, PromptTask};
+
+/// Summary of a bug used in capture assignment prompts
+pub struct BugSummary {
+    pub display_id: String,
+    pub title: Option<String>,
+    pub notes: Option<String>,
+    /// True if this bug's first screenshot was included as an image in the request
+    pub has_reference_image: bool,
+    /// 1-based index of the reference image in the content array (if included)
+    pub reference_image_index: Option<usize>,
+}
 
 pub struct PromptBuilder;
 
@@ -113,6 +125,55 @@ impl PromptBuilder {
         prompt.push_str("\n\n");
 
         prompt.push_str("Please provide the updated bug report, incorporating the requested changes while preserving the overall structure and any accurate details.\n");
+
+        prompt
+    }
+
+    /// Build a prompt for AI capture-to-bug assignment.
+    ///
+    /// The unsorted screenshot is always image #1 in the content array.
+    /// Bug reference images (if any) follow, and `BugSummary::reference_image_index`
+    /// records their 1-based position so the prompt can refer to them.
+    pub fn build_capture_assignment_prompt(bugs: &[BugSummary]) -> String {
+        let mut prompt = String::new();
+
+        prompt.push_str("You are a QA assistant. The FIRST image attached to this message is an unsorted screenshot captured during a testing session. ");
+        prompt.push_str("Your task is to determine which existing bug this screenshot most likely belongs to, or whether it represents a new, previously unreported issue.\n\n");
+
+        if bugs.is_empty() {
+            prompt.push_str("There are NO existing bugs in this session yet. This screenshot likely represents a new issue.\n\n");
+        } else {
+            prompt.push_str("Here are the existing bugs in this session:\n\n");
+            for bug in bugs {
+                prompt.push_str(&format!("### {}\n", bug.display_id));
+                if let Some(title) = &bug.title {
+                    prompt.push_str(&format!("Title: {}\n", title));
+                }
+                if let Some(notes) = &bug.notes {
+                    if !notes.trim().is_empty() {
+                        prompt.push_str(&format!("Notes: {}\n", notes));
+                    }
+                }
+                if bug.has_reference_image {
+                    if let Some(idx) = bug.reference_image_index {
+                        prompt.push_str(&format!(
+                            "(A reference screenshot for this bug is attached as image #{})\n",
+                            idx
+                        ));
+                    }
+                }
+                prompt.push('\n');
+            }
+        }
+
+        prompt.push_str("Based on visual similarity, context, and any textual clues, respond with ONLY a JSON object (no markdown fences, no explanation outside the JSON):\n\n");
+        prompt.push_str("{\n");
+        prompt.push_str("  \"bug_display_id\": \"BUG-001\" or null,\n");
+        prompt.push_str("  \"confidence\": 0.0 to 1.0,\n");
+        prompt.push_str("  \"reasoning\": \"Brief explanation of why this screenshot matches (or doesn't match) an existing bug.\"\n");
+        prompt.push_str("}\n\n");
+        prompt.push_str("Set bug_display_id to null if the screenshot appears to be a new issue not covered by any existing bug.\n");
+        prompt.push_str("Set confidence to 0.0 if you cannot determine a match at all.\n");
 
         prompt
     }
@@ -277,5 +338,45 @@ mod tests {
         let prompt = PromptBuilder::build_prompt(&PromptTask::Custom, None, Some(custom_text));
 
         assert_eq!(prompt, custom_text);
+    }
+
+    #[test]
+    fn test_build_capture_assignment_prompt_no_bugs() {
+        let prompt = PromptBuilder::build_capture_assignment_prompt(&[]);
+
+        assert!(prompt.contains("unsorted screenshot"));
+        assert!(prompt.contains("NO existing bugs"));
+        assert!(prompt.contains("bug_display_id"));
+        assert!(prompt.contains("confidence"));
+        assert!(prompt.contains("reasoning"));
+    }
+
+    #[test]
+    fn test_build_capture_assignment_prompt_with_bugs() {
+        let bugs = vec![
+            BugSummary {
+                display_id: "BUG-001".to_string(),
+                title: Some("Login button broken".to_string()),
+                notes: Some("Can't click login".to_string()),
+                has_reference_image: true,
+                reference_image_index: Some(2),
+            },
+            BugSummary {
+                display_id: "BUG-002".to_string(),
+                title: None,
+                notes: None,
+                has_reference_image: false,
+                reference_image_index: None,
+            },
+        ];
+
+        let prompt = PromptBuilder::build_capture_assignment_prompt(&bugs);
+
+        assert!(prompt.contains("BUG-001"));
+        assert!(prompt.contains("Login button broken"));
+        assert!(prompt.contains("Can't click login"));
+        assert!(prompt.contains("image #2"));
+        assert!(prompt.contains("BUG-002"));
+        assert!(!prompt.contains("NO existing bugs"));
     }
 }

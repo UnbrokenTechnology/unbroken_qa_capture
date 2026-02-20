@@ -112,6 +112,20 @@ pub enum PromptTask {
     Custom,
 }
 
+/// AI suggestion for which bug a capture belongs to
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureAssignmentSuggestion {
+    pub capture_id: String,
+    /// None means "this looks like a new bug"
+    pub suggested_bug_id: Option<String>,
+    /// For UI display (e.g. "BUG-001")
+    pub suggested_bug_display_id: Option<String>,
+    /// 0.0–1.0 confidence score
+    pub confidence: f32,
+    pub reasoning: String,
+}
+
 /// Response from Claude CLI invocation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
