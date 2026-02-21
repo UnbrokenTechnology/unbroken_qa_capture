@@ -12,6 +12,17 @@
       class="bg-primary text-white"
     >
       <q-toolbar>
+        <q-btn
+          flat
+          dense
+          round
+          icon="home"
+          :disable="$route.name === 'home'"
+          @click="navigateHome"
+        >
+          <q-tooltip>Sessions List</q-tooltip>
+        </q-btn>
+
         <q-toolbar-title>
           Unbroken QA Capture
         </q-toolbar-title>
@@ -122,6 +133,10 @@ let unlistenHandlers: UnlistenFn[] = []
 
 // Routes that are valid sub-views when a session is active — do not redirect away from these
 const activeSessionSubRoutes = new Set(['active-session', 'bug-detail', 'annotate'])
+
+function navigateHome() {
+  router.push({ name: 'home' })
+}
 
 function toggleStatusWidget() {
   showStatusWidget.value = !showStatusWidget.value

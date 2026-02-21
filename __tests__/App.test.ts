@@ -308,6 +308,61 @@ describe('App.vue', () => {
     })
   })
 
+  describe('Home Navigation Button', () => {
+    it('should render a home button in the toolbar', async () => {
+      vi.mocked(tauri.hasCompletedSetup).mockResolvedValue(true)
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      // Find the home button by its icon
+      const homeBtn = wrapper.find('.q-toolbar .q-btn[aria-label="Sessions List"]')
+        || wrapper.findAll('.q-toolbar .q-btn').find(btn => btn.html().includes('home'))
+      expect(homeBtn).toBeTruthy()
+    })
+
+    it('should navigate to home when home button is clicked from settings', async () => {
+      vi.mocked(tauri.hasCompletedSetup).mockResolvedValue(true)
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      // Navigate to settings first
+      await router.push({ name: 'settings' })
+      await flushPromises()
+
+      expect(router.currentRoute.value.name).toBe('settings')
+
+      // Find the home button (first button in toolbar with 'home' icon)
+      const toolbarBtns = wrapper.findAll('.q-toolbar .q-btn')
+      const homeBtn = toolbarBtns.find(btn => btn.html().includes('home'))
+      expect(homeBtn).toBeTruthy()
+
+      await homeBtn!.trigger('click')
+      await flushPromises()
+
+      expect(router.currentRoute.value.name).toBe('home')
+    })
+
+    it('should be disabled when already on home route', async () => {
+      vi.mocked(tauri.hasCompletedSetup).mockResolvedValue(true)
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      // Already on home route
+      expect(router.currentRoute.value.name).toBe('home')
+
+      // Find the home button
+      const toolbarBtns = wrapper.findAll('.q-toolbar .q-btn')
+      const homeBtn = toolbarBtns.find(btn => btn.html().includes('home'))
+      expect(homeBtn).toBeTruthy()
+
+      // Should be disabled
+      expect(homeBtn!.attributes('disabled')).toBeDefined()
+    })
+  })
+
   describe('Back Navigation', () => {
     const makeSession = (id: string): import('@/types/backend').Session => ({
       id,
