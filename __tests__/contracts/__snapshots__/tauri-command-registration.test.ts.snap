@@ -3,6 +3,7 @@
 exports[`Tauri command registration contract > parsed backend handlers snapshot (informational) 1`] = `
 [
   "assign_capture_to_bug",
+  "close_session_status_window",
   "copy_bug_to_clipboard",
   "create_swarm_ticket",
   "delete_setting",
@@ -43,6 +44,7 @@ exports[`Tauri command registration contract > parsed backend handlers snapshot 
   "open_bug_folder",
   "open_session_folder",
   "open_session_notes_window",
+  "open_session_status_window",
   "open_template_in_editor",
   "parse_console_screenshot",
   "profile_create",
@@ -91,6 +93,7 @@ exports[`Tauri command registration contract > parsed backend handlers snapshot 
 exports[`Tauri command registration contract > parsed frontend commands snapshot (informational) 1`] = `
 [
   "assign_capture_to_bug",
+  "close_session_status_window",
   "copy_bug_to_clipboard",
   "create_swarm_ticket",
   "delete_setting",
@@ -120,6 +123,7 @@ exports[`Tauri command registration contract > parsed frontend commands snapshot
   "open_bug_folder",
   "open_session_folder",
   "open_session_notes_window",
+  "open_session_status_window",
   "parse_console_screenshot",
   "profile_create",
   "profile_delete",

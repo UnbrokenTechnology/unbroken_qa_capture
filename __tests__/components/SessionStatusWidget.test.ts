@@ -30,6 +30,15 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }))
 
+// Mock Tauri window API
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: vi.fn(() => ({
+    label: 'session-status',
+    close: vi.fn().mockResolvedValue(undefined),
+    onCloseRequested: vi.fn().mockResolvedValue(() => {}),
+  })),
+}))
+
 const mockActiveSession: Session = {
   id: 'session-1',
   started_at: new Date().toISOString(),
@@ -88,27 +97,86 @@ describe('SessionStatusWidget', () => {
     vi.useRealTimers()
   })
 
-  const mountComponent = (props = {}) => {
+  const mountComponent = () => {
     return mount(SessionStatusWidget, {
-      props: {
-        visible: true,
-        ...props,
-      },
       global: {
         plugins: [pinia, Quasar],
       },
     })
   }
 
-  describe('Visibility', () => {
-    it('should render when visible prop is true', () => {
-      const wrapper = mountComponent({ visible: true })
-      expect(wrapper.find('.session-status-widget').exists()).toBe(true)
+  describe('Rendering', () => {
+    it('should always render the root element', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      expect(wrapper.find('.session-status-bar').exists()).toBe(true)
     })
 
-    it('should not render when visible prop is false', () => {
-      const wrapper = mountComponent({ visible: false })
-      expect(wrapper.find('.session-status-widget').exists()).toBe(false)
+    it('should add is-capturing class when capturing a bug', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const sessionStore = useSessionStore()
+      const bugStore = useBugStore()
+
+      sessionStore.activeSession = mockActiveSession
+      bugStore.activeBug = mockBug
+
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.session-status-bar').classes()).toContain('is-capturing')
+    })
+
+    it('should not have is-capturing class when not capturing', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const sessionStore = useSessionStore()
+      const bugStore = useBugStore()
+
+      sessionStore.activeSession = mockActiveSession
+      bugStore.activeBug = null
+
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.session-status-bar').classes()).not.toContain('is-capturing')
+    })
+
+    it('should render drag-handle inside root', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      expect(wrapper.find('.drag-handle').exists()).toBe(true)
+    })
+
+    it('should show Console chip when tagNextScreenshotAsConsole is true', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const bugStore = useBugStore()
+      bugStore.tagNextScreenshotAsConsole = true
+
+      await wrapper.vm.$nextTick()
+
+      const chips = wrapper.findAllComponents({ name: 'QChip' })
+      const consoleChip = chips.find(chip => chip.text() === 'Console')
+      expect(consoleChip).toBeDefined()
+      expect(consoleChip?.props('color')).toBe('orange')
+    })
+
+    it('should not show Console chip when tagNextScreenshotAsConsole is false', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const bugStore = useBugStore()
+      bugStore.tagNextScreenshotAsConsole = false
+
+      await wrapper.vm.$nextTick()
+
+      const chips = wrapper.findAllComponents({ name: 'QChip' })
+      const consoleChip = chips.find(chip => chip.text() === 'Console')
+      expect(consoleChip).toBeUndefined()
     })
   })
 
@@ -181,7 +249,7 @@ describe('SessionStatusWidget', () => {
   })
 
   describe('Bug Count Display', () => {
-    it('should display bug count with grey badge when count is 0', async () => {
+    it('should display "0 bugs" with grey-6 badge color when count is 0', async () => {
       const wrapper = mountComponent()
       await flushPromises()
 
@@ -192,25 +260,44 @@ describe('SessionStatusWidget', () => {
 
       const badge = wrapper.findComponent({ name: 'QBadge' })
       expect(badge.exists()).toBe(true)
-      expect(badge.props('label')).toBe(0)
-      expect(badge.props('color')).toBe('grey')
+      expect(badge.props('label')).toBe('0 bugs')
+      expect(badge.props('color')).toBe('grey-6')
     })
 
-    it('should display bug count with positive badge when count > 0', async () => {
+    it('should display "1 bug" with positive badge color when count is 1', async () => {
       const wrapper = mountComponent()
       await flushPromises()
 
       const sessionStore = useSessionStore()
       const bugStore = useBugStore()
 
-      // Set active session and add bugs for that session
       sessionStore.activeSession = mockActiveSession
       bugStore.backendBugs = [mockBug]
 
       await wrapper.vm.$nextTick()
 
       const badge = wrapper.findComponent({ name: 'QBadge' })
-      expect(badge.props('label')).toBe(1)
+      expect(badge.props('label')).toBe('1 bug')
+      expect(badge.props('color')).toBe('positive')
+    })
+
+    it('should display plural "bugs" label when count is not 1', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const sessionStore = useSessionStore()
+      const bugStore = useBugStore()
+
+      sessionStore.activeSession = mockActiveSession
+      bugStore.backendBugs = [
+        { ...mockBug, id: 'bug-1' },
+        { ...mockBug, id: 'bug-2' },
+      ]
+
+      await wrapper.vm.$nextTick()
+
+      const badge = wrapper.findComponent({ name: 'QBadge' })
+      expect(badge.props('label')).toBe('2 bugs')
       expect(badge.props('color')).toBe('positive')
     })
 
@@ -233,7 +320,24 @@ describe('SessionStatusWidget', () => {
       await wrapper.vm.$nextTick()
 
       const badge = wrapper.findComponent({ name: 'QBadge' })
-      expect(badge.props('label')).toBe(2)
+      expect(badge.props('label')).toBe('2 bugs')
+    })
+
+    it('should use bugStore.bugCount when no active session', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const sessionStore = useSessionStore()
+      const bugStore = useBugStore()
+
+      sessionStore.activeSession = null
+      bugStore.backendBugs = [mockBug]
+
+      await wrapper.vm.$nextTick()
+
+      const badge = wrapper.findComponent({ name: 'QBadge' })
+      // bugCount computed from store is backendBugs.length when no active session
+      expect(badge.props('label')).toBe('1 bug')
     })
   })
 
@@ -269,7 +373,7 @@ describe('SessionStatusWidget', () => {
       expect(chip.props('color')).toBe('primary')
     })
 
-    it('should display "Capturing Bug-N" when actively capturing a bug', async () => {
+    it('should display "Bug-N" (without "Capturing" prefix) when actively capturing a bug', async () => {
       const wrapper = mountComponent()
       await flushPromises()
 
@@ -282,7 +386,7 @@ describe('SessionStatusWidget', () => {
       await wrapper.vm.$nextTick()
 
       const chip = wrapper.findComponent({ name: 'QChip' })
-      expect(chip.text()).toBe('Capturing Bug-1')
+      expect(chip.text()).toBe('Bug-1')
       expect(chip.props('color')).toBe('negative')
     })
 
@@ -312,48 +416,27 @@ describe('SessionStatusWidget', () => {
       chip = wrapper.findComponent({ name: 'QChip' })
       expect(chip.props('color')).toBe('negative')
     })
-  })
 
-  describe('Window Positioning', () => {
-    it('should use default position when no initial position provided', async () => {
+    it('should reflect state color on state-dot element', async () => {
       const wrapper = mountComponent()
       await flushPromises()
 
-      const card = wrapper.find('.session-status-widget')
-      expect(card.attributes('style')).toContain('top: 20px')
-      expect(card.attributes('style')).toContain('left: 20px')
-    })
+      const sessionStore = useSessionStore()
+      sessionStore.activeSession = null
+      await wrapper.vm.$nextTick()
 
-    it('should use custom initial position when provided', async () => {
-      const wrapper = mountComponent({ initialX: 100, initialY: 200 })
-      await flushPromises()
+      const dot = wrapper.find('.state-dot')
+      expect(dot.classes()).toContain('bg-grey')
 
-      const card = wrapper.find('.session-status-widget')
-      expect(card.attributes('style')).toContain('top: 200px')
-      expect(card.attributes('style')).toContain('left: 100px')
-    })
+      sessionStore.activeSession = mockActiveSession
+      await wrapper.vm.$nextTick()
 
-    it('should be positioned fixed with high z-index', async () => {
-      const wrapper = mountComponent()
-      await flushPromises()
-
-      const card = wrapper.find('.session-status-widget')
-      expect(card.attributes('style')).toContain('position: fixed')
-      expect(card.attributes('style')).toContain('z-index: 9999')
-    })
-
-    it('should have cursor:move style for draggability', async () => {
-      const wrapper = mountComponent()
-      await flushPromises()
-
-      const card = wrapper.find('.session-status-widget')
-      expect(card.attributes('style')).toContain('cursor: move')
+      expect(dot.classes()).toContain('bg-primary')
     })
   })
-
 
   describe('Close Button', () => {
-    it('should emit close event when close button clicked', async () => {
+    it('should render the close button', async () => {
       const wrapper = mountComponent()
       await flushPromises()
 
@@ -361,11 +444,41 @@ describe('SessionStatusWidget', () => {
         btn.props('icon') === 'close'
       )
       expect(closeButton).toBeDefined()
+    })
+
+    it('should call getCurrentWindow().close() when close button is clicked', async () => {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      const mockClose = vi.fn().mockResolvedValue(undefined)
+      vi.mocked(getCurrentWindow).mockReturnValue({
+        label: 'session-status',
+        close: mockClose,
+        onCloseRequested: vi.fn().mockResolvedValue(() => {}),
+      } as unknown as ReturnType<typeof getCurrentWindow>)
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const closeButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('icon') === 'close'
+      )
+
+      await closeButton!.trigger('click')
+      await flushPromises()
+
+      expect(mockClose).toHaveBeenCalled()
+    })
+
+    it('should not emit a close event (uses Tauri window API instead)', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const closeButton = wrapper.findAllComponents({ name: 'QBtn' }).find(btn =>
+        btn.props('icon') === 'close'
+      )
 
       await closeButton!.trigger('click')
 
-      expect(wrapper.emitted('close')).toBeTruthy()
-      expect(wrapper.emitted('close')).toHaveLength(1)
+      expect(wrapper.emitted('close')).toBeFalsy()
     })
   })
 
@@ -377,7 +490,7 @@ describe('SessionStatusWidget', () => {
       const sessionStore = useSessionStore()
       const bugStore = useBugStore()
 
-      // Verify that setupEventListeners was called
+      // Verify that setupEventListeners methods exist and the component calls them
       expect(sessionStore.setupEventListeners).toBeDefined()
       expect(bugStore.setupEventListeners).toBeDefined()
     })
@@ -406,6 +519,18 @@ describe('SessionStatusWidget', () => {
 
       expect(sessionStore.loadActiveSession).toBeDefined()
     })
+
+    it('should register Tauri event listeners for session events on mount', async () => {
+      const { listen } = await import('@tauri-apps/api/event')
+
+      mountComponent()
+      await flushPromises()
+
+      expect(listen).toHaveBeenCalledWith('session-created', expect.any(Function))
+      expect(listen).toHaveBeenCalledWith('session-updated', expect.any(Function))
+      expect(listen).toHaveBeenCalledWith('session-deleted', expect.any(Function))
+      expect(listen).toHaveBeenCalledWith('session-status-changed', expect.any(Function))
+    })
   })
 
   describe('Timer Lifecycle', () => {
@@ -431,7 +556,7 @@ describe('SessionStatusWidget', () => {
       expect(wrapper.text()).toMatch(/\d{2}:\d{2}:\d{2}/)
     })
 
-    it('should stop timer when session ends', async () => {
+    it('should stop timer and show 00:00:00 when session ends', async () => {
       const wrapper = mountComponent()
       await flushPromises()
 
@@ -442,7 +567,7 @@ describe('SessionStatusWidget', () => {
       await wrapper.vm.$nextTick()
       await flushPromises()
 
-      // End session
+      // End session (ended sessions are not considered active)
       sessionStore.activeSession = mockEndedSession
       await wrapper.vm.$nextTick()
 
@@ -466,10 +591,34 @@ describe('SessionStatusWidget', () => {
 
       expect(clearIntervalSpy).toHaveBeenCalled()
     })
+
+    it('should restart timer when session started_at changes', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const sessionStore = useSessionStore()
+      sessionStore.activeSession = mockActiveSession
+
+      await wrapper.vm.$nextTick()
+      await flushPromises()
+
+      // Change started_at to 2 minutes ago
+      const newStartedAt = new Date(Date.now() - 120000).toISOString()
+      sessionStore.activeSession = { ...mockActiveSession, started_at: newStartedAt }
+
+      await wrapper.vm.$nextTick()
+      await flushPromises()
+
+      vi.advanceTimersByTime(1000)
+      await wrapper.vm.$nextTick()
+
+      // Should show updated time (around 2 minutes)
+      expect(wrapper.text()).toMatch(/00:0[2-3]:\d{2}/)
+    })
   })
 
   describe('Reactivity', () => {
-    it('should update when session store changes', async () => {
+    it('should update state label when session store changes', async () => {
       const wrapper = mountComponent()
       await flushPromises()
 
@@ -486,7 +635,7 @@ describe('SessionStatusWidget', () => {
       expect(wrapper.text()).toContain('QA Mode')
     })
 
-    it('should update when bug store changes', async () => {
+    it('should update bug count badge when bug store changes', async () => {
       const wrapper = mountComponent()
       await flushPromises()
 
@@ -498,17 +647,17 @@ describe('SessionStatusWidget', () => {
       await wrapper.vm.$nextTick()
 
       let badge = wrapper.findComponent({ name: 'QBadge' })
-      expect(badge.props('label')).toBe(0)
+      expect(badge.props('label')).toBe('0 bugs')
 
       // Add bugs
       bugStore.backendBugs = [mockBug]
       await wrapper.vm.$nextTick()
 
       badge = wrapper.findComponent({ name: 'QBadge' })
-      expect(badge.props('label')).toBe(1)
+      expect(badge.props('label')).toBe('1 bug')
     })
 
-    it('should update state when bug capture starts', async () => {
+    it('should update state chip when bug capture starts', async () => {
       const wrapper = mountComponent()
       await flushPromises()
 
@@ -525,7 +674,25 @@ describe('SessionStatusWidget', () => {
       bugStore.activeBug = mockBug
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.text()).toContain('Capturing Bug-1')
+      expect(wrapper.text()).toContain('Bug-1')
+    })
+
+    it('should toggle Console chip when tagNextScreenshotAsConsole changes', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const bugStore = useBugStore()
+      bugStore.tagNextScreenshotAsConsole = false
+      await wrapper.vm.$nextTick()
+
+      let consoleChip = wrapper.findAllComponents({ name: 'QChip' }).find(c => c.text() === 'Console')
+      expect(consoleChip).toBeUndefined()
+
+      bugStore.tagNextScreenshotAsConsole = true
+      await wrapper.vm.$nextTick()
+
+      consoleChip = wrapper.findAllComponents({ name: 'QChip' }).find(c => c.text() === 'Console')
+      expect(consoleChip).toBeDefined()
     })
   })
 })

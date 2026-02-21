@@ -771,6 +771,48 @@ async fn open_session_notes_window(app: tauri::AppHandle) -> Result<(), String> 
     Ok(())
 }
 
+#[tauri::command]
+async fn open_session_status_window(app: tauri::AppHandle) -> Result<(), String> {
+    let window_label = "session-status";
+
+    // If already open, focus it instead of creating a new one
+    if let Some(existing) = app.get_webview_window(window_label) {
+        existing.show().map_err(|e| format!("Failed to show session status window: {}", e))?;
+        existing.set_focus().map_err(|e| format!("Failed to focus session status window: {}", e))?;
+        return Ok(());
+    }
+
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        window_label,
+        tauri::WebviewUrl::App("/session-status".into()),
+    )
+    .title("Session Status")
+    .inner_size(380.0, 48.0)
+    .min_inner_size(300.0, 40.0)
+    .max_inner_size(600.0, 48.0)
+    .resizable(true)
+    .decorations(false)
+    .always_on_top(true)
+    .focused(false)
+    .transparent(true)
+    .build()
+    .map_err(|e| format!("Failed to create session status window: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn close_session_status_window(app: tauri::AppHandle) -> Result<(), String> {
+    let window_label = "session-status";
+
+    if let Some(existing) = app.get_webview_window(window_label) {
+        existing.close().map_err(|e| format!("Failed to close session status window: {}", e))?;
+    }
+
+    Ok(())
+}
+
 // ─── Capture Watcher Helpers ─────────────────────────────────────────────
 
 /// Start the capture watcher for the given session.
@@ -2566,6 +2608,8 @@ pub fn run() {
             get_session_notes,
             update_session_notes,
             open_session_notes_window,
+            open_session_status_window,
+            close_session_status_window,
             start_session,
             end_session,
             resume_session,

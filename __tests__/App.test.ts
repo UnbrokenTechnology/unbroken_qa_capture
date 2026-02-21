@@ -25,6 +25,8 @@ vi.mock('@/api/tauri', () => ({
   updateTrayMenu: vi.fn(),
   updateTrayTooltip: vi.fn(),
   openSessionNotesWindow: vi.fn(),
+  openSessionStatusWindow: vi.fn(),
+  closeSessionStatusWindow: vi.fn(),
 }))
 
 // Mock Tauri core invoke

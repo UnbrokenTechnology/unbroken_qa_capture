@@ -39,10 +39,10 @@
         <q-btn
           flat
           dense
-          :icon="showStatusWidget ? 'visibility_off' : 'visibility'"
-          @click="toggleStatusWidget"
+          icon="pip_exit"
+          @click="openStatusWindow"
         >
-          <q-tooltip>{{ showStatusWidget ? 'Hide' : 'Show' }} Status Widget</q-tooltip>
+          <q-tooltip>Open Status Widget (floating window)</q-tooltip>
         </q-btn>
 
         <q-btn
@@ -78,12 +78,6 @@
       <router-view v-else />
     </q-page-container>
 
-    <!-- Session Status Widget -->
-    <SessionStatusWidget
-      :visible="showStatusWidget"
-      @close="showStatusWidget = false"
-    />
-
     <!-- First Run Wizard -->
     <FirstRunWizard
       v-model="showFirstRunWizard"
@@ -99,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, provide } from 'vue'
+import { ref, onMounted, onUnmounted, watch, provide } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useRouter } from 'vue-router'
@@ -108,7 +102,6 @@ import { useTrayStore } from './stores/tray'
 import { useSessionStore } from './stores/session'
 import { useBugStore } from './stores/bug'
 import { useSettingsStore } from './stores/settings'
-import SessionStatusWidget from './components/SessionStatusWidget.vue'
 import SessionToolbar from './components/SessionToolbar.vue'
 import FirstRunWizard from './components/FirstRunWizard.vue'
 import QuickNotepad from './components/QuickNotepad.vue'
@@ -125,15 +118,6 @@ const settingsStore = useSettingsStore()
 // Treat undefined label (e.g. in test environments) as the main window.
 const windowLabel = getCurrentWindow().label
 const isSecondaryWindow = windowLabel !== undefined && windowLabel !== 'main'
-// Status widget visibility: driven by persisted setting (default off)
-const showStatusWidget = computed({
-  get: () => settingsStore.showStatusWidget,
-  set: (value: boolean) => {
-    settingsStore.saveSetting('show_status_widget', value ? 'true' : 'false').catch((err) => {
-      console.error('Failed to save status widget visibility:', err)
-    })
-  },
-})
 const showFirstRunWizard = ref(false)
 const showQuickNotepad = ref(false)
 // True until we've finished checking for an active session on startup
@@ -153,8 +137,12 @@ function navigateSettings() {
   router.push({ name: 'settings' })
 }
 
-function toggleStatusWidget() {
-  showStatusWidget.value = !showStatusWidget.value
+async function openStatusWindow() {
+  try {
+    await tauri.openSessionStatusWindow()
+  } catch (err) {
+    console.error('Failed to open session status window:', err)
+  }
 }
 
 async function onSetupComplete() {
@@ -557,6 +545,12 @@ watch(
       // Session just started — navigate to active session view
       if (!activeSessionSubRoutes.has(currentRouteName as string)) {
         router.push({ name: 'active-session' })
+      }
+      // Auto-open status window if the setting is enabled
+      if (settingsStore.showStatusWidget) {
+        tauri.openSessionStatusWindow().catch(err => {
+          console.error('Failed to auto-open status window:', err)
+        })
       }
     } else if (!newId && oldId) {
       // Session ended — navigate to home/idle view

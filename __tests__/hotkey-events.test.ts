@@ -11,6 +11,7 @@ import { Quasar } from 'quasar'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import App from '@/App.vue'
 import * as tauri from '@/api/tauri'
+import { useSessionStore } from '@/stores/session'
 
 // ─── Captured listener map ───────────────────────────────────────────────────
 // listen() is async; each call registers ONE event name → async callback.
@@ -58,6 +59,9 @@ vi.mock('@/api/tauri', () => ({
   resumeSession: vi.fn(),
   // Session notes window
   openSessionNotesWindow: vi.fn(),
+  // Session status window
+  openSessionStatusWindow: vi.fn(),
+  closeSessionStatusWindow: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/api/window', () => ({
@@ -270,6 +274,12 @@ describe('Hotkey event listeners (App.vue)', () => {
       vi.mocked(tauri.createBug).mockResolvedValue(mockBug)
 
       await mountApp(pinia, router)
+
+      // The crash recovery dialog auto-cancels during mount, ending the session.
+      // Re-establish the active session so the hotkey handler finds it active.
+      const sessionStore = useSessionStore()
+      sessionStore.setActiveSession(mockSession)
+
       await fireHotkey('hotkey-start-bug-capture')
 
       // The store calls tauri.createBug with the bug data including session_id
@@ -329,6 +339,11 @@ describe('Hotkey event listeners (App.vue)', () => {
       vi.mocked(tauri.updateBug).mockResolvedValue(undefined)
 
       await mountApp(pinia, router)
+
+      // The crash recovery dialog auto-cancels during mount, ending the session.
+      // Re-establish the active session so the hotkey handlers find it active.
+      const sessionStore = useSessionStore()
+      sessionStore.setActiveSession(mockSession)
 
       // First start a bug capture to set activeBug in the store
       await fireHotkey('hotkey-start-bug-capture')

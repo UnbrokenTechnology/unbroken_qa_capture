@@ -1,116 +1,86 @@
 <template>
-  <q-card
-    v-if="visible"
-    class="session-status-widget"
-    :style="widgetStyle"
+  <div
+    class="session-status-bar"
+    :class="{ 'is-capturing': bugStore.isCapturing }"
   >
-    <q-card-section class="q-pa-sm">
-      <div class="row items-center q-gutter-xs">
-        <!-- Session Time -->
-        <div class="col-auto">
-          <q-icon
-            name="schedule"
-            size="sm"
-          />
-          <span class="q-ml-xs text-caption">{{ formattedSessionTime }}</span>
-        </div>
+    <div class="drag-handle row items-center no-wrap q-px-sm q-gutter-xs">
+      <!-- State indicator dot -->
+      <div
+        class="state-dot"
+        :class="`bg-${stateColor}`"
+      />
 
-        <!-- Bug Count -->
-        <div class="col-auto">
-          <q-badge
-            :color="bugCount > 0 ? 'positive' : 'grey'"
-            :label="bugCount"
-          />
-          <span class="q-ml-xs text-caption">bugs</span>
-        </div>
+      <!-- Session Time -->
+      <span class="time-display">{{ formattedSessionTime }}</span>
 
-        <!-- Current State -->
-        <div class="col-auto">
-          <q-chip
-            :color="stateColor"
-            text-color="white"
-            size="sm"
-            dense
-          >
-            {{ currentStateLabel }}
-          </q-chip>
-        </div>
+      <!-- Separator -->
+      <span class="separator">|</span>
 
-        <!-- Console Tag Mode Indicator -->
-        <div
-          v-if="bugStore.tagNextScreenshotAsConsole"
-          class="col-auto"
-        >
-          <q-chip
-            color="orange"
-            text-color="white"
-            icon="terminal"
-            size="sm"
-            dense
-          >
-            Console Tag
-            <q-tooltip>Next screenshot will be tagged as a console capture</q-tooltip>
-          </q-chip>
-        </div>
+      <!-- Bug Count -->
+      <q-badge
+        :color="bugCount > 0 ? 'positive' : 'grey-6'"
+        :label="`${bugCount} bug${bugCount !== 1 ? 's' : ''}`"
+        class="badge-compact"
+      />
 
-        <!-- Close button -->
-        <div class="col-auto">
-          <q-btn
-            icon="close"
-            flat
-            dense
-            size="sm"
-            @click="$emit('close')"
-          />
-        </div>
-      </div>
-    </q-card-section>
-  </q-card>
+      <!-- Current State -->
+      <q-chip
+        :color="stateColor"
+        text-color="white"
+        size="sm"
+        dense
+        class="state-chip"
+      >
+        {{ currentStateLabel }}
+      </q-chip>
+
+      <!-- Console Tag Mode Indicator -->
+      <q-chip
+        v-if="bugStore.tagNextScreenshotAsConsole"
+        color="orange"
+        text-color="white"
+        size="sm"
+        dense
+        class="state-chip"
+      >
+        Console
+      </q-chip>
+
+      <q-space />
+
+      <!-- Close button -->
+      <q-btn
+        icon="close"
+        flat
+        dense
+        round
+        size="xs"
+        color="grey-6"
+        class="close-btn"
+        @click="closeWindow"
+      />
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useSessionStore } from '../stores/session'
 import { useBugStore } from '../stores/bug'
-
-// Props
-interface Props {
-  visible?: boolean
-  initialX?: number
-  initialY?: number
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  visible: true,
-  initialX: 20,
-  initialY: 20
-})
-
-// Emits
-defineEmits<{
-  close: []
-}>()
 
 // Stores
 const sessionStore = useSessionStore()
 const bugStore = useBugStore()
 
 // State
-const position = ref({ x: props.initialX, y: props.initialY })
 const sessionStartTime = ref<Date | null>(null)
 const elapsedTime = ref(0)
 let intervalId: number | null = null
+let unlistenHandlers: UnlistenFn[] = []
 
 // Computed
-const widgetStyle = computed(() => ({
-  position: 'fixed',
-  top: `${position.value.y}px`,
-  left: `${position.value.x}px`,
-  zIndex: 9999,
-  cursor: 'move',
-  minWidth: '300px'
-}))
-
 const formattedSessionTime = computed(() => {
   if (!sessionStore.isSessionActive) {
     return '00:00:00'
@@ -127,7 +97,6 @@ const bugCount = computed(() => {
   if (!sessionStore.activeSession) {
     return bugStore.bugCount
   }
-  // Count bugs for active session
   return bugStore.backendBugs.filter(bug => bug.session_id === sessionStore.activeSession?.id).length
 })
 
@@ -137,7 +106,7 @@ const currentStateLabel = computed(() => {
   }
 
   if (bugStore.isCapturing && bugStore.activeBug) {
-    return `Capturing Bug-${bugStore.activeBug.bug_number}`
+    return `Bug-${bugStore.activeBug.bug_number}`
   }
 
   return 'QA Mode'
@@ -184,15 +153,14 @@ function stopTimer() {
   elapsedTime.value = 0
 }
 
-async function setupDraggable() {
-  // Window properties like dragging are handled by the parent layout.
-  // Removed setAlwaysOnTop(true) — it was forcing the main window above
-  // all other apps, compounding with the annotation window also being on top.
+async function closeWindow() {
+  const appWindow = getCurrentWindow()
+  await appWindow.close()
 }
 
 // Lifecycle
 onMounted(async () => {
-  // Setup stores
+  // Setup stores and event listeners
   await sessionStore.setupEventListeners()
   await bugStore.setupEventListeners()
 
@@ -204,12 +172,24 @@ onMounted(async () => {
     startTimer()
   }
 
-  // Setup window properties
-  await setupDraggable()
+  // Listen for session events so the widget stays in sync
+  const unlistenCreated = await listen('session-created', () => { sessionStore.loadActiveSession() })
+  const unlistenUpdated = await listen('session-updated', () => { sessionStore.loadActiveSession() })
+  const unlistenDeleted = await listen('session-deleted', () => { sessionStore.loadActiveSession() })
+  const unlistenStatusChanged = await listen('session-status-changed', () => { sessionStore.loadActiveSession() })
+
+  // Handle the native close event for the frameless window
+  const appWindow = getCurrentWindow()
+  const unlistenClose = await appWindow.onCloseRequested(async () => {
+    await appWindow.close()
+  })
+
+  unlistenHandlers = [unlistenCreated, unlistenUpdated, unlistenDeleted, unlistenStatusChanged, unlistenClose]
 })
 
 onUnmounted(() => {
   stopTimer()
+  unlistenHandlers.forEach(u => u())
   sessionStore.cleanupEventListeners()
   bugStore.cleanupEventListeners()
 })
@@ -231,12 +211,71 @@ watch(() => sessionStore.activeSession?.started_at, () => {
 </script>
 
 <style scoped>
-.session-status-widget {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+.session-status-bar {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 8px;
 }
 
-.session-status-widget:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+.session-status-bar.is-capturing {
+  border-color: #c10015;
+  box-shadow: 0 0 0 1px rgba(193, 0, 21, 0.3);
+}
+
+.drag-handle {
+  height: 100%;
+  cursor: move;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+/* Allow interactive elements to remain clickable */
+.drag-handle .q-badge,
+.drag-handle .q-chip,
+.drag-handle .q-btn,
+.drag-handle button {
+  -webkit-app-region: no-drag;
+}
+
+.state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.time-display {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  letter-spacing: 0.5px;
+}
+
+.separator {
+  color: #ccc;
+  font-size: 12px;
+}
+
+.badge-compact {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.state-chip {
+  font-size: 11px;
+  height: 22px;
+}
+
+.close-btn {
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.close-btn:hover {
+  opacity: 1;
 }
 </style>

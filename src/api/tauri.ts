@@ -215,6 +215,14 @@ export async function openSessionNotesWindow(): Promise<void> {
   await invoke('open_session_notes_window')
 }
 
+export async function openSessionStatusWindow(): Promise<void> {
+  await invoke('open_session_status_window')
+}
+
+export async function closeSessionStatusWindow(): Promise<void> {
+  await invoke('close_session_status_window')
+}
+
 // Capture operations
 export async function getBugCaptures(bugId: string): Promise<Capture[]> {
   return await invoke<Capture[]>('get_bug_captures', { bugId })

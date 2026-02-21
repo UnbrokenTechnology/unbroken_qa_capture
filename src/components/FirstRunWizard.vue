@@ -223,12 +223,12 @@
               </h6>
               <q-toggle
                 v-model="showStatusWidgetEnabled"
-                label="Show floating status widget during sessions"
+                label="Auto-open status window when session starts"
                 color="primary"
               />
               <p class="text-caption text-grey-7 q-mt-xs q-mb-none">
-                Displays a small overlay with session time, bug count, and current state.
-                You can toggle this at any time from the toolbar or Settings.
+                Automatically opens a floating status bar when a session starts.
+                You can also open it manually from the toolbar button.
               </p>
             </div>
           </q-step>
