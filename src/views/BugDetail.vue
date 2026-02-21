@@ -916,7 +916,7 @@ async function copyToClipboard() {
   copying.value = true
   try {
     await invoke('copy_bug_to_clipboard', {
-      folderPath: bug.value.folder_path
+      bugId: bug.value.id
     })
 
     $q.notify({

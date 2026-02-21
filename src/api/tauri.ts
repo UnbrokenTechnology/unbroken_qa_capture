@@ -47,8 +47,8 @@ export async function reloadTemplate(): Promise<void> {
 // Bug Commands
 // ============================================================================
 
-export async function copyBugToClipboard(folderPath: string): Promise<void> {
-  await invoke('copy_bug_to_clipboard', { folderPath })
+export async function copyBugToClipboard(bugId: string): Promise<void> {
+  await invoke('copy_bug_to_clipboard', { bugId })
 }
 
 export async function openBugFolder(folderPath: string): Promise<void> {

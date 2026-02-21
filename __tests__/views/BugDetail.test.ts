@@ -328,7 +328,7 @@ describe('BugDetail', () => {
     })
   })
 
-  it('should call copy_bug_to_clipboard command with correct folder path', async () => {
+  it('should call copy_bug_to_clipboard command with correct bug id', async () => {
     const { invoke } = await import('@tauri-apps/api/core')
     const store = useBugStore()
     const bug = createMockBackendBug('1')
@@ -342,7 +342,7 @@ describe('BugDetail', () => {
     await copyButton.trigger('click')
 
     expect(invoke).toHaveBeenCalledWith('copy_bug_to_clipboard', {
-      folderPath: '/test/path'
+      bugId: '1'
     })
   })
 

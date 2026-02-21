@@ -228,55 +228,137 @@ async fn open_template_in_editor(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Helper function to read bug data from a folder and render it using the template
-fn read_and_render_bug(folder_path: &str) -> Result<String, String> {
-    use std::path::Path;
+/// Build a `template::BugData` from database records for rendering.
+fn bug_to_template_data(
+    bug: &database::Bug,
+    captures: &[database::Capture],
+    session: &database::Session,
+) -> template::BugData {
+    // Parse environment from session's environment_json
+    let environment: template::Environment = session
+        .environment_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or(template::Environment {
+            os: "Unknown".to_string(),
+            display_resolution: "Unknown".to_string(),
+            dpi_scaling: "Unknown".to_string(),
+            ram: "Unknown".to_string(),
+            cpu: "Unknown".to_string(),
+            foreground_app: "Unknown".to_string(),
+        });
 
-    // Read bug data from the folder
-    let folder = Path::new(folder_path);
-    if !folder.exists() || !folder.is_dir() {
-        return Err(format!("Bug folder does not exist: {}", folder_path));
+    // Parse custom_metadata JSON into custom_fields map
+    let custom_fields: std::collections::HashMap<String, String> = bug
+        .custom_metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+
+    // Collect capture file names (prefer annotated path over original)
+    let capture_names: Vec<String> = captures
+        .iter()
+        .filter(|c| !c.is_console_capture)
+        .map(|c| {
+            c.annotated_path
+                .as_deref()
+                .unwrap_or(&c.file_path)
+                .to_string()
+        })
+        .collect();
+
+    // Collect console output from console captures
+    let console_output: Option<String> = {
+        let console_parts: Vec<String> = captures
+            .iter()
+            .filter(|c| c.is_console_capture)
+            .filter_map(|c| c.parsed_content.clone())
+            .collect();
+        if console_parts.is_empty() {
+            bug.console_parse_json.clone()
+        } else {
+            Some(console_parts.join("\n"))
+        }
+    };
+
+    // Use description or ai_description or notes as the description_steps
+    let description = bug
+        .description
+        .as_deref()
+        .or(bug.ai_description.as_deref())
+        .or(bug.notes.as_deref())
+        .unwrap_or("")
+        .to_string();
+
+    template::BugData {
+        title: bug.title.clone().unwrap_or_else(|| "Untitled Bug".to_string()),
+        bug_type: bug.bug_type.as_str().to_string(),
+        description_steps: description,
+        description_expected: String::new(),
+        description_actual: String::new(),
+        metadata: template::BugMetadata {
+            meeting_id: bug.meeting_id.clone(),
+            software_version: bug.software_version.clone(),
+            environment,
+            console_captures: captures
+                .iter()
+                .filter(|c| c.is_console_capture)
+                .map(|c| c.file_name.clone())
+                .collect(),
+            custom_fields,
+        },
+        folder_path: bug.folder_path.clone(),
+        captures: capture_names,
+        console_output,
     }
+}
 
-    // Read metadata.json
-    let metadata_path = folder.join("metadata.json");
-    if !metadata_path.exists() {
-        return Err(format!(
-            "metadata.json not found in folder: {}",
-            folder_path
-        ));
-    }
+/// Render a bug report from DB data using the template engine.
+fn render_bug_from_db(bug_id: &str, db_path: &std::path::Path) -> Result<String, String> {
+    use database::{Database, BugRepository, BugOps, CaptureRepository, CaptureOps, SessionRepository, SessionOps};
 
-    let metadata_content = std::fs::read_to_string(&metadata_path)
-        .map_err(|e| format!("Failed to read metadata.json: {}", e))?;
+    let db = Database::new(db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+    let conn = db.connection();
 
-    let bug_data: serde_json::Value = serde_json::from_str(&metadata_content)
-        .map_err(|e| format!("Failed to parse metadata.json: {}", e))?;
+    let bug = BugRepository::new(conn)
+        .get(bug_id)
+        .map_err(|e| format!("Failed to query bug: {}", e))?
+        .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
 
-    // Get TemplateManager and render the bug
+    let captures = CaptureRepository::new(conn)
+        .list_by_bug(bug_id)
+        .map_err(|e| format!("Failed to query captures: {}", e))?;
+
+    let session = SessionRepository::new(conn)
+        .get(&bug.session_id)
+        .map_err(|e| format!("Failed to query session: {}", e))?
+        .ok_or_else(|| format!("Session not found: {}", bug.session_id))?;
+
+    let bug_data = bug_to_template_data(&bug, &captures, &session);
+
+    // Get TemplateManager and render
     let mut manager_guard = TEMPLATE_MANAGER.lock().unwrap();
-
     if manager_guard.is_none() {
         *manager_guard = Some(TemplateManager::new());
     }
-
     let manager = manager_guard.as_ref().unwrap();
 
-    // Convert JSON to BugData
-    let bug: template::BugData = serde_json::from_value(bug_data)
-        .map_err(|e| format!("Failed to parse bug data: {}", e))?;
-
-    // Render the template
-    manager.render(&bug)
+    manager.render(&bug_data)
 }
 
 #[tauri::command]
 async fn copy_bug_to_clipboard(
-    folder_path: String,
+    bug_id: String,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    // Read and render the bug data
-    let rendered_markdown = read_and_render_bug(&folder_path)?;
+    let db_path = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?
+        .join("qa_capture.db");
+
+    let rendered_markdown = render_bug_from_db(&bug_id, &db_path)?;
 
     // Copy to clipboard using Tauri clipboard plugin
     app_handle
@@ -2541,105 +2623,189 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
-    fn create_test_bug_folder(temp_dir: &std::path::Path) -> String {
-        let bug_folder = temp_dir.join("test_bug");
-        std::fs::create_dir_all(&bug_folder).unwrap();
+    /// Helper: seed a session + bug + captures into an in-memory DB and return
+    /// the DB file path (on-disk temp file so `render_bug_from_db` can open it).
+    fn setup_test_db(temp_dir: &std::path::Path) -> (std::path::PathBuf, String) {
+        use database::{Database, SessionRepository, SessionOps, BugRepository, BugOps, CaptureRepository, CaptureOps, Session, SessionStatus, Bug, BugType, BugStatus, Capture, CaptureType};
 
-        let bug_data = template::BugData {
-            title: "Test Bug".to_string(),
-            bug_type: "UI".to_string(),
-            description_steps: "1. Click button\n2. Observe error".to_string(),
-            description_expected: "Button should work".to_string(),
-            description_actual: "Button crashes app".to_string(),
-            metadata: template::BugMetadata {
-                meeting_id: Some("MTG-123".to_string()),
-                software_version: Some("1.0.0".to_string()),
-                environment: template::Environment {
-                    os: "Windows 11".to_string(),
-                    display_resolution: "1920x1080".to_string(),
-                    dpi_scaling: "100%".to_string(),
-                    ram: "16GB".to_string(),
-                    cpu: "Intel i7".to_string(),
-                    foreground_app: "TestApp".to_string(),
-                },
-                console_captures: vec![],
-                custom_fields: HashMap::new(),
-            },
-            folder_path: bug_folder.to_string_lossy().to_string(),
-            captures: vec!["screenshot1.png".to_string()],
-            console_output: Some("Error: Something went wrong".to_string()),
+        let db_path = temp_dir.join("test_qa.db");
+        let db = Database::new(&db_path).unwrap();
+        let conn = db.connection();
+
+        // Create session with environment
+        let session = Session {
+            id: "session-1".to_string(),
+            started_at: "2024-01-01T10:00:00Z".to_string(),
+            ended_at: None,
+            status: SessionStatus::Active,
+            folder_path: "/test/sessions/session1".to_string(),
+            session_notes: None,
+            environment_json: Some(r#"{"os":"Windows 11","display_resolution":"1920x1080","dpi_scaling":"100%","ram":"16GB","cpu":"Intel i7","foreground_app":"TestApp"}"#.to_string()),
+            original_snip_path: None,
+            created_at: "2024-01-01T10:00:00Z".to_string(),
         };
+        SessionRepository::new(conn).create(&session).unwrap();
 
-        let metadata_path = bug_folder.join("metadata.json");
-        let json = serde_json::to_string_pretty(&bug_data).unwrap();
-        std::fs::write(&metadata_path, json).unwrap();
+        // Create bug
+        let bug = Bug {
+            id: "bug-1".to_string(),
+            session_id: "session-1".to_string(),
+            bug_number: 1,
+            display_id: "BUG-001".to_string(),
+            bug_type: BugType::Bug,
+            title: Some("Test Bug".to_string()),
+            notes: Some("1. Click button\n2. Observe error".to_string()),
+            description: Some("1. Click button\n2. Observe error".to_string()),
+            ai_description: None,
+            status: BugStatus::Captured,
+            meeting_id: Some("MTG-123".to_string()),
+            software_version: Some("1.0.0".to_string()),
+            console_parse_json: None,
+            metadata_json: None,
+            custom_metadata: None,
+            folder_path: "/test/bugs/bug-1".to_string(),
+            created_at: "2024-01-01T10:00:00Z".to_string(),
+            updated_at: "2024-01-01T10:00:00Z".to_string(),
+        };
+        BugRepository::new(conn).create(&bug).unwrap();
 
-        bug_folder.to_string_lossy().to_string()
+        // Create a screenshot capture
+        let capture = Capture {
+            id: "cap-1".to_string(),
+            bug_id: Some("bug-1".to_string()),
+            session_id: "session-1".to_string(),
+            file_name: "screenshot1.png".to_string(),
+            file_path: "/test/bugs/bug-1/screenshot1.png".to_string(),
+            file_type: CaptureType::Screenshot,
+            annotated_path: None,
+            file_size_bytes: Some(1024),
+            is_console_capture: false,
+            parsed_content: None,
+            created_at: "2024-01-01T10:01:00Z".to_string(),
+        };
+        CaptureRepository::new(conn).create(&capture).unwrap();
+
+        (db_path, "bug-1".to_string())
     }
 
     #[test]
-    fn test_read_and_render_bug_success() {
-        let temp_dir = std::env::temp_dir().join("test_copy_bug");
+    fn test_render_bug_from_db_success() {
+        let temp_dir = std::env::temp_dir().join(format!("test_render_bug_db_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
-        let bug_folder = create_test_bug_folder(&temp_dir);
-        let result = read_and_render_bug(&bug_folder);
+        let (db_path, bug_id) = setup_test_db(&temp_dir);
+        let result = render_bug_from_db(&bug_id, &db_path);
 
         assert!(result.is_ok());
         let rendered = result.unwrap();
 
-        // Verify the rendered output contains key information
         assert!(rendered.contains("Test Bug"));
-        assert!(rendered.contains("UI"));
+        assert!(rendered.contains("bug"));
         assert!(rendered.contains("Click button"));
         assert!(rendered.contains("Windows 11"));
+        assert!(rendered.contains("MTG-123"));
+        assert!(rendered.contains("screenshot1.png"));
 
-        // Cleanup
         std::fs::remove_dir_all(&temp_dir).ok();
     }
 
     #[test]
-    fn test_read_and_render_bug_folder_not_found() {
-        let result = read_and_render_bug("/nonexistent/folder/path");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Bug folder does not exist"));
-    }
-
-    #[test]
-    fn test_read_and_render_bug_missing_metadata() {
-        let temp_dir = std::env::temp_dir().join("test_copy_bug_no_metadata");
+    fn test_render_bug_from_db_not_found() {
+        let temp_dir = std::env::temp_dir().join(format!("test_render_bug_nf_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
-        let bug_folder = temp_dir.join("test_bug");
-        std::fs::create_dir_all(&bug_folder).unwrap();
+        let (db_path, _) = setup_test_db(&temp_dir);
+        let result = render_bug_from_db("nonexistent-bug", &db_path);
 
-        let result = read_and_render_bug(&bug_folder.to_string_lossy());
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("metadata.json not found"));
+        assert!(result.unwrap_err().contains("Bug not found"));
 
-        // Cleanup
         std::fs::remove_dir_all(&temp_dir).ok();
     }
 
     #[test]
-    fn test_read_and_render_bug_invalid_json() {
-        let temp_dir = std::env::temp_dir().join("test_copy_bug_invalid");
-        std::fs::create_dir_all(&temp_dir).unwrap();
+    fn test_bug_to_template_data_defaults() {
+        // Bug with no title, no description, no environment — should use defaults
+        let bug = database::Bug {
+            id: "bug-2".to_string(),
+            session_id: "session-1".to_string(),
+            bug_number: 2,
+            display_id: "BUG-002".to_string(),
+            bug_type: database::BugType::Feature,
+            title: None,
+            notes: None,
+            description: None,
+            ai_description: None,
+            status: database::BugStatus::Captured,
+            meeting_id: None,
+            software_version: None,
+            console_parse_json: None,
+            metadata_json: None,
+            custom_metadata: None,
+            folder_path: "/test/bugs/bug-2".to_string(),
+            created_at: "2024-01-01T10:00:00Z".to_string(),
+            updated_at: "2024-01-01T10:00:00Z".to_string(),
+        };
+        let session = database::Session {
+            id: "session-1".to_string(),
+            started_at: "2024-01-01T10:00:00Z".to_string(),
+            ended_at: None,
+            status: database::SessionStatus::Active,
+            folder_path: "/test".to_string(),
+            session_notes: None,
+            environment_json: None,
+            original_snip_path: None,
+            created_at: "2024-01-01T10:00:00Z".to_string(),
+        };
 
-        let bug_folder = temp_dir.join("test_bug");
-        std::fs::create_dir_all(&bug_folder).unwrap();
+        let data = bug_to_template_data(&bug, &[], &session);
 
-        let metadata_path = bug_folder.join("metadata.json");
-        std::fs::write(&metadata_path, "invalid json content").unwrap();
+        assert_eq!(data.title, "Untitled Bug");
+        assert_eq!(data.bug_type, "feature");
+        assert_eq!(data.description_steps, "");
+        assert_eq!(data.metadata.environment.os, "Unknown");
+        assert!(data.captures.is_empty());
+    }
 
-        let result = read_and_render_bug(&bug_folder.to_string_lossy());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Failed to parse metadata.json"));
+    #[test]
+    fn test_bug_to_template_data_custom_metadata() {
+        let bug = database::Bug {
+            id: "bug-3".to_string(),
+            session_id: "session-1".to_string(),
+            bug_number: 3,
+            display_id: "BUG-003".to_string(),
+            bug_type: database::BugType::Bug,
+            title: Some("Custom Fields Bug".to_string()),
+            notes: None,
+            description: Some("Steps here".to_string()),
+            ai_description: None,
+            status: database::BugStatus::Captured,
+            meeting_id: None,
+            software_version: None,
+            console_parse_json: None,
+            metadata_json: None,
+            custom_metadata: Some(r#"{"sprint":"Sprint 5","buildNumber":"42"}"#.to_string()),
+            folder_path: "/test/bugs/bug-3".to_string(),
+            created_at: "2024-01-01T10:00:00Z".to_string(),
+            updated_at: "2024-01-01T10:00:00Z".to_string(),
+        };
+        let session = database::Session {
+            id: "session-1".to_string(),
+            started_at: "2024-01-01T10:00:00Z".to_string(),
+            ended_at: None,
+            status: database::SessionStatus::Active,
+            folder_path: "/test".to_string(),
+            session_notes: None,
+            environment_json: None,
+            original_snip_path: None,
+            created_at: "2024-01-01T10:00:00Z".to_string(),
+        };
 
-        // Cleanup
-        std::fs::remove_dir_all(&temp_dir).ok();
+        let data = bug_to_template_data(&bug, &[], &session);
+
+        assert_eq!(data.metadata.custom_fields.get("sprint").unwrap(), "Sprint 5");
+        assert_eq!(data.metadata.custom_fields.get("buildNumber").unwrap(), "42");
     }
 
     #[test]
