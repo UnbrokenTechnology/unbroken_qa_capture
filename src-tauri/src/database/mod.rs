@@ -4,6 +4,7 @@ mod session;
 mod bug;
 mod capture;
 mod settings;
+pub mod state;
 
 // Public exports for external module use
 #[allow(unused_imports)]
@@ -18,6 +19,8 @@ pub use bug::{BugOps, BugRepository};
 pub use capture::{CaptureOps, CaptureRepository};
 #[allow(unused_imports)]
 pub use settings::{SettingsOps, SettingsRepository};
+#[allow(unused_imports)]
+pub use state::DbState;
 
 use rusqlite::{Connection, Result as SqlResult};
 use std::path::Path;

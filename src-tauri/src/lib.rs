@@ -2447,6 +2447,13 @@ pub fn run() {
             // Create data directory if it doesn't exist
             std::fs::create_dir_all(&data_dir).ok();
 
+            // Initialize shared database state and register with Tauri managed state.
+            // DbState opens a single connection with WAL mode enabled and schema
+            // initialized.  Tauri commands can access it via State<DbState>.
+            let db_state = database::DbState::open(&db_path)
+                .unwrap_or_else(|e| panic!("Failed to open database: {}", e));
+            app.manage(db_state);
+
             // Seed the default Contio MeetingOS profile on first run
             if let Ok(db) = database::Database::open(&db_path) {
                 if let Err(e) = profile::seed_default_profile(db.connection()) {
