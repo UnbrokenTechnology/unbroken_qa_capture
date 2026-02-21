@@ -601,6 +601,66 @@ fn test_linear_upload_attachment_fails_for_missing_file() {
 }
 
 #[test]
+fn test_mock_integration_fetch_teams_default_returns_empty() {
+    let integration = MockTicketingIntegration::new();
+    let teams = integration.fetch_teams().unwrap();
+    assert!(teams.is_empty());
+}
+
+#[test]
+fn test_linear_fetch_teams_requires_authentication() {
+    // fetch_teams() calls send_graphql_query() which requires credentials.
+    // Without credentials, it should return an AuthenticationFailed error.
+    let integration = LinearIntegration::new();
+    let result = integration.fetch_teams();
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        TicketingError::AuthenticationFailed(_) => {
+            // Expected: not authenticated
+        }
+        other => panic!("Expected AuthenticationFailed, got: {:?}", other),
+    }
+}
+
+#[test]
+fn test_linear_fetch_teams_network_error_with_unreachable_endpoint() {
+    // With credentials set but unreachable endpoint, fetch_teams should fail with network error.
+    let integration = LinearIntegration::with_endpoint("http://127.0.0.1:1");
+    integration.set_credentials_for_test(TicketingCredentials {
+        api_key: "lin_api_test".to_string(),
+        workspace_id: None,
+        team_id: None,
+    });
+
+    let result = integration.fetch_teams();
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        TicketingError::NetworkError(_) => {
+            // Expected: network error from unreachable endpoint
+        }
+        other => panic!("Expected NetworkError, got: {:?}", other),
+    }
+}
+
+#[test]
+fn test_linear_team_serialization() {
+    let team = LinearTeam {
+        id: "abc-123".to_string(),
+        name: "Engineering".to_string(),
+        key: "ENG".to_string(),
+    };
+    let json = serde_json::to_string(&team).unwrap();
+    assert!(json.contains("abc-123"));
+    assert!(json.contains("Engineering"));
+    assert!(json.contains("ENG"));
+
+    let deserialized: LinearTeam = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized.id, "abc-123");
+    assert_eq!(deserialized.name, "Engineering");
+    assert_eq!(deserialized.key, "ENG");
+}
+
+#[test]
 fn test_attachment_upload_result_display() {
     // Verify AttachmentUploadResult fields are accessible and serializable
     let success_result = AttachmentUploadResult {

@@ -459,10 +459,26 @@
             >
               <q-card flat>
                 <q-card-section class="q-gutter-sm">
+                  <q-select
+                    v-if="linearTeamOptions.length > 0"
+                    v-model="profileForm.linearTeamId"
+                    :options="linearTeamOptions"
+                    label="Team"
+                    hint="Select Linear team for this profile"
+                    outlined
+                    dense
+                    emit-value
+                    map-options
+                  >
+                    <template #prepend>
+                      <q-icon name="group" />
+                    </template>
+                  </q-select>
                   <q-input
+                    v-else
                     v-model="profileForm.linearTeamId"
                     label="Team ID"
-                    hint="Linear team ID"
+                    hint="Test connection in Linear settings to load teams, or enter team ID manually"
                     outlined
                     dense
                   >
@@ -839,12 +855,32 @@
                 </template>
               </q-input>
 
-              <q-input
+              <q-select
+                v-if="linearTeamOptions.length > 0"
                 v-model="localSettings.linear_team_id"
-                label="Team ID"
-                hint="Linear team ID (e.g., 44c86ac8-cb80-4302-9d81-a0a350b2c352)"
+                :options="linearTeamOptions"
+                label="Team"
+                hint="Select your Linear team"
                 outlined
                 dense
+                emit-value
+                map-options
+                :loading="fetchingLinearTeams"
+                :readonly="linearTeamOptions.length === 1"
+                class="q-mb-md"
+              >
+                <template #prepend>
+                  <q-icon name="group" />
+                </template>
+              </q-select>
+              <q-input
+                v-else
+                v-model="localSettings.linear_team_id"
+                label="Team ID"
+                :hint="fetchingLinearTeams ? 'Fetching teams...' : 'Test connection to load teams, or enter team ID manually'"
+                outlined
+                dense
+                :loading="fetchingLinearTeams"
                 class="q-mb-md"
               >
                 <template #prepend>
@@ -1095,8 +1131,8 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { open as openUrl } from '@tauri-apps/plugin-shell'
 import { useRouter } from 'vue-router'
-import { getClaudeStatus, refreshClaudeStatus } from '@/api/tauri'
-import type { QaProfile, AreaCategory, CustomMetadataField, CustomFieldType } from '@/types/backend'
+import { getClaudeStatus, refreshClaudeStatus, ticketingFetchTeams } from '@/api/tauri'
+import type { QaProfile, AreaCategory, CustomMetadataField, CustomFieldType, LinearTeam } from '@/types/backend'
 
 const settingsStore = useSettingsStore()
 const profileStore = useProfileStore()
@@ -1143,6 +1179,8 @@ const hotkeyConflict = ref<string | null>(null)
 const claudeStatus = ref<'available' | 'not_found' | 'checking'>('checking')
 const testingClaude = ref(false)
 const testingLinearConnection = ref(false)
+const linearTeams = ref<LinearTeam[]>([])
+const fetchingLinearTeams = ref(false)
 const appVersion = ref('1.0.0')
 const templateSource = ref<string>('Default')
 const templatePreview = ref<string>('')
@@ -1179,6 +1217,11 @@ const bugTypeOptions = [
   { label: 'Feature', value: 'feature' },
   { label: 'Feedback', value: 'feedback' },
 ]
+
+// Linear team dropdown options
+const linearTeamOptions = computed(() =>
+  linearTeams.value.map(t => ({ label: `${t.name} (${t.key})`, value: t.id }))
+)
 
 // Hotkey functions
 function recordHotkey(key: string): void {
@@ -1416,10 +1459,43 @@ async function testLinearConnection(): Promise<void> {
       },
     })
 
-    $q.notify({
-      type: 'positive',
-      message: 'Linear connection successful! Credentials are valid.',
-    })
+    // Fetch teams after successful authentication
+    fetchingLinearTeams.value = true
+    try {
+      const teams = await ticketingFetchTeams()
+      linearTeams.value = teams
+
+      if (teams.length === 1) {
+        // Auto-select the only team
+        localSettings.value.linear_team_id = teams[0]?.id ?? ''
+        $q.notify({
+          type: 'positive',
+          message: 'Linear connection successful!',
+          caption: `Team "${teams[0]?.name}" auto-selected.`,
+        })
+      } else if (teams.length > 1) {
+        $q.notify({
+          type: 'positive',
+          message: 'Linear connection successful!',
+          caption: `${teams.length} teams found. Please select a team.`,
+        })
+      } else {
+        $q.notify({
+          type: 'positive',
+          message: 'Linear connection successful!',
+          caption: 'No teams found in your Linear workspace.',
+        })
+      }
+    } catch (teamErr) {
+      console.error('Failed to fetch Linear teams:', teamErr)
+      $q.notify({
+        type: 'positive',
+        message: 'Linear connection successful!',
+        caption: 'Could not fetch teams. You can enter the team ID manually.',
+      })
+    } finally {
+      fetchingLinearTeams.value = false
+    }
   } catch (err) {
     console.error('Linear connection test failed:', err)
     $q.notify({

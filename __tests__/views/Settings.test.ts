@@ -35,6 +35,7 @@ vi.mock('@/api/tauri', () => ({
   ticketingGetCredentials: vi.fn().mockResolvedValue(null),
   ticketingCheckConnection: vi.fn().mockResolvedValue({ connected: false }),
   ticketingSaveCredentials: vi.fn().mockResolvedValue(undefined),
+  ticketingFetchTeams: vi.fn().mockResolvedValue([]),
   getLinearProfileDefaults: vi.fn().mockResolvedValue(null),
   listProfiles: vi.fn().mockResolvedValue([]),
   getActiveProfileId: vi.fn().mockResolvedValue(null),

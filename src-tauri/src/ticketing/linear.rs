@@ -466,6 +466,43 @@ impl TicketingIntegration for LinearIntegration {
         }
     }
 
+    fn fetch_teams(&self) -> TicketingResult<Vec<LinearTeam>> {
+        let query = r#"
+            query {
+                teams {
+                    nodes {
+                        id
+                        name
+                        key
+                    }
+                }
+            }
+        "#;
+
+        let response = self.send_graphql_query(query, json!({}))?;
+
+        let nodes = response
+            .get("data")
+            .and_then(|d| d.get("teams"))
+            .and_then(|t| t.get("nodes"))
+            .and_then(|n| n.as_array())
+            .ok_or_else(|| {
+                TicketingError::NetworkError("Failed to parse teams response".to_string())
+            })?;
+
+        let teams: Vec<LinearTeam> = nodes
+            .iter()
+            .filter_map(|node| {
+                let id = node.get("id")?.as_str()?.to_string();
+                let name = node.get("name")?.as_str()?.to_string();
+                let key = node.get("key")?.as_str()?.to_string();
+                Some(LinearTeam { id, name, key })
+            })
+            .collect();
+
+        Ok(teams)
+    }
+
     fn name(&self) -> &str {
         "Linear"
     }

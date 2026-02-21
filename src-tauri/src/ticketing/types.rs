@@ -96,3 +96,14 @@ pub struct ConnectionStatus {
     /// Name of the integration
     pub integration_name: String,
 }
+
+/// A Linear team (returned by the teams query)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinearTeam {
+    /// Linear team UUID
+    pub id: String,
+    /// Human-readable team name
+    pub name: String,
+    /// Short team key (e.g., "ENG")
+    pub key: String,
+}

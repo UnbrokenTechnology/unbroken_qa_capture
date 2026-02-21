@@ -144,6 +144,13 @@ export interface ConnectionStatus {
   integration_name: string
 }
 
+// Linear team (returned by teams query)
+export interface LinearTeam {
+  id: string
+  name: string
+  key: string
+}
+
 // QA Profile types
 // Source: src-tauri/src/profile/types.rs
 
