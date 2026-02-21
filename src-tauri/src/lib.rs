@@ -9,6 +9,7 @@ mod claude_cli;
 mod ticketing;
 mod profile;
 mod capture_watcher;
+mod clipboard_watcher;
 
 #[cfg(test)]
 mod hotkey_tests;
@@ -44,6 +45,9 @@ static CAPTURE_BRIDGE: Mutex<Option<Box<dyn platform::CaptureBridge>>> = Mutex::
 
 // Global capture watcher (monitors _captures/ for new files)
 static CAPTURE_WATCHER: Mutex<Option<capture_watcher::CaptureWatcher>> = Mutex::new(None);
+
+// Global clipboard watcher (polls clipboard for new screenshot images)
+static CLIPBOARD_WATCHER: Mutex<Option<clipboard_watcher::ClipboardWatcher>> = Mutex::new(None);
 
 // Tauri event emitter implementation
 struct TauriEventEmitter {
@@ -815,6 +819,23 @@ fn stop_capture_watcher() {
     *CAPTURE_WATCHER.lock().unwrap() = None;
 }
 
+/// Start the clipboard watcher for the given session.
+fn start_clipboard_watcher_for_session(session: &database::Session, app: &AppHandle) {
+    let session_folder = std::path::PathBuf::from(&session.folder_path);
+    let captures_dir = session_folder.join("_captures");
+
+    // Ensure the _captures directory exists.
+    let _ = std::fs::create_dir_all(&captures_dir);
+
+    let watcher = clipboard_watcher::ClipboardWatcher::start(captures_dir, app.clone());
+    *CLIPBOARD_WATCHER.lock().unwrap() = Some(watcher);
+}
+
+/// Stop the clipboard watcher (signals background thread to exit).
+fn stop_clipboard_watcher() {
+    *CLIPBOARD_WATCHER.lock().unwrap() = None;
+}
+
 // ─── Session Manager Commands ────────────────────────────────────────────
 
 /// Determine capture type and generate PRD-compliant file name.
@@ -868,11 +889,13 @@ fn start_session(app: AppHandle) -> Result<database::Session, String> {
     };
 
     start_capture_watcher_for_session(&session, &app);
+    start_clipboard_watcher_for_session(&session, &app);
     Ok(session)
 }
 
 #[tauri::command]
 async fn end_session(session_id: String) -> Result<(), String> {
+    stop_clipboard_watcher();
     stop_capture_watcher();
 
     tauri::async_runtime::spawn_blocking(move || {
@@ -897,6 +920,7 @@ fn resume_session(session_id: String, app: AppHandle) -> Result<database::Sessio
     };
 
     start_capture_watcher_for_session(&session, &app);
+    start_clipboard_watcher_for_session(&session, &app);
     Ok(session)
 }
 
