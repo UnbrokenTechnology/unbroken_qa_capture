@@ -47,6 +47,7 @@ const mockSession = {
   environment_json: null,
   original_snip_path: null,
   created_at: '2024-01-01T10:00:00Z',
+  profile_id: null,
 }
 
 describe('IdleView', () => {

@@ -125,7 +125,7 @@ fn test_full_session_lifecycle_real_fs() {
     let (manager, emitter) = env.session_manager();
 
     // Start session
-    let session = manager.start_session().expect("start_session failed");
+    let session = manager.start_session(None).expect("start_session failed");
     assert_eq!(session.status, SessionStatus::Active);
 
     // Verify session folder exists on disk
@@ -217,7 +217,7 @@ fn test_bug_folder_naming_convention() {
     let env = TestEnv::new();
     let (manager, _) = env.session_manager();
 
-    let session = manager.start_session().unwrap();
+    let session = manager.start_session(None).unwrap();
     let session_id = session.id.clone();
 
     for expected_num in 1..=5_i32 {
@@ -247,7 +247,7 @@ fn test_session_resume_after_end() {
     let env = TestEnv::new();
     let (manager, emitter) = env.session_manager();
 
-    let session = manager.start_session().unwrap();
+    let session = manager.start_session(None).unwrap();
     let session_id = session.id.clone();
 
     // Capture a bug, then end session
@@ -283,7 +283,7 @@ fn test_crash_recovery_new_manager_instance() {
 
     // First manager instance — simulates the process before the crash
     let (manager1, _) = env.session_manager();
-    let session = manager1.start_session().unwrap();
+    let session = manager1.start_session(None).unwrap();
     let session_id = session.id.clone();
 
     let bug1 = manager1.start_bug_capture(&session_id).unwrap();
@@ -331,7 +331,7 @@ fn test_bug_capture_rejected_on_inactive_session() {
     let env = TestEnv::new();
     let (manager, _) = env.session_manager();
 
-    let session = manager.start_session().unwrap();
+    let session = manager.start_session(None).unwrap();
     let session_id = session.id.clone();
     manager.end_session(&session_id).unwrap();
 
@@ -360,7 +360,7 @@ fn test_capture_records_linked_to_bugs() {
     let env = TestEnv::new();
     let (manager, _) = env.session_manager();
 
-    let session = manager.start_session().unwrap();
+    let session = manager.start_session(None).unwrap();
     let session_id = session.id.clone();
     let bug = manager.start_bug_capture(&session_id).unwrap();
 
@@ -408,7 +408,7 @@ fn test_multiple_sessions_isolated() {
     let (manager, _) = env.session_manager();
 
     // Session A — 2 bugs
-    let session_a = manager.start_session().unwrap();
+    let session_a = manager.start_session(None).unwrap();
     let id_a = session_a.id.clone();
     let a_bug1 = manager.start_bug_capture(&id_a).unwrap();
     manager.end_bug_capture(&a_bug1.id).unwrap();
@@ -417,7 +417,7 @@ fn test_multiple_sessions_isolated() {
     manager.end_session(&id_a).unwrap();
 
     // Session B — 1 bug
-    let session_b = manager.start_session().unwrap();
+    let session_b = manager.start_session(None).unwrap();
     let id_b = session_b.id.clone();
     let b_bug1 = manager.start_bug_capture(&id_b).unwrap();
     manager.end_bug_capture(&b_bug1.id).unwrap();
@@ -452,7 +452,7 @@ fn test_file_watcher_simulated_detection() {
     let env = TestEnv::new();
     let (manager, _) = env.session_manager();
 
-    let session = manager.start_session().unwrap();
+    let session = manager.start_session(None).unwrap();
     let session_id = session.id.clone();
     let bug = manager.start_bug_capture(&session_id).unwrap();
 
@@ -548,7 +548,7 @@ fn test_hotkey_state_transitions() {
     assert_eq!(manager.get_active_session_id(), None);
     assert_eq!(manager.get_active_bug_id(), None);
 
-    let session = manager.start_session().unwrap();
+    let session = manager.start_session(None).unwrap();
     let session_id = session.id.clone();
 
     // After start: active session, no active bug
@@ -575,7 +575,7 @@ fn test_end_session_clears_active_bug() {
     let env = TestEnv::new();
     let (manager, _) = env.session_manager();
 
-    let session = manager.start_session().unwrap();
+    let session = manager.start_session(None).unwrap();
     let session_id = session.id.clone();
 
     // Start a bug but don't end it (simulates sudden session end)
@@ -594,7 +594,7 @@ fn test_event_payload_content() {
     let env = TestEnv::new();
     let (manager, emitter) = env.session_manager();
 
-    let session = manager.start_session().unwrap();
+    let session = manager.start_session(None).unwrap();
     let session_id = session.id.clone();
 
     // Validate session:started payload

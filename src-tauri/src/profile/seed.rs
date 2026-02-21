@@ -181,6 +181,7 @@ fn build_contio_profile() -> QaProfile {
                 field_type: CustomFieldType::Text,
                 default_value: None,
                 required: true,
+                options: None,
             },
             CustomMetadataField {
                 key: "software_version".to_string(),
@@ -188,6 +189,42 @@ fn build_contio_profile() -> QaProfile {
                 field_type: CustomFieldType::Text,
                 default_value: None,
                 required: false,
+                options: None,
+            },
+            CustomMetadataField {
+                key: "impact".to_string(),
+                label: "Impact Level".to_string(),
+                field_type: CustomFieldType::Select,
+                default_value: None,
+                required: true,
+                options: Some(vec![
+                    "Critical".to_string(),
+                    "High".to_string(),
+                    "Medium".to_string(),
+                    "Low".to_string(),
+                ]),
+            },
+            CustomMetadataField {
+                key: "workaround".to_string(),
+                label: "Workaround Available".to_string(),
+                field_type: CustomFieldType::Select,
+                default_value: None,
+                required: false,
+                options: Some(vec![
+                    "Yes".to_string(),
+                    "No".to_string(),
+                    "Partial".to_string(),
+                ]),
+            },
+            CustomMetadataField {
+                key: "area_category".to_string(),
+                label: "Area / Category".to_string(),
+                field_type: CustomFieldType::Select,
+                default_value: None,
+                required: false,
+                // Options are empty here — the UI populates them at runtime
+                // from the profile's `area_categories` list.
+                options: Some(vec![]),
             },
         ],
 
@@ -306,11 +343,12 @@ mod tests {
     #[test]
     fn test_contio_profile_custom_fields() {
         let profile = build_contio_profile();
-        assert_eq!(profile.custom_fields.len(), 2);
+        assert_eq!(profile.custom_fields.len(), 5);
 
         let meeting_id = profile.custom_fields.iter().find(|f| f.key == "meeting_id").unwrap();
         assert!(meeting_id.required);
         assert_eq!(meeting_id.field_type, CustomFieldType::Text);
+        assert!(meeting_id.options.is_none());
 
         let version = profile
             .custom_fields
@@ -319,6 +357,27 @@ mod tests {
             .unwrap();
         assert!(!version.required);
         assert_eq!(version.field_type, CustomFieldType::Text);
+        assert!(version.options.is_none());
+
+        let impact = profile.custom_fields.iter().find(|f| f.key == "impact").unwrap();
+        assert!(impact.required);
+        assert_eq!(impact.field_type, CustomFieldType::Select);
+        let impact_opts = impact.options.as_ref().unwrap();
+        assert_eq!(impact_opts, &["Critical", "High", "Medium", "Low"]);
+
+        let workaround =
+            profile.custom_fields.iter().find(|f| f.key == "workaround").unwrap();
+        assert!(!workaround.required);
+        assert_eq!(workaround.field_type, CustomFieldType::Select);
+        let workaround_opts = workaround.options.as_ref().unwrap();
+        assert_eq!(workaround_opts, &["Yes", "No", "Partial"]);
+
+        let area_cat =
+            profile.custom_fields.iter().find(|f| f.key == "area_category").unwrap();
+        assert!(!area_cat.required);
+        assert_eq!(area_cat.field_type, CustomFieldType::Select);
+        let area_opts = area_cat.options.as_ref().unwrap();
+        assert!(area_opts.is_empty(), "area_category options should be empty (populated at runtime)");
     }
 
     #[test]

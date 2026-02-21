@@ -13,7 +13,8 @@ pub fn init_database(conn: &Connection) -> SqlResult<()> {
             session_notes TEXT,
             environment_json TEXT,
             original_snip_path TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            profile_id TEXT
         )",
         [],
     )?;
@@ -102,6 +103,22 @@ pub fn init_database(conn: &Connection) -> SqlResult<()> {
         conn.execute(
             "UPDATE bugs SET custom_metadata = json_object('meeting_id', meeting_id, 'software_version', software_version)
              WHERE meeting_id IS NOT NULL OR software_version IS NOT NULL",
+            [],
+        )?;
+    }
+
+    // Migration: add profile_id column to sessions table (if not already present)
+    // Links a session to the QA profile that was active when it was started.
+    let has_profile_id: bool = {
+        let mut stmt = conn.prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'profile_id'"
+        )?;
+        stmt.query_row([], |row| row.get::<_, i64>(0)).map(|c| c > 0)?
+    };
+
+    if !has_profile_id {
+        conn.execute(
+            "ALTER TABLE sessions ADD COLUMN profile_id TEXT",
             [],
         )?;
     }

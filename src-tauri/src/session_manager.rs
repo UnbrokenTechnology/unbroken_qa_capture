@@ -56,8 +56,11 @@ impl SessionManager {
         }
     }
 
-    /// Start a new QA session
-    pub fn start_session(&self) -> Result<Session, String> {
+    /// Start a new QA session.
+    ///
+    /// `profile_id` is the ID of the QA profile that was active when the session
+    /// was started. Pass `None` if no profile is active.
+    pub fn start_session(&self, profile_id: Option<String>) -> Result<Session, String> {
         // Guard: reject if a session is already active
         {
             let active = self.active_session.lock().unwrap();
@@ -96,6 +99,7 @@ impl SessionManager {
             environment_json: None,
             original_snip_path: None,
             created_at: now.to_rfc3339(),
+            profile_id,
         };
 
         // Save to database
@@ -506,7 +510,7 @@ mod tests {
     fn test_start_session() {
         let (manager, emitter) = create_test_manager();
 
-        let result = manager.start_session();
+        let result = manager.start_session(None);
         assert!(result.is_ok());
 
         let session = result.unwrap();
@@ -526,7 +530,7 @@ mod tests {
     fn test_end_session() {
         let (manager, emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
         let session_id = session.id.clone();
 
         let result = manager.end_session(&session_id);
@@ -545,7 +549,7 @@ mod tests {
     fn test_resume_session() {
         let (manager, emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
         let session_id = session.id.clone();
 
         manager.end_session(&session_id).unwrap();
@@ -570,7 +574,7 @@ mod tests {
     fn test_start_bug_capture() {
         let (manager, emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
         let session_id = session.id.clone();
 
         let result = manager.start_bug_capture(&session_id);
@@ -595,7 +599,7 @@ mod tests {
     fn test_start_multiple_bugs() {
         let (manager, _emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
         let session_id = session.id.clone();
 
         let bug1 = manager.start_bug_capture(&session_id).unwrap();
@@ -616,7 +620,7 @@ mod tests {
     fn test_end_bug_capture() {
         let (manager, emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
         let session_id = session.id.clone();
 
         let bug = manager.start_bug_capture(&session_id).unwrap();
@@ -638,7 +642,7 @@ mod tests {
     fn test_start_bug_capture_inactive_session() {
         let (manager, _emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
         let session_id = session.id.clone();
 
         manager.end_session(&session_id).unwrap();
@@ -661,7 +665,7 @@ mod tests {
     fn test_resume_session_restores_capturing_bug() {
         let (manager, _emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
         let session_id = session.id.clone();
 
         // Start a bug capture (sets active_bug)
@@ -684,7 +688,7 @@ mod tests {
     fn test_resume_session_no_capturing_bug_leaves_active_bug_none() {
         let (manager, _emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
         let session_id = session.id.clone();
 
         // Start and end a bug capture before crash
@@ -704,7 +708,7 @@ mod tests {
     fn test_end_session_clears_active_bug() {
         let (manager, _emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
         let session_id = session.id.clone();
 
         let bug = manager.start_bug_capture(&session_id).unwrap();
@@ -721,7 +725,7 @@ mod tests {
     fn test_captures_and_unsorted_folders_created_on_session_start() {
         let (manager, _emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
 
         // The mock filesystem should have recorded both the session folder
         // and both subdirectories
@@ -764,7 +768,7 @@ mod tests {
     fn test_folder_naming_format() {
         let (manager, _emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
 
         // Verify folder name format: YYYY-MM-DD_<short-id>
         let folder_name = std::path::Path::new(&session.folder_path)
@@ -791,7 +795,7 @@ mod tests {
     fn test_bug_folder_naming_format() {
         let (manager, _emitter) = create_test_manager();
 
-        let session = manager.start_session().unwrap();
+        let session = manager.start_session(None).unwrap();
         let session_id = session.id.clone();
 
         let bug = manager.start_bug_capture(&session_id).unwrap();
@@ -804,5 +808,24 @@ mod tests {
             .unwrap();
 
         assert_eq!(bug_folder_name, "bug_001");
+    }
+
+    #[test]
+    fn test_start_session_with_profile_id() {
+        let (manager, _emitter) = create_test_manager();
+
+        let result = manager.start_session(Some("profile-123".to_string()));
+        assert!(result.is_ok());
+
+        let session = result.unwrap();
+        assert_eq!(session.profile_id, Some("profile-123".to_string()));
+    }
+
+    #[test]
+    fn test_start_session_without_profile_id() {
+        let (manager, _emitter) = create_test_manager();
+
+        let session = manager.start_session(None).unwrap();
+        assert_eq!(session.profile_id, None);
     }
 }

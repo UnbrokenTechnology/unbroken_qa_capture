@@ -205,6 +205,7 @@ mod tests {
                 field_type: CustomFieldType::Select,
                 default_value: Some("medium".to_string()),
                 required: false,
+                options: Some(vec!["low".to_string(), "medium".to_string(), "high".to_string()]),
             }],
             title_conventions: None,
             created_at: "2024-01-01T00:00:00Z".to_string(),

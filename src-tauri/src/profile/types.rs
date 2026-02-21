@@ -44,6 +44,10 @@ pub struct CustomMetadataField {
     pub field_type: CustomFieldType,
     pub default_value: Option<String>,
     pub required: bool,
+    /// Allowed option values for `Select`-type fields.
+    /// Empty or absent means the options are populated at runtime (e.g. from `area_categories`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<String>>,
 }
 
 /// Supported field types for custom metadata
@@ -122,6 +126,7 @@ mod tests {
                     field_type: CustomFieldType::Select,
                     default_value: Some("medium".to_string()),
                     required: false,
+                    options: Some(vec!["low".to_string(), "medium".to_string(), "high".to_string()]),
                 },
             ],
             title_conventions: Some(TitleConventions {

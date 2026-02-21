@@ -67,6 +67,7 @@ const mockSession = {
   environment_json: null,
   original_snip_path: null,
   created_at: new Date().toISOString(),
+  profile_id: null,
 }
 
 const mockBug = {

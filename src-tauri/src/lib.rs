@@ -921,13 +921,13 @@ pub(crate) fn next_capture_number(dir: &std::path::Path) -> u32 {
 }
 
 #[tauri::command]
-fn start_session(app: AppHandle) -> Result<database::Session, String> {
+fn start_session(profile_id: Option<String>, app: AppHandle) -> Result<database::Session, String> {
     let session = {
         let manager_guard = SESSION_MANAGER.lock().unwrap();
         let manager = manager_guard
             .as_ref()
             .ok_or("Session manager not initialized")?;
-        manager.start_session()?
+        manager.start_session(profile_id)?
     };
 
     start_capture_watcher_for_session(&session, &app);
@@ -2725,6 +2725,7 @@ mod tests {
             environment_json: Some(r#"{"os":"Windows 11","display_resolution":"1920x1080","dpi_scaling":"100%","ram":"16GB","cpu":"Intel i7","foreground_app":"TestApp"}"#.to_string()),
             original_snip_path: None,
             created_at: "2024-01-01T10:00:00Z".to_string(),
+            profile_id: None,
         };
         SessionRepository::new(conn).create(&session).unwrap();
 
@@ -2838,6 +2839,7 @@ mod tests {
             environment_json: None,
             original_snip_path: None,
             created_at: "2024-01-01T10:00:00Z".to_string(),
+            profile_id: None,
         };
 
         let data = bug_to_template_data(&bug, &[], &session);
@@ -2881,6 +2883,7 @@ mod tests {
             environment_json: None,
             original_snip_path: None,
             created_at: "2024-01-01T10:00:00Z".to_string(),
+            profile_id: None,
         };
 
         let data = bug_to_template_data(&bug, &[], &session);

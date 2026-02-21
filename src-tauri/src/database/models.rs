@@ -13,6 +13,9 @@ pub struct Session {
     pub environment_json: Option<String>,
     pub original_snip_path: Option<String>,
     pub created_at: String,
+    /// The QA profile active when this session was started. None if no profile
+    /// was active (e.g. sessions created before profiles were introduced).
+    pub profile_id: Option<String>,
 }
 
 /// Session status enum
@@ -295,6 +298,7 @@ mod tests {
             environment_json: None,
             original_snip_path: None,
             created_at: "2024-01-01T00:00:00Z".to_string(),
+            profile_id: None,
         };
 
         let json = serde_json::to_string(&session).unwrap();

@@ -30,8 +30,8 @@ impl<'a> SessionRepository<'a> {
 impl<'a> SessionOps for SessionRepository<'a> {
     fn create(&self, session: &Session) -> SqlResult<()> {
         self.conn.execute(
-            "INSERT INTO sessions (id, started_at, ended_at, status, folder_path, session_notes, environment_json, original_snip_path, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO sessions (id, started_at, ended_at, status, folder_path, session_notes, environment_json, original_snip_path, created_at, profile_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 session.id,
                 session.started_at,
@@ -42,6 +42,7 @@ impl<'a> SessionOps for SessionRepository<'a> {
                 session.environment_json,
                 session.original_snip_path,
                 session.created_at,
+                session.profile_id,
             ],
         )?;
         Ok(())
@@ -49,7 +50,7 @@ impl<'a> SessionOps for SessionRepository<'a> {
 
     fn get(&self, id: &str) -> SqlResult<Option<Session>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, started_at, ended_at, status, folder_path, session_notes, environment_json, original_snip_path, created_at
+            "SELECT id, started_at, ended_at, status, folder_path, session_notes, environment_json, original_snip_path, created_at, profile_id
              FROM sessions WHERE id = ?1"
         )?;
 
@@ -67,6 +68,7 @@ impl<'a> SessionOps for SessionRepository<'a> {
                 environment_json: row.get(6)?,
                 original_snip_path: row.get(7)?,
                 created_at: row.get(8)?,
+                profile_id: row.get(9)?,
             }))
         } else {
             Ok(None)
@@ -76,7 +78,7 @@ impl<'a> SessionOps for SessionRepository<'a> {
     fn update(&self, session: &Session) -> SqlResult<()> {
         self.conn.execute(
             "UPDATE sessions SET started_at = ?2, ended_at = ?3, status = ?4, folder_path = ?5,
-             session_notes = ?6, environment_json = ?7, original_snip_path = ?8
+             session_notes = ?6, environment_json = ?7, original_snip_path = ?8, profile_id = ?9
              WHERE id = ?1",
             params![
                 session.id,
@@ -87,6 +89,7 @@ impl<'a> SessionOps for SessionRepository<'a> {
                 session.session_notes,
                 session.environment_json,
                 session.original_snip_path,
+                session.profile_id,
             ],
         )?;
         Ok(())
@@ -99,7 +102,7 @@ impl<'a> SessionOps for SessionRepository<'a> {
 
     fn list(&self) -> SqlResult<Vec<Session>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, started_at, ended_at, status, folder_path, session_notes, environment_json, original_snip_path, created_at
+            "SELECT id, started_at, ended_at, status, folder_path, session_notes, environment_json, original_snip_path, created_at, profile_id
              FROM sessions ORDER BY started_at DESC"
         )?;
 
@@ -115,6 +118,7 @@ impl<'a> SessionOps for SessionRepository<'a> {
                 environment_json: row.get(6)?,
                 original_snip_path: row.get(7)?,
                 created_at: row.get(8)?,
+                profile_id: row.get(9)?,
             })
         })?;
 
@@ -123,7 +127,7 @@ impl<'a> SessionOps for SessionRepository<'a> {
 
     fn get_active_session(&self) -> SqlResult<Option<Session>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, started_at, ended_at, status, folder_path, session_notes, environment_json, original_snip_path, created_at
+            "SELECT id, started_at, ended_at, status, folder_path, session_notes, environment_json, original_snip_path, created_at, profile_id
              FROM sessions WHERE status = 'active' ORDER BY started_at DESC LIMIT 1"
         )?;
 
@@ -141,6 +145,7 @@ impl<'a> SessionOps for SessionRepository<'a> {
                 environment_json: row.get(6)?,
                 original_snip_path: row.get(7)?,
                 created_at: row.get(8)?,
+                profile_id: row.get(9)?,
             }))
         } else {
             Ok(None)
@@ -195,6 +200,7 @@ mod tests {
             environment_json: Some(r#"{"os":"Windows 11"}"#.to_string()),
             original_snip_path: None,
             created_at: "2024-01-01T10:00:00Z".to_string(),
+            profile_id: None,
         }
     }
 
@@ -316,5 +322,29 @@ mod tests {
         let summaries = repo.get_summaries().unwrap();
         assert_eq!(summaries.len(), 2);
         assert_eq!(summaries[0].bug_count, 0);
+    }
+
+    #[test]
+    fn test_profile_id_persisted() {
+        let db = Database::in_memory().unwrap();
+        let repo = SessionRepository::new(db.connection());
+
+        let mut session = create_test_session("test-profile-id-1");
+        session.profile_id = Some("profile-abc".to_string());
+
+        repo.create(&session).unwrap();
+        let retrieved = repo.get("test-profile-id-1").unwrap().unwrap();
+        assert_eq!(retrieved.profile_id, Some("profile-abc".to_string()));
+    }
+
+    #[test]
+    fn test_profile_id_null_by_default() {
+        let db = Database::in_memory().unwrap();
+        let repo = SessionRepository::new(db.connection());
+
+        let session = create_test_session("test-profile-id-2");
+        repo.create(&session).unwrap();
+        let retrieved = repo.get("test-profile-id-2").unwrap().unwrap();
+        assert_eq!(retrieved.profile_id, None);
     }
 }

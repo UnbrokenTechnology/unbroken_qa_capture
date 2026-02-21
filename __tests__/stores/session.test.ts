@@ -39,6 +39,7 @@ const mockSession: Session = {
   environment_json: '{"os":"Windows 11"}',
   original_snip_path: null,
   created_at: '2024-01-01T10:00:00Z',
+  profile_id: null,
 }
 
 const mockSessionSummary: SessionSummary = {

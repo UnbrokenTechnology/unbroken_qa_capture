@@ -155,6 +155,7 @@ describe('Session type contract', () => {
     environment_json: null,
     original_snip_path: null,
     created_at: '2024-01-15T10:00:00Z',
+    profile_id: null,
   }
 
   it('mock satisfies Session interface (compile-time + runtime check)', () => {
@@ -170,13 +171,14 @@ describe('Session type contract', () => {
       environment_json: 'nullable-string',
       original_snip_path: 'nullable-string',
       created_at: 'string',
+      profile_id: 'nullable-string',
     }
     assertShape(mockSession as unknown as Record<string, unknown>, spec, 'Session')
   })
 
-  it('has exactly 9 fields matching the Rust struct', () => {
-    // Rust Session has 9 pub fields; count here must match.
-    expect(Object.keys(mockSession)).toHaveLength(9)
+  it('has exactly 10 fields matching the Rust struct', () => {
+    // Rust Session has 10 pub fields; count here must match.
+    expect(Object.keys(mockSession)).toHaveLength(10)
   })
 
   it('field names are snake_case (no camelCase conversion at IPC boundary)', () => {
@@ -189,6 +191,8 @@ describe('Session type contract', () => {
     expect(keys).not.toContain('environmentJson')
     expect(keys).not.toContain('originalSnipPath')
     expect(keys).not.toContain('createdAt')
+    expect(keys).not.toContain('profileId')
+    expect(keys).toContain('profile_id')
   })
 
   it('status field accepts all valid SessionStatus values', () => {

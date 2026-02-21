@@ -96,8 +96,8 @@ export async function updateTrayTooltip(tooltip: string): Promise<void> {
 // ============================================================================
 
 // Session operations
-export async function createSession(_session: Partial<Session>): Promise<Session> {
-  return await invoke<Session>('start_session')
+export async function createSession(session: Partial<Session>): Promise<Session> {
+  return await invoke<Session>('start_session', { profileId: session.profile_id ?? null })
 }
 
 export async function getSession(_id: string): Promise<Session | null> {

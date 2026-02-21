@@ -49,6 +49,7 @@ const mockActiveSession: Session = {
   environment_json: '{"os":"Windows 11"}',
   original_snip_path: null,
   created_at: new Date().toISOString(),
+  profile_id: null,
 }
 
 const mockEndedSession: Session = {
@@ -61,6 +62,7 @@ const mockEndedSession: Session = {
   environment_json: null,
   original_snip_path: null,
   created_at: '2024-01-01T10:00:00Z',
+  profile_id: null,
 }
 
 const mockBug: BackendBug = {

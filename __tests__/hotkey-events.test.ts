@@ -189,6 +189,7 @@ describe('Hotkey event listeners (App.vue)', () => {
         environment_json: null,
         original_snip_path: null,
         created_at: new Date().toISOString(),
+        profile_id: null,
       }
       vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
       // sessionStore.startSession -> createSession -> tauri.createSession
@@ -211,6 +212,7 @@ describe('Hotkey event listeners (App.vue)', () => {
         environment_json: null,
         original_snip_path: null,
         created_at: new Date().toISOString(),
+        profile_id: null,
       }
       vi.mocked(tauri.getActiveSession).mockResolvedValue(mockSession)
       // sessionStore.endSession calls invoke('end_session') directly
@@ -249,6 +251,7 @@ describe('Hotkey event listeners (App.vue)', () => {
         environment_json: null,
         original_snip_path: null,
         created_at: new Date().toISOString(),
+        profile_id: null,
       }
       const mockBug = {
         id: 'bug-1',
@@ -312,6 +315,7 @@ describe('Hotkey event listeners (App.vue)', () => {
         environment_json: null,
         original_snip_path: null,
         created_at: new Date().toISOString(),
+        profile_id: null,
       }
       const mockBug = {
         id: 'bug-1',

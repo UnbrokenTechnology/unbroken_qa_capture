@@ -427,6 +427,7 @@ describe('App.vue', () => {
       environment_json: null,
       original_snip_path: null,
       created_at: new Date().toISOString(),
+      profile_id: null,
     })
 
     it('should not redirect from bug-detail when session is updated (not started)', async () => {

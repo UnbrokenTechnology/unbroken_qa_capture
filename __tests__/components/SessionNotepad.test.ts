@@ -55,6 +55,7 @@ const mockActiveSession: Session = {
   environment_json: null,
   original_snip_path: null,
   created_at: new Date().toISOString(),
+  profile_id: null,
 }
 
 describe('SessionNotepad.vue', () => {

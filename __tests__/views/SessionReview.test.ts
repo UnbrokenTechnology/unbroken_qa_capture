@@ -62,7 +62,8 @@ const createMockSession = (id: string): Session => ({
   session_notes: 'Test session notes',
   environment_json: null,
   original_snip_path: null,
-  created_at: '2024-01-15T10:00:00Z'
+  created_at: '2024-01-15T10:00:00Z',
+  profile_id: null,
 })
 
 const createMockBug = (id: string, sessionId: string, displayId: string): Bug => ({

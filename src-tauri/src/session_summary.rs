@@ -327,6 +327,7 @@ mod tests {
             environment_json: None,
             original_snip_path: None,
             created_at: "2024-01-15T10:00:00Z".to_string(),
+            profile_id: None,
         };
 
         SessionRepository::new(conn).create(&session).unwrap();

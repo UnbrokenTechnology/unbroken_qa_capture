@@ -16,6 +16,8 @@ export interface Session {
   environment_json: string | null
   original_snip_path: string | null
   created_at: string
+  /** The QA profile active when this session was started. Null if none. */
+  profile_id: string | null
 }
 
 export interface SessionSummary {
@@ -177,6 +179,10 @@ export interface CustomMetadataField {
   field_type: CustomFieldType
   default_value: string | null
   required: boolean
+  /** Allowed option values for `select`-type fields.
+   *  Empty array means options are populated at runtime (e.g. from `area_categories`).
+   *  Absent/undefined for non-select fields. */
+  options?: string[]
 }
 
 export interface TitleConventions {

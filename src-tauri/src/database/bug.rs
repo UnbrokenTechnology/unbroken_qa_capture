@@ -237,6 +237,7 @@ mod tests {
             environment_json: None,
             original_snip_path: None,
             created_at: "2024-01-01T10:00:00Z".to_string(),
+            profile_id: None,
         };
         let repo = SessionRepository::new(db.connection());
         repo.create(&session).unwrap();
