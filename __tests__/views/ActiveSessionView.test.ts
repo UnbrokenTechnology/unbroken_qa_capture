@@ -106,7 +106,7 @@ describe('ActiveSessionView', () => {
           component: ActiveSessionView,
         },
         {
-          path: '/session-review/:id',
+          path: '/session-review/:sessionId',
           name: 'session-review',
           component: { template: '<div>review</div>' },
         },
@@ -420,7 +420,7 @@ describe('ActiveSessionView', () => {
 
       expect(endSessionSpy).toHaveBeenCalledWith('session-1')
       expect(pushSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'session-review', params: { id: 'session-1' } })
+        expect.objectContaining({ name: 'session-review', params: { sessionId: 'session-1' } })
       )
     })
 

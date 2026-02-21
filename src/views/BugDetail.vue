@@ -49,6 +49,17 @@
           CAPTURING
         </q-badge>
         <q-btn
+          v-if="bug.status === 'capturing'"
+          color="secondary"
+          icon="stop"
+          label="End Bug Capture"
+          class="q-mr-sm"
+          :loading="endingCapture"
+          @click="handleEndBugCapture"
+        >
+          <q-tooltip>Stop capturing screenshots for this bug</q-tooltip>
+        </q-btn>
+        <q-btn
           v-if="sessionStore.activeSession && bug.status !== 'capturing'"
           color="red"
           icon="fiber_manual_record"
@@ -737,6 +748,7 @@ const $q = useQuasar()
 
 const currentSlide = ref(0)
 const copying = ref(false)
+const endingCapture = ref(false)
 const showAnnotator = ref(false)
 const selectedScreenshot = ref('')
 const selectedScreenshotIndex = ref(0)
@@ -966,6 +978,31 @@ async function handleResumeCaptureForBug() {
       position: 'bottom-right',
       timeout: 3000,
     })
+  }
+}
+
+// End capturing screenshots for this bug
+async function handleEndBugCapture() {
+  if (!bug.value) return
+  endingCapture.value = true
+  try {
+    await bugStore.completeBugCapture(bug.value.id)
+    $q.notify({
+      type: 'positive',
+      icon: 'stop',
+      message: `Capture ended for ${bug.value.display_id}`,
+      position: 'top',
+      timeout: 3000,
+    })
+  } catch {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to end bug capture',
+      position: 'bottom-right',
+      timeout: 3000,
+    })
+  } finally {
+    endingCapture.value = false
   }
 }
 

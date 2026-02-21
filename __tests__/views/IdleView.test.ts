@@ -23,6 +23,7 @@ vi.mock('@/api/tauri', () => ({
   createSession: vi.fn(),
   getActiveSession: vi.fn().mockResolvedValue(null),
   getSessionSummaries: vi.fn().mockResolvedValue([]),
+  getClaudeStatus: vi.fn().mockResolvedValue({ status: 'ready', version: 'Claude Code' }),
 }))
 
 // Mock Tauri event listeners
@@ -67,6 +68,7 @@ describe('IdleView', () => {
     vi.clearAllMocks()
     vi.mocked(tauri.getSessionSummaries).mockResolvedValue([])
     vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
+    vi.mocked(tauri.getClaudeStatus).mockResolvedValue({ status: 'ready', version: 'Claude Code' })
   })
 
   function mountIdleView() {
@@ -84,6 +86,7 @@ describe('IdleView', () => {
           QBadge: { template: '<span />' },
           QSpinner: { template: '<div />' },
           QChip: { template: '<span />' },
+          QBanner: { template: '<div class="q-banner" v-bind="$attrs"><slot name="avatar" /><slot /><slot name="action" /></div>' },
         }
       }
     })
@@ -184,6 +187,66 @@ describe('IdleView', () => {
       await flushPromises()
 
       expect(sessionStore.error).toBeNull()
+    })
+  })
+
+  describe('Claude connection banner', () => {
+    it('does not show banner when Claude status is ready', async () => {
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({ status: 'ready', version: 'Claude Code' })
+
+      const wrapper = mountIdleView()
+      await flushPromises()
+
+      expect(wrapper.find('.claude-banner').exists()).toBe(false)
+    })
+
+    it('shows banner when Claude is not installed', async () => {
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+        status: 'notInstalled',
+        message: 'Claude Code not found on this system',
+      })
+
+      const wrapper = mountIdleView()
+      await flushPromises()
+
+      const banner = wrapper.find('.claude-banner')
+      expect(banner.exists()).toBe(true)
+      expect(banner.text()).toContain('AI features require Claude Code')
+    })
+
+    it('shows banner when Claude is not authenticated', async () => {
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+        status: 'notAuthenticated',
+        version: 'Claude Code',
+        message: 'Claude Code is installed but not signed in',
+      })
+
+      const wrapper = mountIdleView()
+      await flushPromises()
+
+      const banner = wrapper.find('.claude-banner')
+      expect(banner.exists()).toBe(true)
+      expect(banner.text()).toContain('not signed in')
+    })
+
+    it('dismisses banner when close button is clicked', async () => {
+      vi.mocked(tauri.getClaudeStatus).mockResolvedValue({
+        status: 'notInstalled',
+        message: 'Claude Code not found on this system',
+      })
+
+      const wrapper = mountIdleView()
+      await flushPromises()
+
+      expect(wrapper.find('.claude-banner').exists()).toBe(true)
+
+      // The close button is inside the banner's action slot
+      const closeBtn = wrapper.find('.claude-banner button.q-btn')
+      expect(closeBtn.exists()).toBe(true)
+      await closeBtn.trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find('.claude-banner').exists()).toBe(false)
     })
   })
 })

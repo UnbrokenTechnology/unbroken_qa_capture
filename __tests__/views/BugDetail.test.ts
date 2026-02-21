@@ -18,6 +18,8 @@ vi.mock('@/api/tauri', () => ({
   getBugCaptures: vi.fn().mockResolvedValue([]),
   getBug: vi.fn().mockResolvedValue(null),
   updateCaptureConsoleFlag: vi.fn().mockResolvedValue(undefined),
+  updateBug: vi.fn().mockResolvedValue(undefined),
+  updateBugType: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Create a mock notify function
@@ -525,6 +527,74 @@ describe('BugDetail', () => {
       expect.objectContaining({
         type: 'negative',
         message: 'Failed to update console capture status',
+      })
+    )
+  })
+
+  it('should display End Bug Capture button when bug status is capturing', async () => {
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    bug.status = 'capturing'
+    store.backendBugs.push(bug)
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('End Bug Capture')
+  })
+
+  it('should not display End Bug Capture button when bug status is not capturing', async () => {
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    bug.status = 'captured'
+    store.backendBugs.push(bug)
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('End Bug Capture')
+  })
+
+  it('should call completeBugCapture when End Bug Capture button is clicked', async () => {
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    bug.status = 'capturing'
+    store.backendBugs.push(bug)
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button')
+    const endCaptureBtn = buttons.find(b => b.text().includes('End Bug Capture'))
+    expect(endCaptureBtn).toBeDefined()
+
+    await endCaptureBtn!.trigger('click')
+    await flushPromises()
+
+    // completeBugCapture calls updateBackendBug which calls tauri.updateBug
+    const tauriApi = await import('@/api/tauri')
+    expect(tauriApi.updateBug).toHaveBeenCalledWith('1', { status: 'captured' })
+  })
+
+  it('should show success notification after ending bug capture', async () => {
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    bug.status = 'capturing'
+    store.backendBugs.push(bug)
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    const buttons = wrapper.findAll('button')
+    const endCaptureBtn = buttons.find(b => b.text().includes('End Bug Capture'))
+
+    await endCaptureBtn!.trigger('click')
+    await flushPromises()
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'positive',
+        message: 'Capture ended for BUG-001',
       })
     )
   })
