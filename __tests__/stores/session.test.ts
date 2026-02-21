@@ -251,7 +251,7 @@ describe('Session Store', () => {
       const store = useSessionStore()
       vi.mocked(tauri.createSession).mockResolvedValue(mockSession)
 
-      const result = await store.startSession({ folder_path: '/test' })
+      const result = await store.startSession(null)
 
       expect(result.status).toBe('active')
       expect(tauri.createSession).toHaveBeenCalled()

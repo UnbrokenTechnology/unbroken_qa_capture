@@ -20,6 +20,7 @@ vi.mock('@/api/tauri', () => ({
   updateCaptureConsoleFlag: vi.fn().mockResolvedValue(undefined),
   updateBug: vi.fn().mockResolvedValue(undefined),
   updateBugType: vi.fn().mockResolvedValue(undefined),
+  updateBugTitle: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Create a mock notify function
@@ -93,6 +94,7 @@ describe('BugDetail', () => {
     // Reset tauri API mocks
     const tauriApi = await import('@/api/tauri')
     vi.mocked(tauriApi.getBugCaptures).mockResolvedValue([])
+    vi.mocked(tauriApi.updateBugTitle).mockClear()
 
     router = createRouter({
       history: createMemoryHistory(),
@@ -122,6 +124,11 @@ describe('BugDetail', () => {
           QCard: { template: '<div><slot /></div>' },
           QCardSection: { template: '<div><slot /></div>' },
           QBtn: { template: '<button @click="$attrs.onClick">{{ $attrs.label }}<slot /></button>' },
+          QInput: {
+            template: '<input :value="modelValue" :placeholder="$attrs.placeholder" @input="$emit(\'update:modelValue\', $event.target.value)" @blur="$attrs.onBlur && $attrs.onBlur()" />',
+            props: ['modelValue'],
+            emits: ['update:modelValue'],
+          },
           QCarousel: { template: '<div><slot /></div>' },
           QCarouselSlide: { template: '<div><slot /></div>' },
           QImg: { template: '<img />' },
@@ -149,7 +156,9 @@ describe('BugDetail', () => {
     const wrapper = await mountComponent('1')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Test Bug Title')
+    // Title is rendered as an input — check its value
+    const titleInput = wrapper.find('input')
+    expect(titleInput.element.value).toBe('Test Bug Title')
     expect(wrapper.text()).toContain('bug')
     expect(wrapper.text()).toContain('/test/path')
   })
@@ -405,7 +414,9 @@ describe('BugDetail', () => {
     await flushPromises()
 
     expect(tauriApi.getBug).toHaveBeenCalledWith('42')
-    expect(wrapper.text()).toContain('Test Bug Title')
+    // Title is rendered as an input — check its value
+    const titleInput = wrapper.find('input')
+    expect(titleInput.element.value).toBe('Test Bug Title')
   })
 
   it('should display "Mark as Console" button on screenshot captures', async () => {
@@ -595,6 +606,91 @@ describe('BugDetail', () => {
       expect.objectContaining({
         type: 'positive',
         message: 'Capture ended for BUG-001',
+      })
+    )
+  })
+
+  it('should render title input with the bug title as its value', async () => {
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    const titleInput = wrapper.find('input')
+    expect(titleInput.exists()).toBe(true)
+    expect(titleInput.element.value).toBe('Test Bug Title')
+  })
+
+  it('should render title input with placeholder when title is null', async () => {
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    bug.title = null
+    store.backendBugs.push(bug)
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    const titleInput = wrapper.find('input')
+    expect(titleInput.exists()).toBe(true)
+    expect(titleInput.attributes('placeholder')).toBe('Enter bug title...')
+  })
+
+  it('should call updateBugTitle with new value on blur', async () => {
+    const tauriApi = await import('@/api/tauri')
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    const titleInput = wrapper.find('input')
+    await titleInput.setValue('Updated Bug Title')
+    await titleInput.trigger('blur')
+    await flushPromises()
+
+    expect(tauriApi.updateBugTitle).toHaveBeenCalledWith('1', 'Updated Bug Title')
+  })
+
+  it('should not call updateBugTitle when title is unchanged on blur', async () => {
+    const tauriApi = await import('@/api/tauri')
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    const titleInput = wrapper.find('input')
+    // Trigger blur without changing the value
+    await titleInput.trigger('blur')
+    await flushPromises()
+
+    expect(tauriApi.updateBugTitle).not.toHaveBeenCalled()
+  })
+
+  it('should show error notification when updateBugTitle fails', async () => {
+    const tauriApi = await import('@/api/tauri')
+    vi.mocked(tauriApi.updateBugTitle).mockRejectedValueOnce(new Error('DB error'))
+
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    const titleInput = wrapper.find('input')
+    await titleInput.setValue('Failing Title')
+    await titleInput.trigger('blur')
+    await flushPromises()
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'negative',
+        message: 'Failed to save title',
       })
     )
   })

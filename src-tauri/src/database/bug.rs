@@ -380,4 +380,47 @@ mod tests {
         let next = repo.get_next_bug_number("session-7").unwrap();
         assert_eq!(next, 2);
     }
+
+    #[test]
+    fn test_update_bug_title() {
+        let db = Database::in_memory().unwrap();
+        create_test_session(&db, "session-8");
+        let repo = BugRepository::new(db.connection());
+        let bug = create_test_bug("session-8", "bug-title-1", 1);
+
+        repo.create(&bug).unwrap();
+
+        // Update the title via update_partial
+        let update = BugUpdate {
+            title: Some("Updated title from test".to_string()),
+            ..Default::default()
+        };
+        repo.update_partial("bug-title-1", &update).unwrap();
+
+        let updated = repo.get("bug-title-1").unwrap().unwrap();
+        assert_eq!(updated.title, Some("Updated title from test".to_string()));
+        // Other fields should remain unchanged
+        assert_eq!(updated.notes, Some("Test notes".to_string()));
+        assert_eq!(updated.status, BugStatus::Captured);
+    }
+
+    #[test]
+    fn test_update_bug_title_to_empty() {
+        let db = Database::in_memory().unwrap();
+        create_test_session(&db, "session-9");
+        let repo = BugRepository::new(db.connection());
+        let bug = create_test_bug("session-9", "bug-title-2", 1);
+
+        repo.create(&bug).unwrap();
+
+        // Update title to empty string
+        let update = BugUpdate {
+            title: Some(String::new()),
+            ..Default::default()
+        };
+        repo.update_partial("bug-title-2", &update).unwrap();
+
+        let updated = repo.get("bug-title-2").unwrap().unwrap();
+        assert_eq!(updated.title, Some(String::new()));
+    }
 }

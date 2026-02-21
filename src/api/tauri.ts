@@ -164,6 +164,10 @@ export async function updateBugDescription(bugId: string, description: string): 
   await invoke('update_bug_description', { bugId, description })
 }
 
+export async function updateBugTitle(bugId: string, title: string): Promise<void> {
+  await invoke('update_bug_title', { bugId, title })
+}
+
 /** Resume capturing for an existing bug — sets status back to 'capturing' and marks it as the active bug. */
 export async function resumeBugCapture(bugId: string): Promise<Bug> {
   return await invoke<Bug>('resume_bug_capture', { bugId })

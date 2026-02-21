@@ -33,9 +33,14 @@
           class="q-mr-md"
           @click="goBack"
         />
-        <div class="text-h4 flex-1">
-          {{ bug.title || bug.display_id }}
-        </div>
+        <q-input
+          v-model="titleDraft"
+          class="text-h4 flex-1 bug-title-input"
+          borderless
+          dense
+          placeholder="Enter bug title..."
+          @blur="saveTitle"
+        />
         <q-badge
           v-if="bug.status === 'capturing'"
           color="red"
@@ -756,6 +761,7 @@ const loading = ref(false)
 const captures = ref<Capture[]>([])
 const captureViewMode = ref<'timeline' | 'carousel'>('timeline')
 const descriptionDraft = ref('')
+const titleDraft = ref('')
 
 // Reassign capture state
 const showReassignDialog = ref(false)
@@ -863,6 +869,31 @@ function formatCaptureTime(isoString: string): string {
 // Navigate back to bug list
 function goBack() {
   router.back()
+}
+
+// Save title to database on blur
+async function saveTitle() {
+  if (!bug.value) return
+  const newTitle = titleDraft.value.trim()
+  const current = bug.value.title ?? ''
+  if (newTitle === current) return
+
+  try {
+    await tauri.updateBugTitle(bug.value.id, newTitle)
+    // Patch local store so the header reflects the new title immediately
+    const localBug = bugStore.backendBugs.find(b => b.id === bug.value!.id)
+    if (localBug) {
+      localBug.title = newTitle || null
+    }
+  } catch (err) {
+    console.error('Failed to save title:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to save title',
+      position: 'top',
+      timeout: 3000,
+    })
+  }
 }
 
 // Save description to database on blur
@@ -1118,12 +1149,21 @@ onMounted(async () => {
     }
   }
 
-  // Initialize description draft from the loaded bug
+  // Initialize title and description drafts from the loaded bug
+  titleDraft.value = bug.value?.title ?? ''
   descriptionDraft.value = bug.value?.description ?? ''
 
   // Load captures for this bug
   await refreshCaptures()
 })
+
+// Sync title draft when bug data changes (e.g. after store load)
+watch(
+  () => bug.value?.title,
+  (newVal) => {
+    titleDraft.value = newVal ?? ''
+  }
+)
 
 // Sync description draft when bug data changes (e.g. after store load)
 watch(
@@ -1172,6 +1212,12 @@ watch(
 
 .flex-1 {
   flex: 1;
+}
+
+.bug-title-input {
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
 }
 
 .screenshot-slide {

@@ -165,7 +165,7 @@ export const useSessionStore = defineStore('session', () => {
   // Actions - Session Lifecycle
   // ============================================================================
 
-  async function startSession(_sessionData?: Partial<Session>): Promise<Session> {
+  async function startSession(profileId?: string | null): Promise<Session> {
     starting.value = true
     error.value = null
     try {
@@ -174,7 +174,7 @@ export const useSessionStore = defineStore('session', () => {
         await endSession(activeSession.value.id)
       }
 
-      return await createSession({})
+      return await createSession({ profile_id: profileId ?? null })
     } catch (err) {
       error.value = err instanceof Error ? err.message : String(err)
       throw err

@@ -1658,6 +1658,34 @@ fn update_bug_description(
 }
 
 #[tauri::command]
+fn update_bug_title(
+    bug_id: String,
+    title: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use database::{Database, BugOps, BugRepository};
+
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::current_dir().unwrap().join("data")
+    });
+    let db_path = data_dir.join("qa_capture.db");
+
+    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    let repo = BugRepository::new(db.connection());
+
+    // Use update_partial to only touch the title field.
+    // An empty title is stored as an empty string (not NULL) to allow clearing,
+    // which still falls back to display_id in the UI.
+    let update = database::BugUpdate {
+        title: Some(title),
+        ..Default::default()
+    };
+
+    repo.update_partial(&bug_id, &update)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
 fn update_bug_type(
     bug_id: String,
     bug_type: String,
@@ -2667,6 +2695,7 @@ pub fn run() {
             assign_capture_to_bug,
             update_bug_console_parse,
             update_bug_description,
+            update_bug_title,
             update_bug_type,
             update_capture_console_flag,
             get_app_version,

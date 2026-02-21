@@ -62,6 +62,31 @@
         </template>
       </q-banner>
 
+      <!-- Active Profile Selector -->
+      <div
+        v-if="profileStore.profiles.length > 0"
+        class="profile-section q-mb-md"
+      >
+        <q-select
+          :model-value="profileStore.activeProfileId"
+          :options="profileSelectOptions"
+          label="Active Profile"
+          outlined
+          dense
+          emit-value
+          map-options
+          clearable
+          @update:model-value="onProfileChange"
+        >
+          <template #prepend>
+            <q-icon
+              name="manage_accounts"
+              color="primary"
+            />
+          </template>
+        </q-select>
+      </div>
+
       <!-- Start Session Button -->
       <div class="start-session-section q-mb-xl">
         <q-btn
@@ -191,6 +216,7 @@ import { onMounted, computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useSessionStore } from '@/stores/session'
+import { useProfileStore } from '@/stores/profile'
 import { getClaudeStatus } from '@/api/tauri'
 import type { ClaudeStatus } from '@/api/tauri'
 import type { SessionSummary } from '@/types/backend'
@@ -198,9 +224,34 @@ import type { SessionSummary } from '@/types/backend'
 const router = useRouter()
 const $q = useQuasar()
 const sessionStore = useSessionStore()
+const profileStore = useProfileStore()
 
 const claudeStatus = ref<ClaudeStatus | null>(null)
 const claudeBannerDismissed = ref(false)
+
+// Profile selector options
+const profileSelectOptions = computed(() =>
+  profileStore.profiles.map(p => ({ label: p.name, value: p.id }))
+)
+
+async function onProfileChange(value: string | null): Promise<void> {
+  try {
+    if (value) {
+      await profileStore.setActiveProfile(value)
+    } else {
+      await profileStore.clearActiveProfile()
+    }
+  } catch (error) {
+    console.error('Failed to switch profile:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to switch profile',
+      caption: error instanceof Error ? error.message : String(error),
+      position: 'bottom-right',
+      timeout: 3000,
+    })
+  }
+}
 
 const showClaudeBanner = computed(() =>
   claudeStatus.value !== null &&
@@ -224,7 +275,7 @@ const recentSessions = computed(() =>
 )
 
 onMounted(async () => {
-  // Load recent session summaries and check Claude status in parallel
+  // Load recent session summaries, profiles, and check Claude status in parallel
   const sessionsPromise = sessionStore.loadSessionSummaries().catch((error) => {
     console.error('Failed to load session summaries:', error)
     $q.notify({
@@ -236,18 +287,22 @@ onMounted(async () => {
     })
   })
 
+  const profilesPromise = profileStore.loadProfiles().catch((err) => {
+    console.error('Failed to load profiles:', err)
+  })
+
   const claudePromise = getClaudeStatus().then((status) => {
     claudeStatus.value = status
   }).catch((err) => {
     console.error('Failed to check Claude status:', err)
   })
 
-  await Promise.all([sessionsPromise, claudePromise])
+  await Promise.all([sessionsPromise, profilesPromise, claudePromise])
 })
 
 async function handleStartSession() {
   try {
-    await sessionStore.startSession()
+    await sessionStore.startSession(profileStore.activeProfileId ?? null)
     // Navigation will be handled by App.vue watching activeSession
   } catch (error) {
     console.error('Failed to start session:', error)

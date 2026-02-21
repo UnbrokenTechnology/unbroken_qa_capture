@@ -24,6 +24,9 @@ vi.mock('@/api/tauri', () => ({
   getActiveSession: vi.fn().mockResolvedValue(null),
   getSessionSummaries: vi.fn().mockResolvedValue([]),
   getClaudeStatus: vi.fn().mockResolvedValue({ status: 'ready', version: 'Claude Code' }),
+  listProfiles: vi.fn().mockResolvedValue([]),
+  getActiveProfileId: vi.fn().mockResolvedValue(null),
+  setActiveProfileId: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Mock Tauri event listeners
@@ -70,6 +73,9 @@ describe('IdleView', () => {
     vi.mocked(tauri.getSessionSummaries).mockResolvedValue([])
     vi.mocked(tauri.getActiveSession).mockResolvedValue(null)
     vi.mocked(tauri.getClaudeStatus).mockResolvedValue({ status: 'ready', version: 'Claude Code' })
+    vi.mocked(tauri.listProfiles).mockResolvedValue([])
+    vi.mocked(tauri.getActiveProfileId).mockResolvedValue(null)
+    vi.mocked(tauri.setActiveProfileId).mockResolvedValue(undefined)
   })
 
   function mountIdleView() {
@@ -88,6 +94,7 @@ describe('IdleView', () => {
           QSpinner: { template: '<div />' },
           QChip: { template: '<span />' },
           QBanner: { template: '<div class="q-banner" v-bind="$attrs"><slot name="avatar" /><slot /><slot name="action" /></div>' },
+          QSelect: { template: '<div class="q-select"><slot name="prepend" /><slot /></div>', props: ['modelValue', 'options', 'label', 'emitValue', 'mapOptions', 'clearable', 'outlined', 'dense'] },
         }
       }
     })
@@ -188,6 +195,84 @@ describe('IdleView', () => {
       await flushPromises()
 
       expect(sessionStore.error).toBeNull()
+    })
+  })
+
+  describe('profile selector', () => {
+    it('does not render profile selector when no profiles exist', async () => {
+      vi.mocked(tauri.listProfiles).mockResolvedValue([])
+
+      const wrapper = mountIdleView()
+      await flushPromises()
+
+      expect(wrapper.find('.profile-section').exists()).toBe(false)
+    })
+
+    it('renders profile selector when profiles are available', async () => {
+      vi.mocked(tauri.listProfiles).mockResolvedValue([
+        {
+          id: 'profile-1',
+          name: 'Contio MeetingOS',
+          linear_config: null,
+          area_categories: [],
+          custom_fields: [],
+          title_conventions: null,
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ])
+      vi.mocked(tauri.getActiveProfileId).mockResolvedValue('profile-1')
+
+      const wrapper = mountIdleView()
+      await flushPromises()
+
+      expect(wrapper.find('.profile-section').exists()).toBe(true)
+      expect(wrapper.find('.q-select').exists()).toBe(true)
+    })
+
+    it('passes active profile_id to startSession', async () => {
+      vi.mocked(tauri.listProfiles).mockResolvedValue([
+        {
+          id: 'profile-1',
+          name: 'Contio MeetingOS',
+          linear_config: null,
+          area_categories: [],
+          custom_fields: [],
+          title_conventions: null,
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ])
+      vi.mocked(tauri.getActiveProfileId).mockResolvedValue('profile-1')
+      vi.mocked(tauri.createSession).mockResolvedValue({ ...mockSession, profile_id: 'profile-1' })
+
+      const wrapper = mountIdleView()
+      await flushPromises()
+
+      const startBtn = wrapper.findAll('button.q-btn')[0]
+      await startBtn!.trigger('click')
+      await flushPromises()
+
+      expect(tauri.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ profile_id: 'profile-1' })
+      )
+    })
+
+    it('passes null profile_id when no active profile', async () => {
+      vi.mocked(tauri.listProfiles).mockResolvedValue([])
+      vi.mocked(tauri.getActiveProfileId).mockResolvedValue(null)
+      vi.mocked(tauri.createSession).mockResolvedValue(mockSession)
+
+      const wrapper = mountIdleView()
+      await flushPromises()
+
+      const startBtn = wrapper.findAll('button.q-btn')[0]
+      await startBtn!.trigger('click')
+      await flushPromises()
+
+      expect(tauri.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ profile_id: null })
+      )
     })
   })
 
