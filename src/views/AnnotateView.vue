@@ -4,6 +4,7 @@
       v-if="imagePath"
       :screenshot-path="imagePath"
       :capture-id="captureId"
+      :use-dialog="false"
       @saved="handleSaved"
       @close="handleClose"
     />
@@ -70,7 +71,7 @@ async function handleClose() {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background-color: #1e1e1e;
+  background-color: #303030;
 }
 
 .error-state {

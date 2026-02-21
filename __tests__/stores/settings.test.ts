@@ -40,7 +40,7 @@ describe('Settings Store', () => {
     expect(store.theme).toBe('light')
     expect(store.autoStartRecording).toBe(false)
     expect(store.captureConsole).toBe(true)
-    expect(store.autoOpenAnnotation).toBe(true)
+    expect(store.autoOpenAnnotation).toBe(false)
     expect(store.hasError).toBe(false)
   })
 
@@ -313,7 +313,7 @@ describe('Settings Store', () => {
       // All settings remain at defaults
       expect(store.settings[SETTINGS_KEYS.THEME]).toBe('light')
       expect(store.settings[SETTINGS_KEYS.HOTKEY_CAPTURE]).toBe('Ctrl+Shift+B')
-      expect(store.settings[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION]).toBe('true')
+      expect(store.settings[SETTINGS_KEYS.AUTO_OPEN_ANNOTATION]).toBe('false')
     })
 
     it('should return defaults from getSetting when backend has never responded', () => {
