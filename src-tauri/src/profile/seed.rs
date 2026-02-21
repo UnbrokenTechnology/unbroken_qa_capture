@@ -64,6 +64,9 @@ fn build_contio_profile() -> QaProfile {
             ],
             // Default state: Backlog
             default_state_id: Some("aa635d13-f2bb-48f2-a395-2fd15e0b0441".to_string()),
+            // Templates are not pre-configured; user selects in Settings.
+            bug_template_id: None,
+            feature_template_id: None,
         }),
 
         area_categories: vec![

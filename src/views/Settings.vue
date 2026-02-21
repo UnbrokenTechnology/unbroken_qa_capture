@@ -547,6 +547,66 @@
                       <q-icon name="radio_button_unchecked" />
                     </template>
                   </q-input>
+
+                  <q-select
+                    v-if="linearTemplateOptions.length > 1"
+                    v-model="profileForm.linearBugTemplateId"
+                    :options="linearTemplateOptions"
+                    label="Bug Template"
+                    hint="Template to use when filing bug-type issues"
+                    outlined
+                    dense
+                    emit-value
+                    map-options
+                    :loading="fetchingLinearTemplates"
+                  >
+                    <template #prepend>
+                      <q-icon name="bug_report" />
+                    </template>
+                  </q-select>
+                  <q-input
+                    v-else
+                    v-model="profileForm.linearBugTemplateId"
+                    label="Bug Template ID"
+                    :hint="fetchingLinearTemplates ? 'Fetching templates...' : 'Test connection in Linear settings to load templates, or enter template ID manually'"
+                    outlined
+                    dense
+                    :loading="fetchingLinearTemplates"
+                  >
+                    <template #prepend>
+                      <q-icon name="bug_report" />
+                    </template>
+                  </q-input>
+
+                  <q-select
+                    v-if="linearTemplateOptions.length > 1"
+                    v-model="profileForm.linearFeatureTemplateId"
+                    :options="linearTemplateOptions"
+                    label="Feature Template"
+                    hint="Template to use when filing feature-type issues"
+                    outlined
+                    dense
+                    emit-value
+                    map-options
+                    :loading="fetchingLinearTemplates"
+                  >
+                    <template #prepend>
+                      <q-icon name="star_outline" />
+                    </template>
+                  </q-select>
+                  <q-input
+                    v-else
+                    v-model="profileForm.linearFeatureTemplateId"
+                    label="Feature Template ID"
+                    :hint="fetchingLinearTemplates ? 'Fetching templates...' : 'Test connection in Linear settings to load templates, or enter template ID manually'"
+                    outlined
+                    dense
+                    :loading="fetchingLinearTemplates"
+                  >
+                    <template #prepend>
+                      <q-icon name="star_outline" />
+                    </template>
+                  </q-input>
                 </q-card-section>
               </q-card>
             </q-expansion-item>
@@ -1131,8 +1191,8 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { open as openUrl } from '@tauri-apps/plugin-shell'
 import { useRouter } from 'vue-router'
-import { getClaudeStatus, refreshClaudeStatus, ticketingFetchTeams } from '@/api/tauri'
-import type { QaProfile, AreaCategory, CustomMetadataField, CustomFieldType, LinearTeam } from '@/types/backend'
+import { getClaudeStatus, refreshClaudeStatus, ticketingFetchTeams, ticketingFetchTemplates } from '@/api/tauri'
+import type { QaProfile, AreaCategory, CustomMetadataField, CustomFieldType, LinearTeam, LinearTemplate } from '@/types/backend'
 
 const settingsStore = useSettingsStore()
 const profileStore = useProfileStore()
@@ -1181,6 +1241,8 @@ const testingClaude = ref(false)
 const testingLinearConnection = ref(false)
 const linearTeams = ref<LinearTeam[]>([])
 const fetchingLinearTeams = ref(false)
+const linearTemplates = ref<LinearTemplate[]>([])
+const fetchingLinearTemplates = ref(false)
 const appVersion = ref('1.0.0')
 const templateSource = ref<string>('Default')
 const templatePreview = ref<string>('')
@@ -1222,6 +1284,15 @@ const bugTypeOptions = [
 const linearTeamOptions = computed(() =>
   linearTeams.value.map(t => ({ label: `${t.name} (${t.key})`, value: t.id }))
 )
+
+// Linear template dropdown options (with a "None" option to clear selection)
+const linearTemplateOptions = computed(() => [
+  { label: '(none)', value: '' },
+  ...linearTemplates.value.map(t => ({
+    label: t.description ? `${t.name} — ${t.description}` : t.name,
+    value: t.id,
+  })),
+])
 
 // Hotkey functions
 function recordHotkey(key: string): void {
@@ -1496,6 +1567,17 @@ async function testLinearConnection(): Promise<void> {
     } finally {
       fetchingLinearTeams.value = false
     }
+
+    // Fetch templates after successful authentication
+    fetchingLinearTemplates.value = true
+    try {
+      linearTemplates.value = await ticketingFetchTemplates()
+    } catch (templateErr) {
+      console.warn('Failed to fetch Linear templates:', templateErr)
+      // Non-fatal: templates are optional, silently ignore
+    } finally {
+      fetchingLinearTemplates.value = false
+    }
   } catch (err) {
     console.error('Linear connection test failed:', err)
     $q.notify({
@@ -1734,6 +1816,8 @@ interface ProfileFormState {
   linearDefaultBugLabelIds: string
   linearDefaultFeatureLabelIds: string
   linearDefaultStateId: string
+  linearBugTemplateId: string
+  linearFeatureTemplateId: string
   titleBugPrefix: string
   titleFeaturePrefix: string
   areaCategories: Array<{ code: string; name: string; description: string }>
@@ -1755,6 +1839,8 @@ function makeEmptyProfileForm(): ProfileFormState {
     linearDefaultBugLabelIds: '',
     linearDefaultFeatureLabelIds: '',
     linearDefaultStateId: '',
+    linearBugTemplateId: '',
+    linearFeatureTemplateId: '',
     titleBugPrefix: '',
     titleFeaturePrefix: '',
     areaCategories: [],
@@ -1780,6 +1866,8 @@ function openEditProfile(profile: QaProfile): void {
     linearDefaultBugLabelIds: profile.linear_config?.default_bug_label_ids.join(', ') ?? '',
     linearDefaultFeatureLabelIds: profile.linear_config?.default_feature_label_ids.join(', ') ?? '',
     linearDefaultStateId: profile.linear_config?.default_state_id ?? '',
+    linearBugTemplateId: profile.linear_config?.bug_template_id ?? '',
+    linearFeatureTemplateId: profile.linear_config?.feature_template_id ?? '',
     titleBugPrefix: profile.title_conventions?.bug_prefix ?? '',
     titleFeaturePrefix: profile.title_conventions?.feature_prefix ?? '',
     areaCategories: profile.area_categories.map(c => ({
@@ -1838,6 +1926,8 @@ function buildProfileFromForm(id: string, now: string): QaProfile {
           .map(s => s.trim())
           .filter(s => s.length > 0),
         default_state_id: form.linearDefaultStateId.trim() || null,
+        bug_template_id: form.linearBugTemplateId.trim() || null,
+        feature_template_id: form.linearFeatureTemplateId.trim() || null,
       }
     : null
 

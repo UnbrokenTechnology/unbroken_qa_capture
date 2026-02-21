@@ -154,6 +154,7 @@ fn test_mock_integration_create_ticket_success() {
         labels: vec![],
         assignee_id: None,
         state_id: None,
+        template_id: None,
     };
 
     let result = integration.create_ticket(&request);
@@ -177,6 +178,7 @@ fn test_mock_integration_create_ticket_not_authenticated() {
         labels: vec![],
         assignee_id: None,
         state_id: None,
+        template_id: None,
     };
 
     let result = integration.create_ticket(&request);
@@ -211,6 +213,7 @@ fn test_mock_integration_create_ticket_with_attachments() {
         labels: vec!["bug".to_string(), "ui".to_string()],
         assignee_id: None,
         state_id: None,
+        template_id: None,
     };
 
     let result = integration.create_ticket(&request);
@@ -310,6 +313,7 @@ fn test_batch_push_multiple_bugs() {
             labels: vec!["bug".to_string()],
             assignee_id: None,
             state_id: None,
+            template_id: None,
         },
         CreateTicketRequest {
             title: "Bug 2: Performance Issue".to_string(),
@@ -319,6 +323,7 @@ fn test_batch_push_multiple_bugs() {
             labels: vec!["bug".to_string(), "performance".to_string()],
             assignee_id: None,
             state_id: None,
+            template_id: None,
         },
         CreateTicketRequest {
             title: "Feature Request".to_string(),
@@ -328,6 +333,7 @@ fn test_batch_push_multiple_bugs() {
             labels: vec!["feature".to_string()],
             assignee_id: None,
             state_id: None,
+            template_id: None,
         },
     ];
 
@@ -372,6 +378,7 @@ fn test_batch_push_with_failures() {
         labels: vec![],
         assignee_id: None,
         state_id: None,
+        template_id: None,
     };
     let result1 = integration.create_ticket(&bug1);
     assert!(result1.is_ok());
@@ -387,6 +394,7 @@ fn test_batch_push_with_failures() {
         labels: vec![],
         assignee_id: None,
         state_id: None,
+        template_id: None,
     };
     let result2 = integration.create_ticket(&bug2);
     assert!(result2.is_err());
@@ -409,6 +417,7 @@ fn test_authentication_error_handling() {
         labels: vec![],
         assignee_id: None,
         state_id: None,
+        template_id: None,
     };
 
     let result = integration.create_ticket(&request);
@@ -523,6 +532,7 @@ fn test_mock_integration_create_ticket_returns_attachment_results() {
         labels: vec!["bug".to_string()],
         assignee_id: None,
         state_id: None,
+        template_id: None,
     };
 
     let result = integration.create_ticket(&request).unwrap();
@@ -554,6 +564,7 @@ fn test_mock_integration_create_ticket_no_attachments_returns_empty_results() {
         labels: vec![],
         assignee_id: None,
         state_id: None,
+        template_id: None,
     };
 
     let result = integration.create_ticket(&request).unwrap();
@@ -583,6 +594,7 @@ fn test_linear_upload_attachment_fails_for_missing_file() {
         labels: vec![],
         assignee_id: None,
         state_id: None,
+        template_id: None,
     };
 
     // create_ticket should fail because the missing file triggers a NetworkError
@@ -678,4 +690,95 @@ fn test_attachment_upload_result_display() {
     };
     assert!(!failure_result.success);
     assert!(failure_result.message.contains("Network error"));
+}
+
+#[test]
+fn test_mock_integration_fetch_templates_default_returns_empty() {
+    let integration = MockTicketingIntegration::new();
+    let templates = integration.fetch_templates().unwrap();
+    assert!(templates.is_empty());
+}
+
+#[test]
+fn test_linear_fetch_templates_requires_authentication() {
+    // fetch_templates() calls send_graphql_query() which requires credentials.
+    // Without credentials, it should return an AuthenticationFailed error.
+    let integration = LinearIntegration::new();
+    let result = integration.fetch_templates();
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        TicketingError::AuthenticationFailed(_) => {
+            // Expected: not authenticated
+        }
+        other => panic!("Expected AuthenticationFailed, got: {:?}", other),
+    }
+}
+
+#[test]
+fn test_linear_fetch_templates_network_error_with_unreachable_endpoint() {
+    // With credentials set but unreachable endpoint, fetch_templates should fail with network error.
+    let integration = LinearIntegration::with_endpoint("http://127.0.0.1:1");
+    integration.set_credentials_for_test(TicketingCredentials {
+        api_key: "lin_api_test".to_string(),
+        workspace_id: None,
+        team_id: None,
+    });
+
+    let result = integration.fetch_templates();
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        TicketingError::NetworkError(_) => {
+            // Expected: network error from unreachable endpoint
+        }
+        other => panic!("Expected NetworkError, got: {:?}", other),
+    }
+}
+
+#[test]
+fn test_linear_template_serialization() {
+    let template = LinearTemplate {
+        id: "tpl-uuid-123".to_string(),
+        name: "Bug Report".to_string(),
+        description: Some("Standard bug report template".to_string()),
+        template_data: None,
+    };
+    let json = serde_json::to_string(&template).unwrap();
+    assert!(json.contains("tpl-uuid-123"));
+    assert!(json.contains("Bug Report"));
+    assert!(json.contains("Standard bug report template"));
+
+    let deserialized: LinearTemplate = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized.id, "tpl-uuid-123");
+    assert_eq!(deserialized.name, "Bug Report");
+    assert_eq!(deserialized.description, Some("Standard bug report template".to_string()));
+    assert!(deserialized.template_data.is_none());
+}
+
+#[test]
+fn test_create_ticket_request_includes_template_id() {
+    // Verify CreateTicketRequest can carry a template_id.
+    let request = CreateTicketRequest {
+        title: "Bug".to_string(),
+        description: "Description".to_string(),
+        attachments: vec![],
+        priority: None,
+        labels: vec![],
+        assignee_id: None,
+        state_id: None,
+        template_id: Some("tpl-uuid-123".to_string()),
+    };
+    assert_eq!(request.template_id, Some("tpl-uuid-123".to_string()));
+
+    // Also verify None works
+    let request_no_template = CreateTicketRequest {
+        title: "Bug".to_string(),
+        description: "Description".to_string(),
+        attachments: vec![],
+        priority: None,
+        labels: vec![],
+        assignee_id: None,
+        state_id: None,
+        template_id: None,
+    };
+    assert!(request_no_template.template_id.is_none());
 }

@@ -24,6 +24,12 @@ pub struct LinearProfileConfig {
     pub default_bug_label_ids: Vec<String>,
     pub default_feature_label_ids: Vec<String>,
     pub default_state_id: Option<String>,
+    /// Linear template ID to use when filing bug-type issues
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bug_template_id: Option<String>,
+    /// Linear template ID to use when filing feature-type issues
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_template_id: Option<String>,
 }
 
 /// Area category used to classify bugs by functional area

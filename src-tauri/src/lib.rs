@@ -1308,6 +1308,18 @@ fn ticketing_fetch_teams() -> Result<Vec<ticketing::LinearTeam>, String> {
 }
 
 #[tauri::command]
+fn ticketing_fetch_templates() -> Result<Vec<ticketing::LinearTemplate>, String> {
+    let integration_guard = TICKETING_INTEGRATION.lock().unwrap();
+    let integration = integration_guard
+        .as_ref()
+        .ok_or("Ticketing integration not initialized")?;
+
+    integration
+        .fetch_templates()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_linear_profile_defaults(app: tauri::AppHandle) -> Result<Option<profile::LinearProfileConfig>, String> {
     use database::{Database, SettingsRepository, SettingsOps};
     use profile::{SqliteProfileRepository, ProfileRepository};
@@ -2674,6 +2686,7 @@ pub fn run() {
             ticketing_get_credentials,
             ticketing_save_credentials,
             ticketing_fetch_teams,
+            ticketing_fetch_templates,
             get_linear_profile_defaults,
             get_claude_status,
             refresh_claude_status,

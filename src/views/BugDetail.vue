@@ -204,6 +204,40 @@
                 {{ bug.meeting_id }}
               </div>
             </div>
+
+            <!-- Profile custom metadata fields -->
+            <template v-if="profileCustomFields.length > 0">
+              <div
+                v-for="field in profileCustomFields"
+                :key="field.key"
+                class="col-12 col-md-6"
+              >
+                <q-select
+                  v-if="field.field_type === 'select'"
+                  :model-value="customMetadataValues[field.key] ?? null"
+                  :options="field.resolvedOptions"
+                  :label="field.label"
+                  :hint="field.required ? 'Required' : undefined"
+                  outlined
+                  dense
+                  clearable
+                  emit-value
+                  map-options
+                  @update:model-value="(val: string | null) => saveCustomMetadataField(field.key, val)"
+                />
+                <q-input
+                  v-else
+                  :model-value="customMetadataValues[field.key] ?? ''"
+                  :label="field.label"
+                  :hint="field.required ? 'Required' : undefined"
+                  :type="field.field_type === 'number' ? 'number' : 'text'"
+                  outlined
+                  dense
+                  @update:model-value="(val: string | number | null) => updateCustomMetadataDraft(field.key, val)"
+                  @blur="flushCustomMetadata"
+                />
+              </div>
+            </template>
           </div>
         </q-card-section>
       </q-card>
@@ -723,13 +757,14 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBugStore } from '@/stores/bug'
 import { useSessionStore } from '@/stores/session'
+import { useProfileStore } from '@/stores/profile'
 import { invoke } from '@tauri-apps/api/core'
 import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import { useQuasar } from 'quasar'
 import ScreenshotAnnotator from '@/components/ScreenshotAnnotator.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import * as tauri from '@/api/tauri'
-import type { Capture, Environment } from '@/types/backend'
+import type { Capture, Environment, QaProfile } from '@/types/backend'
 import { toAssetUrl } from '@/utils/paths'
 
 interface ConsoleParsed {
@@ -749,6 +784,7 @@ const route = useRoute()
 const router = useRouter()
 const bugStore = useBugStore()
 const sessionStore = useSessionStore()
+const profileStore = useProfileStore()
 const $q = useQuasar()
 
 const currentSlide = ref(0)
@@ -768,6 +804,11 @@ const showReassignDialog = ref(false)
 const reassignCapture = ref<Capture | null>(null)
 const reassignTargetBugId = ref<string | null>(null)
 const reassigning = ref(false)
+
+// Profile custom metadata state
+const sessionProfile = ref<QaProfile | null>(null)
+// Local draft copy of custom metadata values — committed on blur for text/number fields
+const customMetadataDraft = ref<Record<string, string>>({})
 
 // Get bug ID from route params
 const bugId = computed(() => route.params.id as string)
@@ -821,6 +862,54 @@ const reassignBugOptions = computed(() => {
       label: b.display_id + (b.title ? ` — ${b.title}` : ''),
       value: b.id,
     }))
+})
+
+// Parse the bug's custom_metadata JSON string into a Record
+const customMetadataValues = computed((): Record<string, string> => {
+  const raw = bug.value?.custom_metadata
+  if (!raw) return customMetadataDraft.value
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as Record<string, string>
+      // Merge with draft so in-progress edits aren't lost
+      return { ...parsed, ...customMetadataDraft.value }
+    } catch {
+      return customMetadataDraft.value
+    }
+  }
+  // Already an object (shouldn't happen given Rust type, but defensive)
+  return { ...(raw as Record<string, string>), ...customMetadataDraft.value }
+})
+
+interface ResolvedCustomField {
+  key: string
+  label: string
+  field_type: 'text' | 'number' | 'select'
+  required: boolean
+  resolvedOptions: string[]
+}
+
+// Profile custom fields with area_category options resolved from area_categories
+const profileCustomFields = computed((): ResolvedCustomField[] => {
+  const profile = sessionProfile.value
+  if (!profile) return []
+
+  return profile.custom_fields.map((field) => {
+    let resolvedOptions: string[] = field.options ?? []
+    // If it's a select with no options defined, use area_categories for area_category key
+    if (field.field_type === 'select' && resolvedOptions.length === 0) {
+      if (field.key === 'area_category') {
+        resolvedOptions = profile.area_categories.map(ac => ac.code)
+      }
+    }
+    return {
+      key: field.key,
+      label: field.label,
+      field_type: field.field_type,
+      required: field.required,
+      resolvedOptions,
+    }
+  })
 })
 
 // Get the 0-based index of a screenshot capture within the screenshotCaptures list
@@ -913,6 +1002,100 @@ async function saveDescription() {
       position: 'top',
       timeout: 3000,
     })
+  }
+}
+
+// Update draft for a custom metadata field (for text/number inputs, saved on blur)
+function updateCustomMetadataDraft(key: string, value: string | number | null) {
+  if (value === null || value === '') {
+    const { [key]: _removed, ...rest } = customMetadataDraft.value
+    customMetadataDraft.value = rest
+  } else {
+    customMetadataDraft.value = { ...customMetadataDraft.value, [key]: String(value) }
+  }
+}
+
+// Flush the current draft to the database (called on blur for text/number fields)
+async function flushCustomMetadata() {
+  if (!bug.value) return
+  await persistCustomMetadata()
+}
+
+// Save a single custom metadata field immediately (called on select change)
+async function saveCustomMetadataField(key: string, value: string | null) {
+  if (!bug.value) return
+  if (value === null || value === '') {
+    const { [key]: _removed, ...rest } = customMetadataDraft.value
+    customMetadataDraft.value = rest
+  } else {
+    customMetadataDraft.value = { ...customMetadataDraft.value, [key]: value }
+  }
+  await persistCustomMetadata()
+}
+
+// Write the merged custom metadata to the backend
+async function persistCustomMetadata() {
+  if (!bug.value) return
+  // Start from the persisted values (parse from raw string if needed)
+  let persisted: Record<string, string> = {}
+  const raw = bug.value.custom_metadata
+  if (raw && typeof raw === 'string') {
+    try {
+      persisted = JSON.parse(raw) as Record<string, string>
+    } catch {
+      persisted = {}
+    }
+  } else if (raw && typeof raw === 'object') {
+    persisted = raw as Record<string, string>
+  }
+
+  const merged = { ...persisted, ...customMetadataDraft.value }
+
+  try {
+    await tauri.updateBugMetadata(bug.value.id, merged)
+    // Patch local store to reflect the new custom_metadata value
+    const localBug = bugStore.backendBugs.find(b => b.id === bug.value!.id)
+    if (localBug) {
+      // Store as JSON string to match Rust's Option<String> type
+      localBug.custom_metadata = JSON.stringify(merged) as unknown as Record<string, string>
+    }
+    // Clear draft now that it's persisted
+    customMetadataDraft.value = {}
+  } catch (err) {
+    console.error('Failed to save custom metadata:', err)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to save field value',
+      position: 'top',
+      timeout: 3000,
+    })
+  }
+}
+
+// Load the session's linked profile for custom fields
+async function loadSessionProfile() {
+  const session = sessionStore.activeSession
+  const profileId = session?.profile_id ?? null
+
+  if (!profileId) {
+    // Also check if we have a bug's session_id to look up a non-active session profile
+    sessionProfile.value = null
+    return
+  }
+
+  // Try the profile store first (profiles already loaded)
+  const cached = profileStore.profiles.find(p => p.id === profileId)
+  if (cached) {
+    sessionProfile.value = cached
+    return
+  }
+
+  // Fetch directly
+  try {
+    sessionProfile.value = await tauri.getProfile(profileId)
+  } catch (err) {
+    console.error('Failed to load session profile:', err)
+    sessionProfile.value = null
   }
 }
 
@@ -1155,6 +1338,9 @@ onMounted(async () => {
 
   // Load captures for this bug
   await refreshCaptures()
+
+  // Load the session's linked profile for custom metadata fields
+  await loadSessionProfile()
 })
 
 // Sync title draft when bug data changes (e.g. after store load)

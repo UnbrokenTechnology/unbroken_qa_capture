@@ -44,6 +44,7 @@ import type {
   CreateTicketRequest,
   CreateTicketResponse,
   ConnectionStatus,
+  LinearTemplate,
 } from '../../src/types/backend'
 
 // ---------------------------------------------------------------------------
@@ -765,5 +766,43 @@ describe('ConnectionStatus type contract', () => {
     }
     expect(failed.connected).toBe(false)
     expect(typeof failed.message).toBe('string')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LinearTemplate struct
+// ---------------------------------------------------------------------------
+
+describe('LinearTemplate type contract', () => {
+  const mockTemplate: LinearTemplate = {
+    id: 'template-uuid-1234',
+    name: 'Bug Report',
+    description: 'Standard bug report template',
+    template_data: null,
+  }
+
+  it('mock satisfies LinearTemplate interface', () => {
+    const spec: FieldSpec = {
+      id: 'string',
+      name: 'string',
+      description: 'nullable-string',
+      template_data: 'nullable-string',
+    }
+    assertShape(mockTemplate as unknown as Record<string, unknown>, spec, 'LinearTemplate')
+  })
+
+  it('has exactly 4 fields matching the Rust struct', () => {
+    expect(Object.keys(mockTemplate)).toHaveLength(4)
+  })
+
+  it('snake_case field names match Rust serialization', () => {
+    expect('template_data' in mockTemplate).toBe(true)
+    expect('templateData' in mockTemplate).toBe(false)
+  })
+
+  it('description and template_data can be null', () => {
+    const t: LinearTemplate = { id: 'x', name: 'x', description: null, template_data: null }
+    expect(t.description).toBeNull()
+    expect(t.template_data).toBeNull()
   })
 })

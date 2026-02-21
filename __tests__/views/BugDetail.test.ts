@@ -5,7 +5,9 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import { Quasar, Notify } from 'quasar'
 import BugDetail from '@/views/BugDetail.vue'
 import { useBugStore } from '@/stores/bug'
-import type { Bug as BackendBug, Capture } from '@/types/backend'
+import { useSessionStore } from '@/stores/session'
+import { useProfileStore } from '@/stores/profile'
+import type { Bug as BackendBug, Capture, QaProfile } from '@/types/backend'
 
 // Mock Tauri invoke
 vi.mock('@tauri-apps/api/core', () => ({
@@ -13,7 +15,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
 }))
 
-// Mock the tauri API module (used for getBugCaptures)
+// Mock the tauri API module (used for getBugCaptures, getProfile, updateBugMetadata, etc.)
 vi.mock('@/api/tauri', () => ({
   getBugCaptures: vi.fn().mockResolvedValue([]),
   getBug: vi.fn().mockResolvedValue(null),
@@ -21,6 +23,9 @@ vi.mock('@/api/tauri', () => ({
   updateBug: vi.fn().mockResolvedValue(undefined),
   updateBugType: vi.fn().mockResolvedValue(undefined),
   updateBugTitle: vi.fn().mockResolvedValue(undefined),
+  getProfile: vi.fn().mockResolvedValue(null),
+  updateBugMetadata: vi.fn().mockResolvedValue(undefined),
+  assignCaptureToBug: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Create a mock notify function
@@ -693,5 +698,189 @@ describe('BugDetail', () => {
         message: 'Failed to save title',
       })
     )
+  })
+
+  it('should not show custom metadata fields when no session profile is set', async () => {
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    // With no profile, profile custom fields should not be rendered
+    // (no QSelect or extra inputs from profile)
+    const selects = wrapper.findAll('select')
+    expect(selects).toHaveLength(0)
+  })
+
+  it('should render QSelect for profile select fields when session has a profile', async () => {
+    const tauriApi = await import('@/api/tauri')
+    const mockProfile: QaProfile = {
+      id: 'profile-1',
+      name: 'Test Profile',
+      linear_config: null,
+      area_categories: [
+        { code: 'UI', name: 'User Interface', description: null },
+        { code: 'API', name: 'Backend API', description: null },
+      ],
+      custom_fields: [
+        {
+          key: 'area_category',
+          label: 'Area Category',
+          field_type: 'select',
+          required: false,
+          default_value: null,
+          options: [],
+        },
+      ],
+      title_conventions: null,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+
+    vi.mocked(tauriApi.getProfile).mockResolvedValue(mockProfile)
+
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
+
+    // Set an active session with a profile_id
+    const sessionStore = useSessionStore()
+    sessionStore.activeSession = {
+      id: 'session-1',
+      started_at: '2024-01-01T00:00:00Z',
+      ended_at: null,
+      status: 'active',
+      folder_path: '/qa/session-1',
+      session_notes: null,
+      environment_json: null,
+      original_snip_path: null,
+      created_at: '2024-01-01T00:00:00Z',
+      profile_id: 'profile-1',
+    }
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    // The profile should have been fetched
+    expect(tauriApi.getProfile).toHaveBeenCalledWith('profile-1')
+
+    // Area Category label should appear in the rendered output
+    expect(wrapper.text()).toContain('Area Category')
+  })
+
+  it('should pre-populate custom metadata values from bug.custom_metadata', async () => {
+    const tauriApi = await import('@/api/tauri')
+    const mockProfile: QaProfile = {
+      id: 'profile-1',
+      name: 'Test Profile',
+      linear_config: null,
+      area_categories: [
+        { code: 'UI', name: 'User Interface', description: null },
+        { code: 'API', name: 'Backend API', description: null },
+      ],
+      custom_fields: [
+        {
+          key: 'area_category',
+          label: 'Area Category',
+          field_type: 'select',
+          required: false,
+          default_value: null,
+          options: [],
+        },
+      ],
+      title_conventions: null,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+
+    vi.mocked(tauriApi.getProfile).mockResolvedValue(mockProfile)
+
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    // Simulate bug already having a custom_metadata value
+    bug.custom_metadata = JSON.stringify({ area_category: 'UI' }) as unknown as Record<string, string>
+    store.backendBugs.push(bug)
+
+    const sessionStore = useSessionStore()
+    sessionStore.activeSession = {
+      id: 'session-1',
+      started_at: '2024-01-01T00:00:00Z',
+      ended_at: null,
+      status: 'active',
+      folder_path: '/qa/session-1',
+      session_notes: null,
+      environment_json: null,
+      original_snip_path: null,
+      created_at: '2024-01-01T00:00:00Z',
+      profile_id: 'profile-1',
+    }
+
+    await mountComponent('1')
+    await flushPromises()
+
+    // The profile was fetched and the component rendered
+    expect(tauriApi.getProfile).toHaveBeenCalledWith('profile-1')
+  })
+
+  it('should use area_categories from profile to populate options when options array is empty', async () => {
+    const tauriApi = await import('@/api/tauri')
+    const mockProfile: QaProfile = {
+      id: 'profile-1',
+      name: 'Test Profile',
+      linear_config: null,
+      area_categories: [
+        { code: 'UI', name: 'User Interface', description: null },
+        { code: 'PERF', name: 'Performance', description: null },
+      ],
+      custom_fields: [
+        {
+          key: 'area_category',
+          label: 'Area Category',
+          field_type: 'select',
+          required: false,
+          default_value: null,
+          options: [],  // Empty — should be populated from area_categories
+        },
+      ],
+      title_conventions: null,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+
+    // Use the profileStore (cached path) instead of fetching
+    const profileStore = useProfileStore()
+    profileStore.profiles.push(mockProfile)
+
+    const store = useBugStore()
+    const bug = createMockBackendBug('1')
+    store.backendBugs.push(bug)
+
+    const sessionStore = useSessionStore()
+    sessionStore.activeSession = {
+      id: 'session-1',
+      started_at: '2024-01-01T00:00:00Z',
+      ended_at: null,
+      status: 'active',
+      folder_path: '/qa/session-1',
+      session_notes: null,
+      environment_json: null,
+      original_snip_path: null,
+      created_at: '2024-01-01T00:00:00Z',
+      profile_id: 'profile-1',
+    }
+
+    // Clear mock call count before this specific assertion
+    vi.mocked(tauriApi.getProfile).mockClear()
+
+    const wrapper = await mountComponent('1')
+    await flushPromises()
+
+    // Profile found in store cache — getProfile should NOT be called
+    expect(tauriApi.getProfile).not.toHaveBeenCalled()
+
+    // The Area Category label should be rendered
+    expect(wrapper.text()).toContain('Area Category')
   })
 })

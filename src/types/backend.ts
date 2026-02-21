@@ -125,6 +125,8 @@ export interface CreateTicketRequest {
   labels: string[]
   assignee_id?: string | null
   state_id?: string | null
+  /** Optional Linear issue template ID to use when creating the issue */
+  template_id?: string | null
 }
 
 export interface AttachmentUploadResult {
@@ -153,6 +155,14 @@ export interface LinearTeam {
   key: string
 }
 
+// Linear issue template (returned by templates query)
+export interface LinearTemplate {
+  id: string
+  name: string
+  description: string | null
+  template_data: string | null
+}
+
 // QA Profile types
 // Source: src-tauri/src/profile/types.rs
 
@@ -165,6 +175,10 @@ export interface LinearProfileConfig {
   default_bug_label_ids: string[]
   default_feature_label_ids: string[]
   default_state_id: string | null
+  /** Linear template ID to use when filing bug-type issues */
+  bug_template_id?: string | null
+  /** Linear template ID to use when filing feature-type issues */
+  feature_template_id?: string | null
 }
 
 export interface AreaCategory {

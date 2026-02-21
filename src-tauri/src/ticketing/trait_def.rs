@@ -42,6 +42,14 @@ pub trait TicketingIntegration: Send + Sync {
         Ok(vec![])
     }
 
+    /// Fetch available issue templates from the ticketing service
+    ///
+    /// Returns a flat list of all templates. Requires prior authentication.
+    /// Default implementation returns an empty list (not all providers support templates).
+    fn fetch_templates(&self) -> TicketingResult<Vec<LinearTemplate>> {
+        Ok(vec![])
+    }
+
     /// Get the name of this integration (e.g., "Linear", "Jira")
     #[allow(dead_code)]
     fn name(&self) -> &str;

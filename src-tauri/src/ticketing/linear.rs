@@ -399,6 +399,11 @@ impl TicketingIntegration for LinearIntegration {
             variables["input"]["stateId"] = json!(state_id);
         }
 
+        // Add template if specified
+        if let Some(template_id) = &request.template_id {
+            variables["input"]["templateId"] = json!(template_id);
+        }
+
         let response = self.send_graphql_query(query, variables)?;
 
         // Extract issue data from response
@@ -501,6 +506,55 @@ impl TicketingIntegration for LinearIntegration {
             .collect();
 
         Ok(teams)
+    }
+
+    fn fetch_templates(&self) -> TicketingResult<Vec<LinearTemplate>> {
+        let query = r#"
+            query {
+                templates {
+                    nodes {
+                        id
+                        name
+                        description
+                        templateData
+                    }
+                }
+            }
+        "#;
+
+        let response = self.send_graphql_query(query, json!({}))?;
+
+        let nodes = response
+            .get("data")
+            .and_then(|d| d.get("templates"))
+            .and_then(|t| t.get("nodes"))
+            .and_then(|n| n.as_array())
+            .ok_or_else(|| {
+                TicketingError::NetworkError("Failed to parse templates response".to_string())
+            })?;
+
+        let templates: Vec<LinearTemplate> = nodes
+            .iter()
+            .filter_map(|node| {
+                let id = node.get("id")?.as_str()?.to_string();
+                let name = node.get("name")?.as_str()?.to_string();
+                let description = node
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let template_data = node
+                    .get("templateData")
+                    .map(|v| v.to_string());
+                Some(LinearTemplate {
+                    id,
+                    name,
+                    description,
+                    template_data,
+                })
+            })
+            .collect();
+
+        Ok(templates)
     }
 
     fn name(&self) -> &str {

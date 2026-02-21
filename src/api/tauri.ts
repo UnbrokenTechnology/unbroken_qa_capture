@@ -19,6 +19,7 @@ import type {
   CreateTicketResponse,
   ConnectionStatus,
   LinearTeam,
+  LinearTemplate,
   QaProfile,
   LinearProfileConfig,
   CaptureAssignmentSuggestion
@@ -318,6 +319,10 @@ export async function ticketingSaveCredentials(credentials: TicketingCredentials
 
 export async function ticketingFetchTeams(): Promise<LinearTeam[]> {
   return await invoke<LinearTeam[]>('ticketing_fetch_teams')
+}
+
+export async function ticketingFetchTemplates(): Promise<LinearTemplate[]> {
+  return await invoke<LinearTemplate[]>('ticketing_fetch_templates')
 }
 
 export async function getLinearProfileDefaults(): Promise<LinearProfileConfig | null> {

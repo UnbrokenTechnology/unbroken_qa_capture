@@ -60,6 +60,8 @@ pub struct CreateTicketRequest {
     pub assignee_id: Option<String>,
     /// Optional Linear workflow state ID (from profile defaults)
     pub state_id: Option<String>,
+    /// Optional Linear issue template ID to use when creating the issue
+    pub template_id: Option<String>,
 }
 
 /// Result of uploading a single attachment
@@ -106,4 +108,17 @@ pub struct LinearTeam {
     pub name: String,
     /// Short team key (e.g., "ENG")
     pub key: String,
+}
+
+/// A Linear issue template (returned by the templates query)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinearTemplate {
+    /// Linear template UUID
+    pub id: String,
+    /// Human-readable template name (e.g., "Bug Report", "Feature Request")
+    pub name: String,
+    /// Optional description of the template
+    pub description: Option<String>,
+    /// Raw template data (JSON string from Linear)
+    pub template_data: Option<String>,
 }
