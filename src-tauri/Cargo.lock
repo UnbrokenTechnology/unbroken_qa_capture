@@ -5021,6 +5021,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-opener",
  "tauri-plugin-shell",
+ "tempfile",
  "urlencoding",
  "uuid",
  "windows 0.58.0",
