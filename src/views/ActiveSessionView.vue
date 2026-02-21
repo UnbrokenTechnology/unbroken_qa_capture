@@ -553,8 +553,7 @@ async function handleEndSession() {
   try {
     const sessionId = activeSession.value.id
     await sessionStore.endSession(sessionId)
-    // Navigation will be handled by App.vue watching activeSession
-    router.push({ name: 'session-review', params: { id: sessionId } })
+    router.push({ name: 'session-review', params: { sessionId } })
   } catch (error) {
     console.error('Failed to end session:', error)
     $q.notify({
