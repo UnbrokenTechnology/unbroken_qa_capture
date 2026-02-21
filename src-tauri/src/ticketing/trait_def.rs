@@ -34,6 +34,14 @@ pub trait TicketingIntegration: Send + Sync {
     /// * `Err(TicketingError)` if check fails
     fn check_connection(&self) -> TicketingResult<ConnectionStatus>;
 
+    /// Fetch available teams from the ticketing service
+    ///
+    /// Returns a list of teams. Requires prior authentication.
+    /// Default implementation returns an empty list (not all providers support teams).
+    fn fetch_teams(&self) -> TicketingResult<Vec<LinearTeam>> {
+        Ok(vec![])
+    }
+
     /// Get the name of this integration (e.g., "Linear", "Jira")
     #[allow(dead_code)]
     fn name(&self) -> &str;
