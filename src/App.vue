@@ -44,6 +44,17 @@
         >
           <q-tooltip>{{ showStatusWidget ? 'Hide' : 'Show' }} Status Widget</q-tooltip>
         </q-btn>
+
+        <q-btn
+          flat
+          dense
+          round
+          icon="settings"
+          :disable="$route.name === 'settings'"
+          @click="navigateSettings"
+        >
+          <q-tooltip>Settings</q-tooltip>
+        </q-btn>
       </q-toolbar>
 
       <!-- Session Toolbar (hidden during first-run wizard) -->
@@ -136,6 +147,10 @@ const activeSessionSubRoutes = new Set(['active-session', 'bug-detail', 'annotat
 
 function navigateHome() {
   router.push({ name: 'home' })
+}
+
+function navigateSettings() {
+  router.push({ name: 'settings' })
 }
 
 function toggleStatusWidget() {

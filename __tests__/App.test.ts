@@ -363,6 +363,57 @@ describe('App.vue', () => {
     })
   })
 
+  describe('Settings Navigation Button', () => {
+    it('should render a settings button in the toolbar', async () => {
+      vi.mocked(tauri.hasCompletedSetup).mockResolvedValue(true)
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      const toolbarBtns = wrapper.findAll('.q-toolbar .q-btn')
+      const settingsBtn = toolbarBtns.find(btn => btn.html().includes('settings'))
+      expect(settingsBtn).toBeTruthy()
+    })
+
+    it('should navigate to settings when settings button is clicked', async () => {
+      vi.mocked(tauri.hasCompletedSetup).mockResolvedValue(true)
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      // Start on home
+      expect(router.currentRoute.value.name).toBe('home')
+
+      const toolbarBtns = wrapper.findAll('.q-toolbar .q-btn')
+      const settingsBtn = toolbarBtns.find(btn => btn.html().includes('settings'))
+      expect(settingsBtn).toBeTruthy()
+
+      await settingsBtn!.trigger('click')
+      await flushPromises()
+
+      expect(router.currentRoute.value.name).toBe('settings')
+    })
+
+    it('should be disabled when already on settings route', async () => {
+      vi.mocked(tauri.hasCompletedSetup).mockResolvedValue(true)
+
+      const wrapper = mountComponent()
+      await flushPromises()
+
+      // Navigate to settings first
+      await router.push({ name: 'settings' })
+      await flushPromises()
+
+      expect(router.currentRoute.value.name).toBe('settings')
+
+      const toolbarBtns = wrapper.findAll('.q-toolbar .q-btn')
+      const settingsBtn = toolbarBtns.find(btn => btn.html().includes('settings'))
+      expect(settingsBtn).toBeTruthy()
+
+      expect(settingsBtn!.attributes('disabled')).toBeDefined()
+    })
+  })
+
   describe('Back Navigation', () => {
     const makeSession = (id: string): import('@/types/backend').Session => ({
       id,
