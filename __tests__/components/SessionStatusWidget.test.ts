@@ -7,15 +7,6 @@ import { useSessionStore } from '@/stores/session'
 import { useBugStore } from '@/stores/bug'
 import type { Session, Bug as BackendBug } from '@/types/backend'
 
-// Mock Tauri window API
-const mockSetAlwaysOnTop = vi.fn().mockResolvedValue(undefined)
-
-vi.mock('@tauri-apps/api/window', () => ({
-  getCurrentWindow: vi.fn(() => ({
-    setAlwaysOnTop: mockSetAlwaysOnTop,
-  })),
-}))
-
 // Mock Tauri API
 vi.mock('@/api/tauri', () => ({
   createSession: vi.fn(),
@@ -360,29 +351,6 @@ describe('SessionStatusWidget', () => {
     })
   })
 
-  describe('Always On Top', () => {
-    it('should set window to always-on-top when mounted', async () => {
-      mountComponent()
-      await flushPromises()
-
-      expect(mockSetAlwaysOnTop).toHaveBeenCalledWith(true)
-    })
-
-    it('should handle errors when setting always-on-top fails', async () => {
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockSetAlwaysOnTop.mockRejectedValueOnce(new Error('Window API error'))
-
-      mountComponent()
-      await flushPromises()
-
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Failed to set window always-on-top:',
-        expect.any(Error)
-      )
-
-      consoleErrorSpy.mockRestore()
-    })
-  })
 
   describe('Close Button', () => {
     it('should emit close event when close button clicked', async () => {

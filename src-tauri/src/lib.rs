@@ -1974,10 +1974,9 @@ async fn open_annotation_window(
     let max_width = monitor_width * 0.9;
     let max_height = monitor_height * 0.9;
 
-    // For v1, we'll default to max size and let the component handle image scaling
-    // In a production version, we'd read the image dimensions to calculate exact size
-    let window_width = max_width.min(1200.0);
-    let window_height = max_height.min(800.0);
+    // Use the full 90% of monitor — the canvas sizes itself to the container
+    let window_width = max_width;
+    let window_height = max_height;
 
     // Center the window
     let window_x = (monitor_width - window_width) / 2.0;
@@ -2012,7 +2011,7 @@ async fn open_annotation_window(
     .inner_size(window_width, window_height)
     .position(window_x, window_y)
     .resizable(true)
-    .decorations(false) // Frameless window per PRD: "Frameless or minimal frame. Always on top."
+    .decorations(true) // Use native title bar to avoid dark rectangle when image loads slowly
     .always_on_top(true)
     .focused(true)
     .build()

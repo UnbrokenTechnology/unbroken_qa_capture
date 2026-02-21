@@ -1182,6 +1182,17 @@ watch(
   color: white !important;
 }
 
+/* Carousel arrow visibility on dark screenshot backgrounds */
+:deep(.q-carousel .q-carousel__arrow .q-btn) {
+  background: rgba(0, 0, 0, 0.45) !important;
+  color: white !important;
+  border-radius: 50%;
+}
+
+:deep(.q-carousel .q-carousel__arrow .q-btn:hover) {
+  background: rgba(0, 0, 0, 0.7) !important;
+}
+
 /* Timeline styles */
 .capture-timeline-item {
   position: relative;
