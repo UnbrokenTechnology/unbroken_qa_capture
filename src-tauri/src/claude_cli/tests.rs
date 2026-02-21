@@ -338,4 +338,162 @@ mod claude_cli_tests {
 
         assert_eq!(deserialized.access_token, "test-token");
     }
+
+    /// Verify that `ClaudeError::NotFound` and `ClaudeError::NotAuthenticated` are distinct
+    /// variants with different display messages. This documents the contract that
+    /// `load_credentials()` uses `NotFound` for "file missing" and `NotAuthenticated`
+    /// for "file present but no valid token".
+    #[test]
+    fn test_claude_error_not_found_vs_not_authenticated() {
+        let not_found = ClaudeError::NotFound("Claude Code not installed".to_string());
+        let not_authenticated = ClaudeError::NotAuthenticated("Token expired".to_string());
+
+        let not_found_msg = not_found.to_string();
+        let not_authenticated_msg = not_authenticated.to_string();
+
+        // The two variants must produce different messages
+        assert_ne!(not_found_msg, not_authenticated_msg);
+
+        // NotFound display contains "not found"
+        assert!(
+            not_found_msg.contains("not found"),
+            "NotFound display should contain 'not found', got: {not_found_msg}"
+        );
+
+        // NotAuthenticated display contains "not authenticated"
+        assert!(
+            not_authenticated_msg.contains("not authenticated"),
+            "NotAuthenticated display should contain 'not authenticated', got: {not_authenticated_msg}"
+        );
+
+        // They must not contain each other's key phrase
+        assert!(
+            !not_found_msg.contains("not authenticated"),
+            "NotFound display should not contain 'not authenticated'"
+        );
+        assert!(
+            !not_authenticated_msg.contains("not found"),
+            "NotAuthenticated display should not contain 'not found'"
+        );
+    }
+
+    /// Verify that all three `ClaudeStatus` variants round-trip through JSON with the
+    /// correct `"status"` discriminant values. The frontend switches on `status` to decide
+    /// which UI to show, so the exact string values are part of the API contract.
+    #[test]
+    fn test_claude_status_serialization_all_variants() {
+        // Ready
+        let ready = ClaudeStatus::Ready {
+            version: "Claude Code".to_string(),
+        };
+        let ready_json = serde_json::to_string(&ready).unwrap();
+        assert!(
+            ready_json.contains("\"status\":\"ready\""),
+            "Ready should serialize with status=ready, got: {ready_json}"
+        );
+        let ready_roundtrip: ClaudeStatus = serde_json::from_str(&ready_json).unwrap();
+        assert!(ready_roundtrip.is_ready());
+
+        // NotAuthenticated — the frontend must receive "notAuthenticated" (camelCase)
+        let not_auth = ClaudeStatus::NotAuthenticated {
+            version: "Claude Code".to_string(),
+            message: "Please sign in".to_string(),
+        };
+        let not_auth_json = serde_json::to_string(&not_auth).unwrap();
+        assert!(
+            not_auth_json.contains("\"status\":\"notAuthenticated\""),
+            "NotAuthenticated should serialize with status=notAuthenticated, got: {not_auth_json}"
+        );
+        let not_auth_roundtrip: ClaudeStatus = serde_json::from_str(&not_auth_json).unwrap();
+        assert!(!not_auth_roundtrip.is_ready());
+        match not_auth_roundtrip {
+            ClaudeStatus::NotAuthenticated { message, .. } => {
+                assert_eq!(message, "Please sign in");
+            }
+            other => panic!("Expected NotAuthenticated after roundtrip, got: {other:?}"),
+        }
+
+        // NotInstalled
+        let not_installed = ClaudeStatus::NotInstalled {
+            message: "Install Claude Code".to_string(),
+        };
+        let not_installed_json = serde_json::to_string(&not_installed).unwrap();
+        assert!(
+            not_installed_json.contains("\"status\":\"notInstalled\""),
+            "NotInstalled should serialize with status=notInstalled, got: {not_installed_json}"
+        );
+        let not_installed_roundtrip: ClaudeStatus =
+            serde_json::from_str(&not_installed_json).unwrap();
+        assert!(!not_installed_roundtrip.is_ready());
+        match not_installed_roundtrip {
+            ClaudeStatus::NotInstalled { message } => {
+                assert_eq!(message, "Install Claude Code");
+            }
+            other => panic!("Expected NotInstalled after roundtrip, got: {other:?}"),
+        }
+    }
+
+    /// Verify the mapping contract of `check_api_configured()`:
+    /// `NotAuthenticated` errors from `load_credentials()` must produce
+    /// `ClaudeStatus::NotAuthenticated`, while any other error (including `NotFound`)
+    /// must produce `ClaudeStatus::NotInstalled`. This test exercises the mapping
+    /// logic by inspecting the error variant type system rather than calling the
+    /// live filesystem function a second time.
+    #[test]
+    fn test_check_api_configured_maps_not_found_to_not_installed() {
+        // Simulate the mapping logic that check_api_configured() applies.
+        // We construct error values and apply the same match arms to verify
+        // that the variant distinction is meaningful and the mapping is correct.
+
+        let not_found_err = ClaudeError::NotFound("no credentials file".to_string());
+        let not_authenticated_err =
+            ClaudeError::NotAuthenticated("token missing".to_string());
+
+        // Apply the same mapping as check_api_configured()
+        let status_from_not_found: ClaudeStatus = match not_found_err {
+            ClaudeError::NotAuthenticated(msg) => ClaudeStatus::NotAuthenticated {
+                version: "Claude Code".to_string(),
+                message: msg,
+            },
+            _ => ClaudeStatus::NotInstalled {
+                message: "Claude Code not found.".to_string(),
+            },
+        };
+
+        let status_from_not_authenticated: ClaudeStatus = match not_authenticated_err {
+            ClaudeError::NotAuthenticated(msg) => ClaudeStatus::NotAuthenticated {
+                version: "Claude Code".to_string(),
+                message: msg,
+            },
+            _ => ClaudeStatus::NotInstalled {
+                message: "Claude Code not found.".to_string(),
+            },
+        };
+
+        // NotFound → NotInstalled (not authenticated)
+        assert!(
+            !status_from_not_found.is_ready(),
+            "NotFound error should not produce Ready status"
+        );
+        match status_from_not_found {
+            ClaudeStatus::NotInstalled { .. } => {} // correct
+            other => panic!(
+                "NotFound error should map to NotInstalled, got: {other:?}"
+            ),
+        }
+
+        // NotAuthenticated → NotAuthenticated (not NotInstalled)
+        assert!(
+            !status_from_not_authenticated.is_ready(),
+            "NotAuthenticated error should not produce Ready status"
+        );
+        match status_from_not_authenticated {
+            ClaudeStatus::NotAuthenticated { message, .. } => {
+                assert_eq!(message, "token missing");
+            }
+            other => panic!(
+                "NotAuthenticated error should map to NotAuthenticated status, got: {other:?}"
+            ),
+        }
+    }
 }

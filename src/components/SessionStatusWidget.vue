@@ -72,7 +72,6 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useSessionStore } from '../stores/session'
 import { useBugStore } from '../stores/bug'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 
 // Props
 interface Props {
@@ -186,12 +185,9 @@ function stopTimer() {
 }
 
 async function setupDraggable() {
-  try {
-    const appWindow = getCurrentWindow()
-    await appWindow.setAlwaysOnTop(true)
-  } catch (error) {
-    console.error('Failed to set window always-on-top:', error)
-  }
+  // Window properties like dragging are handled by the parent layout.
+  // Removed setAlwaysOnTop(true) — it was forcing the main window above
+  // all other apps, compounding with the annotation window also being on top.
 }
 
 // Lifecycle

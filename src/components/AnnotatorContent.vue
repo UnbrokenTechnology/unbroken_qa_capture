@@ -269,10 +269,15 @@ onBeforeUnmount(() => {
 function initializeCanvas() {
   if (!canvasElement.value) return
 
-  // Initialize Fabric canvas
+  // Measure the container to size the canvas dynamically
+  const container = canvasElement.value.parentElement
+  const containerWidth = container?.clientWidth ? container.clientWidth - 32 : 1200  // subtract padding
+  const containerHeight = container?.clientHeight ? container.clientHeight - 32 : 800
+
+  // Initialize Fabric canvas sized to its container
   canvas.value = new Canvas(canvasElement.value, {
-    width: 1200,
-    height: 800,
+    width: containerWidth,
+    height: containerHeight,
     backgroundColor: '#ffffff',
   })
 
@@ -311,7 +316,16 @@ async function loadScreenshot() {
     displayScale.value = scale
 
     img.scale(scale)
+
+    // Center the image on the canvas
+    const scaledWidth = (img.width || 1) * scale
+    const scaledHeight = (img.height || 1) * scale
+    const offsetX = (canvasWidth - scaledWidth) / 2
+    const offsetY = (canvasHeight - scaledHeight) / 2
+
     img.set({
+      left: offsetX,
+      top: offsetY,
       selectable: false,
       evented: false,
     })

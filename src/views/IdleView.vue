@@ -17,6 +17,51 @@
         </p>
       </div>
 
+      <!-- Claude AI Connection Banner -->
+      <q-banner
+        v-if="showClaudeBanner"
+        rounded
+        dense
+        class="claude-banner q-mb-lg"
+        :class="claudeBannerClass"
+      >
+        <template #avatar>
+          <q-icon
+            :name="claudeStatus?.status === 'notAuthenticated' ? 'warning' : 'info'"
+            :color="claudeStatus?.status === 'notAuthenticated' ? 'warning' : 'grey-7'"
+          />
+        </template>
+        <span v-if="claudeStatus?.status === 'notAuthenticated'">
+          Claude Code is installed but not signed in. Run <code>claude</code> in your terminal to authenticate, or
+          <a
+            class="text-primary cursor-pointer"
+            @click="handleSettingsClick"
+          >open Settings</a> to check status.
+        </span>
+        <span v-else>
+          AI features require Claude Code. Install it from
+          <a
+            href="https://claude.ai/download"
+            target="_blank"
+            class="text-primary"
+          >claude.ai/download</a>, then run <code>claude</code> in your terminal to sign in. Or
+          <a
+            class="text-primary cursor-pointer"
+            @click="handleSettingsClick"
+          >open Settings</a> to check status.
+        </span>
+        <template #action>
+          <q-btn
+            flat
+            dense
+            round
+            icon="close"
+            size="sm"
+            @click="dismissClaudeBanner"
+          />
+        </template>
+      </q-banner>
+
       <!-- Start Session Button -->
       <div class="start-session-section q-mb-xl">
         <q-btn
@@ -142,15 +187,36 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useSessionStore } from '@/stores/session'
+import { getClaudeStatus } from '@/api/tauri'
+import type { ClaudeStatus } from '@/api/tauri'
 import type { SessionSummary } from '@/types/backend'
 
 const router = useRouter()
 const $q = useQuasar()
 const sessionStore = useSessionStore()
+
+const claudeStatus = ref<ClaudeStatus | null>(null)
+const claudeBannerDismissed = ref(false)
+
+const showClaudeBanner = computed(() =>
+  claudeStatus.value !== null &&
+  claudeStatus.value.status !== 'ready' &&
+  !claudeBannerDismissed.value
+)
+
+const claudeBannerClass = computed(() =>
+  claudeStatus.value?.status === 'notAuthenticated'
+    ? 'bg-warning-light'
+    : 'bg-grey-3'
+)
+
+function dismissClaudeBanner() {
+  claudeBannerDismissed.value = true
+}
 
 // Limit to 10 most recent sessions
 const recentSessions = computed(() =>
@@ -158,10 +224,8 @@ const recentSessions = computed(() =>
 )
 
 onMounted(async () => {
-  // Load recent session summaries when component mounts
-  try {
-    await sessionStore.loadSessionSummaries()
-  } catch (error) {
+  // Load recent session summaries and check Claude status in parallel
+  const sessionsPromise = sessionStore.loadSessionSummaries().catch((error) => {
     console.error('Failed to load session summaries:', error)
     $q.notify({
       type: 'negative',
@@ -170,7 +234,15 @@ onMounted(async () => {
       position: 'bottom-right',
       timeout: 4000,
     })
-  }
+  })
+
+  const claudePromise = getClaudeStatus().then((status) => {
+    claudeStatus.value = status
+  }).catch((err) => {
+    console.error('Failed to check Claude status:', err)
+  })
+
+  await Promise.all([sessionsPromise, claudePromise])
 })
 
 async function handleStartSession() {
@@ -329,6 +401,21 @@ function getStatusColor(status: string): string {
   background: white;
   border-radius: 8px;
   animation: fadeIn 0.3s ease-in;
+}
+
+.claude-banner {
+  animation: fadeIn 0.3s ease-in;
+}
+
+.claude-banner code {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.bg-warning-light {
+  background: #fff8e1;
 }
 
 @keyframes fadeIn {
