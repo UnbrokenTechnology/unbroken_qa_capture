@@ -94,7 +94,41 @@ Key differences from swarm mode:
 
 When ending a manual mode session, write a summary here so the next session can pick up cleanly. Delete the previous session's notes when starting fresh.
 
-**Session 2026-02-19 (session 6):**
+**Session 2026-02-21 (session 8, sprint setup):**
+- **T224 created:** Update USER_GUIDE.md to reflect all feature changes from sessions 2-7.
+- **T225 created:** Add navigation to Sessions List from all views.
+- **T226 created:** Add quick Settings access button to task bar area.
+- **T227 created:** Rework SessionStatusWidget — reduce view obstruction, make useful outside the app window.
+- **Sprint 2 "Bug Fixes & Polish" created** (branch: `sprint/bugfixes-polish`, status: `developing`):
+  - All 15 open tickets assigned to sprint 2 (T212 proposal excluded).
+  - T201/T202 marked done — superseded by T209/T210 and T206/T207 from session 6.
+  - Priorities set: T214/T215/T216/T220/T221 as high (bug fixes), T224 as low (docs).
+  - Dependency graph established:
+    - **Tier 1 (no blockers):** T214, T215, T216, T217, T219, T220, T221, T222, T225, T226, T227
+    - **Tier 2 (blocked):** T200←T214, T218←T217, T223←T222
+    - **Tier 3 (docs, last):** T224←(T200,T215,T216,T218,T219,T221,T223,T225,T226,T227)
+- **Swarm started with 3 agents** to work through the sprint.
+- No code changes this session — sprint planning and ticket organization only.
+
+**Session 2026-02-21 (session 7, QA testing):**
+- **Manual QA testing session** — ran the app with `npm run tauri:dev`, tested core workflows, logged bugs and feature requests.
+- **CLAUDE.md update:** Added directive to always use the ticket CLI for ticket operations (never Claude Code TaskCreate/TaskList tools).
+- **Tickets created this session:**
+  - **T214** — Snipping Tool hang: CaptureWatcher moves files before Snipping Tool releases file handle, causing indefinite spin. Fix: wait for exclusive file access before moving.
+  - **T215** — Claude status detection bug: `check_api_configured()` maps all errors to `NotInstalled`, never returns `NotAuthenticated`. Also no Claude connection prompt in main UI after first-run wizard.
+  - **T216** — Annotation window issues: dark overlay rectangle (frameless + always-on-top + dark bg), screenshots render small/off-center, carousel arrows invisible on dark backgrounds, `autoOpenAnnotation` default should be false, `SessionStatusWidget` forces main window always-on-top.
+  - **T217** — Add End Bug Capture button to BugDetail view (currently can only end capture from ActiveSessionView).
+  - **T218** — Guided data capture with prompted fields (Linear Ticket Maker parity): prompt for title, impact, workaround, area category, custom metadata during capture.
+  - **T219** — Show active profile on IdleView, link sessions to profiles: profile is invisible during normal use, sessions have no profile_id.
+  - **T220** — Session Review shows "No session found" after ending session. End session fails silently — clicking back returns to active session still running. Critical workflow bug.
+  - **T221** — Copy to Clipboard fails: expects metadata.json in bug folder that doesn't exist (data is in SQLite).
+  - **T222** — Auto-fetch Linear teams after connection test, replace UUID text field with dropdown.
+  - **T223** — Fetch Linear issue templates and allow template selection for bug filing.
+- **Linear connection test verified safe:** `ticketing_authenticate` runs read-only `query { viewer { id, name, email } }` — no writes.
+- No code changes this session — pure QA testing and ticket creation.
+- Remaining open tickets: T152 (human verify), T162 (human verify/proposal), T211 (screenshot display), T214-T223 (new from this session)
+
+**Session 2026-02-19 (session 6, completed):**
 - **Capture flow rework (T203-T210):** Major rework of the screenshot capture and bug association flow.
   - **T203 — assign_capture_to_bug file move:** `assign_capture_to_bug` now moves the physical file (not just DB update), updates `file_path`/`file_name`/`annotated_path`, emits `capture:moved` event.
   - **T204 — Thumbnail fix + toAssetUrl utility:** Created `src/utils/paths.ts` with shared `toAssetUrl()` using Tauri's `convertFileSrc()`. Deduplicated from BugDetail.vue, SessionReview.vue, ActiveSessionView.vue.
@@ -220,6 +254,8 @@ Config lives in `.swarm/config.json`:
 ```
 
 ### Ticket CLI
+
+**ALWAYS use the ticket CLI for all ticket operations.** Never use the Claude Code TaskCreate/TaskUpdate/TaskList tools for ticket tracking — all ticket work must go through the CLI so the swarm database stays consistent and the human operator can inspect tickets with `ticket list` / `ticket show`.
 
 Agents coordinate work via the `ticket` CLI (`.swarm/ticket/ticket.py`). Database: `.swarm/tickets/tickets.db`.
 
