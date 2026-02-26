@@ -23,6 +23,8 @@ use uuid::Uuid;
 
 use crate::database::{BugOps, BugRepository, Capture, CaptureOps, CaptureRepository};
 
+type SharedConn = Arc<Mutex<Connection>>;
+
 /// Extensions we recognise as media files worth processing.
 const IMAGE_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff", "tif",
@@ -43,7 +45,7 @@ impl CaptureWatcher {
         session_id: String,
         session_folder: PathBuf,
         active_bug: Arc<Mutex<Option<String>>>,
-        db_path: PathBuf,
+        db_conn: SharedConn,
         app_handle: AppHandle,
     ) -> Result<Self, String> {
         // Process files already sitting in _captures/ (e.g. from a crash).
@@ -52,7 +54,7 @@ impl CaptureWatcher {
             &session_id,
             &session_folder,
             &active_bug,
-            &db_path,
+            &db_conn,
             &app_handle,
         );
 
@@ -60,7 +62,7 @@ impl CaptureWatcher {
         let sid = session_id;
         let sf = session_folder;
         let ab = active_bug;
-        let dp = db_path;
+        let dc = db_conn;
         let ah = app_handle;
 
         let mut watcher = RecommendedWatcher::new(
@@ -74,10 +76,10 @@ impl CaptureWatcher {
                     let sid = sid.clone();
                     let sf = sf.clone();
                     let ab = Arc::clone(&ab);
-                    let dp = dp.clone();
+                    let dc = Arc::clone(&dc);
                     let ah = ah.clone();
                     thread::spawn(move || {
-                        Self::process_new_capture(&path, &sid, &sf, &ab, &dp, &ah);
+                        Self::process_new_capture(&path, &sid, &sf, &ab, &dc, &ah);
                     });
                 }
             },
@@ -101,7 +103,7 @@ impl CaptureWatcher {
         session_id: &str,
         session_folder: &Path,
         active_bug: &Arc<Mutex<Option<String>>>,
-        db_path: &Path,
+        db_conn: &SharedConn,
         app_handle: &AppHandle,
     ) {
         let Ok(entries) = std::fs::read_dir(captures_dir) else {
@@ -115,7 +117,7 @@ impl CaptureWatcher {
                     session_id,
                     session_folder,
                     active_bug,
-                    db_path,
+                    db_conn,
                     app_handle,
                 );
             }
@@ -213,7 +215,7 @@ impl CaptureWatcher {
         session_id: &str,
         session_folder: &Path,
         active_bug: &Arc<Mutex<Option<String>>>,
-        db_path: &Path,
+        db_conn: &SharedConn,
         app_handle: &AppHandle,
     ) {
         // Poll until the writing application finishes flushing (size stable for 300ms).
@@ -250,7 +252,7 @@ impl CaptureWatcher {
 
         // Destination: bug folder if capturing, else _unsorted/.
         let dest_dir = match bug_id {
-            Some(ref bid) => Self::get_bug_folder(db_path, bid)
+            Some(ref bid) => Self::get_bug_folder(db_conn, bid)
                 .map(PathBuf::from)
                 .unwrap_or_else(|| session_folder.join("_unsorted")),
             None => session_folder.join("_unsorted"),
@@ -292,7 +294,8 @@ impl CaptureWatcher {
             created_at: Utc::now().to_rfc3339(),
         };
 
-        if let Ok(conn) = Connection::open(db_path) {
+        {
+            let conn = db_conn.lock().unwrap();
             let repo = CaptureRepository::new(&conn);
             if let Err(e) = repo.create(&capture) {
                 eprintln!("CaptureWatcher: DB insert failed: {e}");
@@ -313,8 +316,8 @@ impl CaptureWatcher {
     }
 
     /// Look up a bug's `folder_path` from the database.
-    fn get_bug_folder(db_path: &Path, bug_id: &str) -> Option<String> {
-        let conn = Connection::open(db_path).ok()?;
+    fn get_bug_folder(db_conn: &SharedConn, bug_id: &str) -> Option<String> {
+        let conn = db_conn.lock().unwrap();
         let repo = BugRepository::new(&conn);
         let bug = repo.get(bug_id).ok()??;
         Some(bug.folder_path)

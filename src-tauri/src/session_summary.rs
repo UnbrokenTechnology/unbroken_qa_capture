@@ -8,7 +8,7 @@
 use chrono::DateTime;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::claude_cli::{ClaudeInvoker, ClaudeRequest, PromptTask, RealClaudeInvoker, load_credentials};
 use crate::database::{Bug, BugOps, BugRepository, Session, SessionOps, SessionRepository};
@@ -30,7 +30,7 @@ impl FileWriter for RealFileWriter {
 
 /// Session summary generator
 pub struct SessionSummaryGenerator {
-    db_path: PathBuf,
+    db_conn: Arc<Mutex<Connection>>,
     file_writer: Arc<dyn FileWriter>,
     claude_invoker: Option<Arc<dyn ClaudeInvoker>>,
 }
@@ -40,12 +40,12 @@ impl SessionSummaryGenerator {
     /// Attempts to load Claude Code OAuth credentials for AI summaries.
     /// If credentials are not available, claude_invoker is set to None and AI summaries
     /// are silently skipped.
-    pub fn new(db_path: PathBuf) -> Self {
+    pub fn new(db_conn: Arc<Mutex<Connection>>) -> Self {
         let claude_invoker = load_credentials()
             .ok()
             .map(|creds| Arc::new(RealClaudeInvoker::new(creds)) as Arc<dyn ClaudeInvoker>);
         Self {
-            db_path,
+            db_conn,
             file_writer: Arc::new(RealFileWriter),
             claude_invoker,
         }
@@ -54,12 +54,12 @@ impl SessionSummaryGenerator {
     /// Create a new generator with custom dependencies (for testing)
     #[allow(dead_code)]
     pub fn with_deps(
-        db_path: PathBuf,
+        db_conn: Arc<Mutex<Connection>>,
         file_writer: Arc<dyn FileWriter>,
         claude_invoker: Option<Arc<dyn ClaudeInvoker>>,
     ) -> Self {
         Self {
-            db_path,
+            db_conn,
             file_writer,
             claude_invoker,
         }
@@ -71,23 +71,25 @@ impl SessionSummaryGenerator {
         session_id: &str,
         include_ai_summary: bool,
     ) -> Result<String, String> {
-        // Get session and bugs from database
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
+        // Get session and bugs from database — drop lock before heavy work below.
+        let (session, bugs) = {
+            let conn = self.db_conn.lock().unwrap();
+            let session_repo = SessionRepository::new(&conn);
+            let bug_repo = BugRepository::new(&conn);
 
-        let session_repo = SessionRepository::new(&conn);
-        let bug_repo = BugRepository::new(&conn);
+            let session = session_repo
+                .get(session_id)
+                .map_err(|e| format!("Failed to get session: {}", e))?
+                .ok_or_else(|| format!("Session not found: {}", session_id))?;
 
-        let session = session_repo
-            .get(session_id)
-            .map_err(|e| format!("Failed to get session: {}", e))?
-            .ok_or_else(|| format!("Session not found: {}", session_id))?;
+            let bugs = bug_repo
+                .list_by_session(session_id)
+                .map_err(|e| format!("Failed to list bugs: {}", e))?;
 
-        let bugs = bug_repo
-            .list_by_session(session_id)
-            .map_err(|e| format!("Failed to list bugs: {}", e))?;
+            (session, bugs)
+        };
 
-        // Generate summary content
+        // Generate summary content (may call Claude — lock is released above)
         let summary_path = PathBuf::from(&session.folder_path).join("session-summary.md");
         let content = self.build_summary_content(&session, &bugs, include_ai_summary)?;
 
@@ -391,15 +393,15 @@ mod tests {
         let temp_dir = std::env::temp_dir().join(format!("test_summary_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
-        let db_path = temp_dir.join("test.db");
-        let conn = Connection::open(&db_path).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
         init_database(&conn).unwrap();
 
         let session = create_test_session(&conn);
         let _bugs = create_test_bugs(&conn, &session.id);
 
+        let db_conn = Arc::new(std::sync::Mutex::new(conn));
         let file_writer = Arc::new(MockFileWriter::new());
-        let generator = SessionSummaryGenerator::with_deps(db_path, file_writer.clone(), None);
+        let generator = SessionSummaryGenerator::with_deps(db_conn, file_writer.clone(), None);
 
         let result = generator.generate_summary(&session.id, false);
         assert!(result.is_ok());
@@ -420,16 +422,13 @@ mod tests {
 
     #[test]
     fn test_generate_summary_with_ai() {
-        let temp_dir = std::env::temp_dir().join(format!("test_summary_ai_{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&temp_dir).unwrap();
-
-        let db_path = temp_dir.join("test.db");
-        let conn = Connection::open(&db_path).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
         init_database(&conn).unwrap();
 
         let session = create_test_session(&conn);
         let _bugs = create_test_bugs(&conn, &session.id);
 
+        let db_conn = Arc::new(std::sync::Mutex::new(conn));
         let file_writer = Arc::new(MockFileWriter::new());
         let mock_claude: Arc<dyn ClaudeInvoker> = Arc::new(MockClaudeInvoker {
             should_succeed: true,
@@ -437,7 +436,7 @@ mod tests {
         });
 
         let generator =
-            SessionSummaryGenerator::with_deps(db_path, file_writer.clone(), Some(mock_claude));
+            SessionSummaryGenerator::with_deps(db_conn, file_writer.clone(), Some(mock_claude));
 
         let result = generator.generate_summary(&session.id, true);
         assert!(result.is_ok());
@@ -452,17 +451,14 @@ mod tests {
 
     #[test]
     fn test_generate_summary_no_bugs() {
-        let temp_dir = std::env::temp_dir().join(format!("test_summary_empty_{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&temp_dir).unwrap();
-
-        let db_path = temp_dir.join("test.db");
-        let conn = Connection::open(&db_path).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
         init_database(&conn).unwrap();
 
         let session = create_test_session(&conn);
 
+        let db_conn = Arc::new(std::sync::Mutex::new(conn));
         let file_writer = Arc::new(MockFileWriter::new());
-        let generator = SessionSummaryGenerator::with_deps(db_path, file_writer.clone(), None);
+        let generator = SessionSummaryGenerator::with_deps(db_conn, file_writer.clone(), None);
 
         let result = generator.generate_summary(&session.id, false);
         assert!(result.is_ok());
@@ -478,17 +474,14 @@ mod tests {
 
     #[test]
     fn test_duration_calculation() {
-        let temp_dir = std::env::temp_dir().join(format!("test_duration_{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&temp_dir).unwrap();
-
-        let db_path = temp_dir.join("test.db");
-        let conn = Connection::open(&db_path).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
         init_database(&conn).unwrap();
 
         let session = create_test_session(&conn);
 
+        let db_conn = Arc::new(std::sync::Mutex::new(conn));
         let file_writer = Arc::new(MockFileWriter::new());
-        let generator = SessionSummaryGenerator::with_deps(db_path, file_writer.clone(), None);
+        let generator = SessionSummaryGenerator::with_deps(db_conn, file_writer.clone(), None);
 
         let result = generator.generate_summary(&session.id, false);
         assert!(result.is_ok());

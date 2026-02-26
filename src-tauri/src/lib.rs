@@ -24,6 +24,7 @@ use tauri::{Manager, Emitter, AppHandle};
 use session_manager::{SessionManager, EventEmitter, RealFileSystem};
 use hotkey::{HotkeyManager, HotkeyConfig};
 use ticketing::{LinearIntegration, TicketingIntegration};
+use database::DbState;
 
 // Global template manager
 static TEMPLATE_MANAGER: Mutex<Option<TemplateManager>> = Mutex::new(None);
@@ -318,12 +319,8 @@ fn bug_to_template_data(
 }
 
 /// Render a bug report from DB data using the template engine.
-fn render_bug_from_db(bug_id: &str, db_path: &std::path::Path) -> Result<String, String> {
-    use database::{Database, BugRepository, BugOps, CaptureRepository, CaptureOps, SessionRepository, SessionOps};
-
-    let db = Database::new(db_path)
-        .map_err(|e| format!("Failed to open database: {}", e))?;
-    let conn = db.connection();
+fn render_bug_from_db(bug_id: &str, conn: &rusqlite::Connection) -> Result<String, String> {
+    use database::{BugRepository, BugOps, CaptureRepository, CaptureOps, SessionRepository, SessionOps};
 
     let bug = BugRepository::new(conn)
         .get(bug_id)
@@ -354,15 +351,13 @@ fn render_bug_from_db(bug_id: &str, db_path: &std::path::Path) -> Result<String,
 #[tauri::command]
 async fn copy_bug_to_clipboard(
     bug_id: String,
+    db_state: tauri::State<'_, DbState>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    let db_path = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?
-        .join("qa_capture.db");
-
-    let rendered_markdown = render_bug_from_db(&bug_id, &db_path)?;
+    let rendered_markdown = {
+        let conn = db_state.connection();
+        render_bug_from_db(&bug_id, &conn)?
+    };
 
     // Copy to clipboard using Tauri clipboard plugin
     app_handle
@@ -617,16 +612,11 @@ async fn update_tray_tooltip(tooltip: String, app_handle: tauri::AppHandle) -> R
 }
 
 #[tauri::command]
-fn get_bug_notes(bug_id: String, app: tauri::AppHandle) -> Result<String, String> {
-    use database::{Database, BugOps, BugRepository};
+fn get_bug_notes(bug_id: String, db_state: tauri::State<'_, DbState>) -> Result<String, String> {
+    use database::{BugOps, BugRepository};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = BugRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = BugRepository::new(&conn);
 
     let bug = repo.get(&bug_id)
         .map_err(|e: rusqlite::Error| e.to_string())?
@@ -656,17 +646,12 @@ fn get_bug_notes(bug_id: String, app: tauri::AppHandle) -> Result<String, String
 fn update_bug_notes(
     bug_id: String,
     notes: String,
-    app: tauri::AppHandle,
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<(), String> {
-    use database::{Database, BugOps, BugRepository};
+    use database::{BugOps, BugRepository};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = BugRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = BugRepository::new(&conn);
 
     let update = database::BugUpdate {
         notes: Some(notes),
@@ -683,17 +668,12 @@ fn update_bug_notes(
 fn update_bug_metadata(
     bug_id: String,
     metadata_json: String,
-    app: tauri::AppHandle,
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<(), String> {
-    use database::{Database, BugOps, BugRepository};
+    use database::{BugOps, BugRepository};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = BugRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = BugRepository::new(&conn);
 
     let update = database::BugUpdate {
         custom_metadata: Some(metadata_json),
@@ -831,12 +811,10 @@ fn start_capture_watcher_for_session(session: &database::Session, app: &AppHandl
             .unwrap_or_else(|| std::sync::Arc::new(std::sync::Mutex::new(None)))
     };
 
-    let db_path = {
-        let guard = SESSION_MANAGER.lock().unwrap();
-        guard
-            .as_ref()
-            .map(|m| m.db_path.clone())
-            .unwrap_or_default()
+    // Get the shared DB connection from Tauri managed state.
+    let db_conn = {
+        let db_state = app.state::<database::DbState>();
+        db_state.arc()
     };
 
     match capture_watcher::CaptureWatcher::start(
@@ -844,7 +822,7 @@ fn start_capture_watcher_for_session(session: &database::Session, app: &AppHandl
         session.id.clone(),
         session_folder,
         active_bug,
-        db_path,
+        db_conn,
         app.clone(),
     ) {
         Ok(watcher) => {
@@ -1014,59 +992,38 @@ fn get_active_bug_id() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-fn get_session_summaries(app: tauri::AppHandle) -> Result<Vec<database::SessionSummary>, String> {
-    use database::{Database, SessionRepository, SessionOps};
+fn get_session_summaries(db_state: tauri::State<'_, DbState>) -> Result<Vec<database::SessionSummary>, String> {
+    use database::{SessionRepository, SessionOps};
 
-    let db_path = app.path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?
-        .join("qa_capture.db");
-
-    let db = Database::new(&db_path)
-        .map_err(|e| format!("Failed to open database: {}", e))?;
-
-    let repo = SessionRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SessionRepository::new(&conn);
     repo.get_summaries()
         .map_err(|e| format!("Failed to get session summaries: {}", e))
 }
 
 #[tauri::command]
-fn get_active_session(app: tauri::AppHandle) -> Result<Option<database::Session>, String> {
-    use database::{Database, SessionRepository, SessionOps};
+fn get_active_session(db_state: tauri::State<'_, DbState>) -> Result<Option<database::Session>, String> {
+    use database::{SessionRepository, SessionOps};
 
-    let db_path = app.path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?
-        .join("qa_capture.db");
-
-    let db = Database::new(&db_path)
-        .map_err(|e| format!("Failed to open database: {}", e))?;
-
-    let repo = SessionRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SessionRepository::new(&conn);
     repo.get_active_session()
         .map_err(|e| format!("Failed to get active session: {}", e))
 }
 
 #[tauri::command]
-fn list_sessions(app: tauri::AppHandle) -> Result<Vec<database::Session>, String> {
-    use database::{Database, SessionRepository, SessionOps};
+fn list_sessions(db_state: tauri::State<'_, DbState>) -> Result<Vec<database::Session>, String> {
+    use database::{SessionRepository, SessionOps};
 
-    let db_path = app.path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?
-        .join("qa_capture.db");
-
-    let db = Database::new(&db_path)
-        .map_err(|e| format!("Failed to open database: {}", e))?;
-
-    let repo = SessionRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SessionRepository::new(&conn);
     repo.list()
         .map_err(|e| format!("Failed to list sessions: {}", e))
 }
 
 #[tauri::command]
-fn update_session_status(session_id: String, status: String, app: tauri::AppHandle) -> Result<(), String> {
-    use database::{Database, SessionRepository, SessionOps};
+fn update_session_status(session_id: String, status: String, db_state: tauri::State<'_, DbState>) -> Result<(), String> {
+    use database::{SessionRepository, SessionOps};
 
     let parsed_status = match status.as_str() {
         "active" => database::SessionStatus::Active,
@@ -1076,67 +1033,41 @@ fn update_session_status(session_id: String, status: String, app: tauri::AppHand
         _ => return Err(format!("Invalid session status: {}", status)),
     };
 
-    let db_path = app.path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?
-        .join("qa_capture.db");
-
-    let db = Database::new(&db_path)
-        .map_err(|e| format!("Failed to open database: {}", e))?;
-
-    let repo = SessionRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SessionRepository::new(&conn);
     repo.update_status(&session_id, parsed_status)
         .map_err(|e| format!("Failed to update session status: {}", e))
 }
 
 #[tauri::command]
-fn get_bugs_by_session(session_id: String, app: tauri::AppHandle) -> Result<Vec<database::Bug>, String> {
-    use database::{Database, BugRepository, BugOps};
+fn get_bugs_by_session(session_id: String, db_state: tauri::State<'_, DbState>) -> Result<Vec<database::Bug>, String> {
+    use database::{BugRepository, BugOps};
 
-    let db_path = app.path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?
-        .join("qa_capture.db");
-
-    let db = Database::new(&db_path)
-        .map_err(|e| format!("Failed to open database: {}", e))?;
-
-    let repo = BugRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = BugRepository::new(&conn);
     repo.list_by_session(&session_id)
         .map_err(|e| format!("Failed to get bugs for session: {}", e))
 }
 
 #[tauri::command]
-fn get_bug(bug_id: String, app: tauri::AppHandle) -> Result<Option<database::Bug>, String> {
-    use database::{Database, BugRepository, BugOps};
+fn get_bug(bug_id: String, db_state: tauri::State<'_, DbState>) -> Result<Option<database::Bug>, String> {
+    use database::{BugRepository, BugOps};
 
-    let db_path = app.path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?
-        .join("qa_capture.db");
-
-    let db = Database::new(&db_path)
-        .map_err(|e| format!("Failed to open database: {}", e))?;
-
-    let repo = BugRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = BugRepository::new(&conn);
     repo.get(&bug_id)
         .map_err(|e| format!("Failed to get bug: {}", e))
 }
 
 #[tauri::command]
-fn generate_session_summary(session_id: String, include_ai_summary: bool) -> Result<String, String> {
+fn generate_session_summary(
+    session_id: String,
+    include_ai_summary: bool,
+    db_state: tauri::State<'_, DbState>,
+) -> Result<String, String> {
     use session_summary::SessionSummaryGenerator;
 
-    let manager_guard = SESSION_MANAGER.lock().unwrap();
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Session manager not initialized")?;
-
-    // Get db_path from the session manager's db_path field
-    // We'll create a new generator with the same db_path
-    let db_path = manager.db_path.clone();
-
-    let generator = SessionSummaryGenerator::new(db_path);
+    let generator = SessionSummaryGenerator::new(db_state.arc());
     generator.generate_summary(&session_id, include_ai_summary)
 }
 
@@ -1155,23 +1086,18 @@ fn get_hotkey_config() -> Result<HotkeyConfig, String> {
 fn update_hotkey_config(
     config: HotkeyConfig,
     app_handle: tauri::AppHandle,
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<Vec<String>, String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+    use database::{SettingsRepository, SettingsOps};
 
     let manager_guard = HOTKEY_MANAGER.lock().unwrap();
     let manager = manager_guard
         .as_ref()
         .ok_or("Hotkey manager not initialized")?;
 
-    // Save config to database settings
-    let data_dir = app_handle.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
     manager.save_to_settings(&config, |key, value| {
-        let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-        let repo = SettingsRepository::new(db.connection());
+        let conn = db_state.connection();
+        let repo = SettingsRepository::new(&conn);
         repo.set(key, value).map_err(|e: rusqlite::Error| e.to_string())
     })?;
 
@@ -1235,18 +1161,11 @@ fn ticketing_check_connection() -> Result<ticketing::ConnectionStatus, String> {
 }
 
 #[tauri::command]
-fn ticketing_get_credentials(app: tauri::AppHandle) -> Result<Option<ticketing::TicketingCredentials>, String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+fn ticketing_get_credentials(db_state: tauri::State<'_, DbState>) -> Result<Option<ticketing::TicketingCredentials>, String> {
+    use database::{SettingsRepository, SettingsOps};
 
-    // Get database path
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    // Open database
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SettingsRepository::new(&conn);
 
     // Get stored credentials
     let api_key = repo.get("ticketing.api_key").map_err(|e: rusqlite::Error| e.to_string())?;
@@ -1267,19 +1186,12 @@ fn ticketing_get_credentials(app: tauri::AppHandle) -> Result<Option<ticketing::
 #[tauri::command]
 fn ticketing_save_credentials(
     credentials: ticketing::TicketingCredentials,
-    app: tauri::AppHandle,
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<(), String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+    use database::{SettingsRepository, SettingsOps};
 
-    // Get database path
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    // Open database
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SettingsRepository::new(&conn);
 
     // Save credentials
     repo.set("ticketing.api_key", &credentials.api_key).map_err(|e: rusqlite::Error| e.to_string())?;
@@ -1320,12 +1232,12 @@ fn ticketing_fetch_templates() -> Result<Vec<ticketing::LinearTemplate>, String>
 }
 
 #[tauri::command]
-fn get_linear_profile_defaults(app: tauri::AppHandle) -> Result<Option<profile::LinearProfileConfig>, String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+fn get_linear_profile_defaults(db_state: tauri::State<'_, DbState>) -> Result<Option<profile::LinearProfileConfig>, String> {
+    use database::{SettingsRepository, SettingsOps};
     use profile::{SqliteProfileRepository, ProfileRepository};
 
-    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
-    let settings_repo = SettingsRepository::new(db.connection());
+    let conn = db_state.connection();
+    let settings_repo = SettingsRepository::new(&conn);
 
     // Get active profile ID from settings
     let active_id = settings_repo
@@ -1337,9 +1249,8 @@ fn get_linear_profile_defaults(app: tauri::AppHandle) -> Result<Option<profile::
         None => return Ok(None),
     };
 
-    // Load the profile from SQLite
-    let db2 = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
-    let profile_repo = SqliteProfileRepository::new(db2.connection());
+    // Load the profile from SQLite (same connection)
+    let profile_repo = SqliteProfileRepository::new(&conn);
     let profile = profile_repo.get(&profile_id)?;
 
     Ok(profile.and_then(|p| p.linear_config))
@@ -1450,13 +1361,13 @@ async fn refine_bug_description(
 async fn suggest_capture_assignment(
     capture_id: String,
     session_id: String,
-    app: tauri::AppHandle,
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<claude_cli::CaptureAssignmentSuggestion, String> {
     use claude_cli::{
         BugSummary, CaptureAssignmentSuggestion, ClaudeInvoker, ClaudeRequest, PromptBuilder,
         PromptTask, RealClaudeInvoker,
     };
-    use database::{BugOps, BugRepository, CaptureOps, CaptureRepository, Database};
+    use database::{BugOps, BugRepository, CaptureOps, CaptureRepository};
     use std::path::PathBuf;
 
     const MAX_IMAGE_SIZE: u64 = 1_048_576; // 1 MB
@@ -1466,24 +1377,26 @@ async fn suggest_capture_assignment(
     let creds = claude_cli::load_credentials()
         .map_err(|e| format!("Claude not ready: {}", e))?;
 
-    // 2. Open database and fetch capture + bugs
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| std::env::current_dir().unwrap().join("data"));
-    let db_path = data_dir.join("qa_capture.db");
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
+    // 2. Fetch capture + bugs from the shared database connection, then release lock.
+    let (capture, bugs) = {
+        let conn = db_state.connection();
+        let capture_repo = CaptureRepository::new(&conn);
+        let capture = capture_repo
+            .get(&capture_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Capture not found: {}", capture_id))?;
 
-    let capture_repo = CaptureRepository::new(db.connection());
-    let capture = capture_repo
-        .get(&capture_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Capture not found: {}", capture_id))?;
+        let bug_repo = BugRepository::new(&conn);
+        let bugs = bug_repo
+            .list_by_session(&session_id)
+            .map_err(|e| e.to_string())?;
 
-    let bug_repo = BugRepository::new(db.connection());
-    let bugs = bug_repo
-        .list_by_session(&session_id)
-        .map_err(|e| e.to_string())?;
+        (capture, bugs)
+    };
+
+    // Hold a new connection guard for the bug reference image lookup loop below.
+    let conn_for_loop = db_state.connection();
+    let capture_repo = CaptureRepository::new(&conn_for_loop);
 
     // 3. Build the multimodal content array: unsorted screenshot first, then bug reference images
     let mut image_paths: Vec<PathBuf> = Vec::new();
@@ -1647,17 +1560,12 @@ async fn save_bug_description(
 fn update_bug_description(
     bug_id: String,
     description: String,
-    app: tauri::AppHandle
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<(), String> {
-    use database::{Database, BugOps, BugRepository};
+    use database::{BugOps, BugRepository};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = BugRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = BugRepository::new(&conn);
 
     let mut bug = repo.get(&bug_id)
         .map_err(|e: rusqlite::Error| e.to_string())?
@@ -1673,17 +1581,12 @@ fn update_bug_description(
 fn update_bug_title(
     bug_id: String,
     title: String,
-    app: tauri::AppHandle,
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<(), String> {
-    use database::{Database, BugOps, BugRepository};
+    use database::{BugOps, BugRepository};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = BugRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = BugRepository::new(&conn);
 
     // Use update_partial to only touch the title field.
     // An empty title is stored as an empty string (not NULL) to allow clearing,
@@ -1701,17 +1604,12 @@ fn update_bug_title(
 fn update_bug_type(
     bug_id: String,
     bug_type: String,
-    app: tauri::AppHandle,
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<(), String> {
-    use database::{Database, BugOps, BugRepository, BugType};
+    use database::{BugOps, BugRepository, BugType};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = BugRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = BugRepository::new(&conn);
 
     let parsed_type = BugType::from_str(&bug_type)
         .map_err(|e| format!("Invalid bug type: {}", e))?;
@@ -1797,62 +1695,38 @@ fn format_session_export(session_folder_path: String) -> Result<(), String> {
 // ─── Settings Commands ───────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_setting(key: String, app: tauri::AppHandle) -> Result<Option<String>, String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+fn get_setting(key: String, db_state: tauri::State<'_, DbState>) -> Result<Option<String>, String> {
+    use database::{SettingsRepository, SettingsOps};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
-
+    let conn = db_state.connection();
+    let repo = SettingsRepository::new(&conn);
     repo.get(&key).map_err(|e: rusqlite::Error| e.to_string())
 }
 
 #[tauri::command]
-fn set_setting(key: String, value: String, app: tauri::AppHandle) -> Result<(), String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+fn set_setting(key: String, value: String, db_state: tauri::State<'_, DbState>) -> Result<(), String> {
+    use database::{SettingsRepository, SettingsOps};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
-
+    let conn = db_state.connection();
+    let repo = SettingsRepository::new(&conn);
     repo.set(&key, &value).map_err(|e: rusqlite::Error| e.to_string())
 }
 
 #[tauri::command]
-fn get_all_settings(app: tauri::AppHandle) -> Result<Vec<database::Setting>, String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+fn get_all_settings(db_state: tauri::State<'_, DbState>) -> Result<Vec<database::Setting>, String> {
+    use database::{SettingsRepository, SettingsOps};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
-
+    let conn = db_state.connection();
+    let repo = SettingsRepository::new(&conn);
     repo.get_all().map_err(|e: rusqlite::Error| e.to_string())
 }
 
 #[tauri::command]
-fn delete_setting(key: String, app: tauri::AppHandle) -> Result<(), String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+fn delete_setting(key: String, db_state: tauri::State<'_, DbState>) -> Result<(), String> {
+    use database::{SettingsRepository, SettingsOps};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
-
+    let conn = db_state.connection();
+    let repo = SettingsRepository::new(&conn);
     repo.delete(&key).map_err(|e: rusqlite::Error| e.to_string())
 }
 
@@ -1861,17 +1735,11 @@ fn delete_setting(key: String, app: tauri::AppHandle) -> Result<(), String> {
 const SETUP_COMPLETE_KEY: &str = "has_completed_setup";
 
 #[tauri::command]
-fn has_completed_setup(app: tauri::AppHandle) -> Result<bool, String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+fn has_completed_setup(db_state: tauri::State<'_, DbState>) -> Result<bool, String> {
+    use database::{SettingsRepository, SettingsOps};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
-
+    let conn = db_state.connection();
+    let repo = SettingsRepository::new(&conn);
     match repo.get(SETUP_COMPLETE_KEY) {
         Ok(Some(value)) => Ok(value == "true"),
         Ok(None) => Ok(false),
@@ -1880,93 +1748,69 @@ fn has_completed_setup(app: tauri::AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn mark_setup_complete(app: tauri::AppHandle) -> Result<(), String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+fn mark_setup_complete(db_state: tauri::State<'_, DbState>) -> Result<(), String> {
+    use database::{SettingsRepository, SettingsOps};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
-
+    let conn = db_state.connection();
+    let repo = SettingsRepository::new(&conn);
     repo.set(SETUP_COMPLETE_KEY, "true")
         .map_err(|e: rusqlite::Error| e.to_string())
 }
 
 #[tauri::command]
-fn reset_setup(app: tauri::AppHandle) -> Result<(), String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+fn reset_setup(db_state: tauri::State<'_, DbState>) -> Result<(), String> {
+    use database::{SettingsRepository, SettingsOps};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
-
+    let conn = db_state.connection();
+    let repo = SettingsRepository::new(&conn);
     repo.delete(SETUP_COMPLETE_KEY)
         .map_err(|e: rusqlite::Error| e.to_string())
 }
 
 #[tauri::command]
-fn get_bug_captures(bug_id: String, app: tauri::AppHandle) -> Result<Vec<database::Capture>, String> {
-    use database::{Database, CaptureOps, CaptureRepository};
+fn get_bug_captures(bug_id: String, db_state: tauri::State<'_, DbState>) -> Result<Vec<database::Capture>, String> {
+    use database::{CaptureOps, CaptureRepository};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = CaptureRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = CaptureRepository::new(&conn);
 
     repo.list_by_bug(&bug_id)
         .map_err(|e: rusqlite::Error| e.to_string())
 }
 
 #[tauri::command]
-fn get_unsorted_captures(session_id: String, app: tauri::AppHandle) -> Result<Vec<database::Capture>, String> {
-    use database::{Database, CaptureOps, CaptureRepository};
+fn get_unsorted_captures(session_id: String, db_state: tauri::State<'_, DbState>) -> Result<Vec<database::Capture>, String> {
+    use database::{CaptureOps, CaptureRepository};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = CaptureRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = CaptureRepository::new(&conn);
 
     repo.list_unsorted(&session_id)
         .map_err(|e: rusqlite::Error| e.to_string())
 }
 
 #[tauri::command]
-fn assign_capture_to_bug(capture_id: String, bug_id: String, app: tauri::AppHandle) -> Result<(), String> {
-    use database::{Database, BugOps, BugRepository, CaptureOps, CaptureRepository};
+fn assign_capture_to_bug(capture_id: String, bug_id: String, db_state: tauri::State<'_, DbState>, app: tauri::AppHandle) -> Result<(), String> {
+    use database::{BugOps, BugRepository, CaptureOps, CaptureRepository};
     use tauri::Emitter;
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
+    // Fetch capture and bug from DB, then release the lock before doing file I/O.
+    let (mut capture, bug_folder) = {
+        let conn = db_state.connection();
+        let bug_repo = BugRepository::new(&conn);
+        let capture_repo = CaptureRepository::new(&conn);
 
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let bug_repo = BugRepository::new(db.connection());
-    let capture_repo = CaptureRepository::new(db.connection());
+        let capture = capture_repo.get(&capture_id)
+            .map_err(|e: rusqlite::Error| e.to_string())?
+            .ok_or_else(|| format!("Capture not found: {}", capture_id))?;
 
-    let mut capture = capture_repo.get(&capture_id)
-        .map_err(|e: rusqlite::Error| e.to_string())?
-        .ok_or_else(|| format!("Capture not found: {}", capture_id))?;
+        // Look up the target bug to get its folder path.
+        let bug = bug_repo.get(&bug_id)
+            .map_err(|e: rusqlite::Error| e.to_string())?
+            .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
 
-    // Look up the target bug to get its folder path.
-    let bug = bug_repo.get(&bug_id)
-        .map_err(|e: rusqlite::Error| e.to_string())?
-        .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
-
-    let bug_folder = std::path::PathBuf::from(&bug.folder_path);
+        (capture, std::path::PathBuf::from(&bug.folder_path))
+    };
 
     // Ensure the bug folder exists.
     std::fs::create_dir_all(&bug_folder)
@@ -2010,8 +1854,13 @@ fn assign_capture_to_bug(capture_id: String, bug_id: String, app: tauri::AppHand
 
     capture.bug_id = Some(bug_id.clone());
 
-    capture_repo.update(&capture)
-        .map_err(|e: rusqlite::Error| e.to_string())?;
+    // Persist the updated capture record.
+    {
+        let conn = db_state.connection();
+        let capture_repo = CaptureRepository::new(&conn);
+        capture_repo.update(&capture)
+            .map_err(|e: rusqlite::Error| e.to_string())?;
+    }
 
     // Notify the frontend so it can refresh capture lists.
     let _ = app.emit(
@@ -2065,17 +1914,12 @@ fn disable_startup() -> Result<(), String> {
 fn update_bug_console_parse(
     bug_id: String,
     console_parsed_json: String,
-    app: tauri::AppHandle
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<(), String> {
-    use database::{Database, BugOps, BugRepository};
+    use database::{BugOps, BugRepository};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = BugRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = BugRepository::new(&conn);
 
     // Get the bug
     let mut bug = repo.get(&bug_id)
@@ -2094,17 +1938,12 @@ fn update_bug_console_parse(
 fn update_capture_console_flag(
     capture_id: String,
     is_console_capture: bool,
-    app: tauri::AppHandle
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<(), String> {
-    use database::{Database, CaptureOps, CaptureRepository};
+    use database::{CaptureOps, CaptureRepository};
 
-    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    });
-    let db_path = data_dir.join("qa_capture.db");
-
-    let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-    let repo = CaptureRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = CaptureRepository::new(&conn);
 
     // Get the capture
     let mut capture = repo.get(&capture_id)
@@ -2234,7 +2073,7 @@ fn save_annotated_image(
     data_url: String,
     save_mode: String,
     capture_id: Option<String>,
-    app: tauri::AppHandle,
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<String, String> {
     use std::path::Path;
 
@@ -2274,15 +2113,10 @@ fn save_annotated_image(
 
     // If a capture_id was provided, update the DB record
     if let Some(id) = capture_id {
-        use database::{Database, CaptureOps, CaptureRepository};
+        use database::{CaptureOps, CaptureRepository};
 
-        let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-            std::env::current_dir().unwrap().join("data")
-        });
-        let db_path = data_dir.join("qa_capture.db");
-
-        let db = Database::open(&db_path).map_err(|e| e.to_string())?;
-        let repo = CaptureRepository::new(db.connection());
+        let conn = db_state.connection();
+        let repo = CaptureRepository::new(&conn);
 
         if let Ok(Some(mut capture)) = repo.get(&id) {
             capture.annotated_path = Some(save_path.clone());
@@ -2301,19 +2135,14 @@ fn save_annotated_image(
 fn create_swarm_ticket(
     title: String,
     description: String,
-    app: tauri::AppHandle,
+    db_state: tauri::State<'_, DbState>,
 ) -> Result<String, String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+    use database::{SettingsRepository, SettingsOps};
 
     // Resolve the ticket DB path from settings or fall back to the default
     let db_path = {
-        let data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-            std::env::current_dir().unwrap().join("data")
-        });
-        let app_db = data_dir.join("qa_capture.db");
-
-        let db = Database::open(&app_db).map_err(|e| e.to_string())?;
-        let repo = SettingsRepository::new(db.connection());
+        let conn = db_state.connection();
+        let repo = SettingsRepository::new(&conn);
 
         repo.get("swarm_ticket_db_path")
             .map_err(|e: rusqlite::Error| e.to_string())?
@@ -2345,84 +2174,72 @@ fn create_swarm_ticket(
 
 // ─── Profile Commands ────────────────────────────────────────────────────
 
-/// Returns the db_path for profile commands (shared helper)
-fn get_db_path(app: &tauri::AppHandle) -> std::path::PathBuf {
-    app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::current_dir().unwrap().join("data")
-    }).join("qa_capture.db")
-}
-
 #[tauri::command]
-fn profile_list(app: tauri::AppHandle) -> Result<Vec<profile::QaProfile>, String> {
-    use database::Database;
+fn profile_list(db_state: tauri::State<'_, DbState>) -> Result<Vec<profile::QaProfile>, String> {
     use profile::{SqliteProfileRepository, ProfileRepository};
 
-    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
-    let repo = SqliteProfileRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SqliteProfileRepository::new(&conn);
     repo.list()
 }
 
 #[tauri::command]
-fn profile_get(id: String, app: tauri::AppHandle) -> Result<Option<profile::QaProfile>, String> {
-    use database::Database;
+fn profile_get(id: String, db_state: tauri::State<'_, DbState>) -> Result<Option<profile::QaProfile>, String> {
     use profile::{SqliteProfileRepository, ProfileRepository};
 
-    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
-    let repo = SqliteProfileRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SqliteProfileRepository::new(&conn);
     repo.get(&id)
 }
 
 #[tauri::command]
-fn profile_create(profile_json: String, app: tauri::AppHandle) -> Result<(), String> {
-    use database::Database;
+fn profile_create(profile_json: String, db_state: tauri::State<'_, DbState>) -> Result<(), String> {
     use profile::{SqliteProfileRepository, ProfileRepository};
 
     let profile: profile::QaProfile = serde_json::from_str(&profile_json)
         .map_err(|e| format!("Failed to parse profile JSON: {}", e))?;
 
-    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
-    let repo = SqliteProfileRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SqliteProfileRepository::new(&conn);
     repo.create(&profile)
 }
 
 #[tauri::command]
-fn profile_update(profile_json: String, app: tauri::AppHandle) -> Result<(), String> {
-    use database::Database;
+fn profile_update(profile_json: String, db_state: tauri::State<'_, DbState>) -> Result<(), String> {
     use profile::{SqliteProfileRepository, ProfileRepository};
 
     let profile: profile::QaProfile = serde_json::from_str(&profile_json)
         .map_err(|e| format!("Failed to parse profile JSON: {}", e))?;
 
-    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
-    let repo = SqliteProfileRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SqliteProfileRepository::new(&conn);
     repo.update(&profile)
 }
 
 #[tauri::command]
-fn profile_delete(id: String, app: tauri::AppHandle) -> Result<(), String> {
-    use database::Database;
+fn profile_delete(id: String, db_state: tauri::State<'_, DbState>) -> Result<(), String> {
     use profile::{SqliteProfileRepository, ProfileRepository};
 
-    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
-    let repo = SqliteProfileRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SqliteProfileRepository::new(&conn);
     repo.delete(&id)
 }
 
 #[tauri::command]
-fn get_active_profile_id(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+fn get_active_profile_id(db_state: tauri::State<'_, DbState>) -> Result<Option<String>, String> {
+    use database::{SettingsRepository, SettingsOps};
 
-    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SettingsRepository::new(&conn);
     repo.get("active_profile_id").map_err(|e: rusqlite::Error| e.to_string())
 }
 
 #[tauri::command]
-fn set_active_profile_id(profile_id: String, app: tauri::AppHandle) -> Result<(), String> {
-    use database::{Database, SettingsRepository, SettingsOps};
+fn set_active_profile_id(profile_id: String, db_state: tauri::State<'_, DbState>) -> Result<(), String> {
+    use database::{SettingsRepository, SettingsOps};
 
-    let db = Database::open(get_db_path(&app)).map_err(|e| e.to_string())?;
-    let repo = SettingsRepository::new(db.connection());
+    let conn = db_state.connection();
+    let repo = SettingsRepository::new(&conn);
     repo.set("active_profile_id", &profile_id)
         .map_err(|e: rusqlite::Error| e.to_string())
 }
@@ -2452,20 +2269,25 @@ pub fn run() {
             // initialized.  Tauri commands can access it via State<DbState>.
             let db_state = database::DbState::open(&db_path)
                 .unwrap_or_else(|e| panic!("Failed to open database: {}", e));
-            app.manage(db_state);
 
-            // Seed the default Contio MeetingOS profile on first run
-            if let Ok(db) = database::Database::open(&db_path) {
-                if let Err(e) = profile::seed_default_profile(db.connection()) {
+            // Seed the default Contio MeetingOS profile on first run using the shared connection.
+            {
+                let conn = db_state.connection();
+                if let Err(e) = profile::seed_default_profile(&conn) {
                     eprintln!("Warning: failed to seed default profile: {}", e);
                 }
             }
+
+            // Expose the shared connection arc for use in SessionManager and CaptureWatcher.
+            let db_arc = db_state.arc();
+
+            app.manage(db_state);
 
             let emitter = Arc::new(TauriEventEmitter::new());
             emitter.set_app_handle(app_handle);
 
             let manager = Arc::new(SessionManager::new(
-                db_path,
+                Arc::clone(&db_arc),
                 storage_root,
                 emitter as Arc<dyn EventEmitter>,
                 Arc::new(RealFileSystem),
@@ -2479,21 +2301,13 @@ pub fn run() {
             // Initialize hotkey manager and load config from settings
             let hotkey_manager = Arc::new(HotkeyManager::new());
 
-            // Load hotkey config from database settings
-            let app_handle_for_settings = app.handle().clone();
+            // Load hotkey config from database settings using the shared connection.
+            let db_arc_for_hotkeys = Arc::clone(&db_arc);
             let loaded_config = hotkey_manager.load_from_settings(|key| {
-                use database::{Database, SettingsRepository, SettingsOps};
-                let data_dir = app_handle_for_settings.path().app_data_dir().unwrap_or_else(|_| {
-                    std::env::current_dir().unwrap().join("data")
-                });
-                let db_path = data_dir.join("qa_capture.db");
-
-                if let Ok(db) = Database::open(&db_path) {
-                    let repo = SettingsRepository::new(db.connection());
-                    repo.get(key).ok().flatten()
-                } else {
-                    None
-                }
+                use database::{SettingsRepository, SettingsOps};
+                let conn = db_arc_for_hotkeys.lock().unwrap();
+                let repo = SettingsRepository::new(&conn);
+                repo.get(key).ok().flatten()
             });
 
             // Update the manager's config with loaded settings and register hotkeys
@@ -2826,7 +2640,8 @@ mod tests {
         std::fs::create_dir_all(&temp_dir).unwrap();
 
         let (db_path, bug_id) = setup_test_db(&temp_dir);
-        let result = render_bug_from_db(&bug_id, &db_path);
+        let db = database::Database::open(&db_path).unwrap();
+        let result = render_bug_from_db(&bug_id, db.connection());
 
         assert!(result.is_ok());
         let rendered = result.unwrap();
@@ -2847,7 +2662,8 @@ mod tests {
         std::fs::create_dir_all(&temp_dir).unwrap();
 
         let (db_path, _) = setup_test_db(&temp_dir);
-        let result = render_bug_from_db("nonexistent-bug", &db_path);
+        let db = database::Database::open(&db_path).unwrap();
+        let result = render_bug_from_db("nonexistent-bug", db.connection());
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Bug not found"));

@@ -10,6 +10,9 @@ use crate::database::{BugOps, BugRepository, SessionOps, SessionRepository};
 use crate::session_json::SessionJsonWriter;
 use crate::session_summary::SessionSummaryGenerator;
 
+// Type alias for the shared connection handle
+type SharedConn = Arc<Mutex<Connection>>;
+
 /// Trait for emitting Tauri events
 pub trait EventEmitter: Send + Sync {
     fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String>;
@@ -31,7 +34,7 @@ impl FileSystem for RealFileSystem {
 
 /// Session Manager handles session lifecycle and bug capture operations
 pub struct SessionManager {
-    pub db_path: PathBuf,
+    db_conn: SharedConn,
     storage_root: PathBuf,
     event_emitter: Arc<dyn EventEmitter>,
     filesystem: Arc<dyn FileSystem>,
@@ -41,13 +44,13 @@ pub struct SessionManager {
 
 impl SessionManager {
     pub fn new(
-        db_path: PathBuf,
+        db_conn: SharedConn,
         storage_root: PathBuf,
         event_emitter: Arc<dyn EventEmitter>,
         filesystem: Arc<dyn FileSystem>,
     ) -> Self {
         SessionManager {
-            db_path,
+            db_conn,
             storage_root,
             event_emitter,
             filesystem,
@@ -103,11 +106,12 @@ impl SessionManager {
         };
 
         // Save to database
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
-        let repo = SessionRepository::new(&conn);
-        repo.create(&session)
-            .map_err(|e| format!("Failed to create session: {}", e))?;
+        {
+            let conn = self.db_conn.lock().unwrap();
+            let repo = SessionRepository::new(&conn);
+            repo.create(&session)
+                .map_err(|e| format!("Failed to create session: {}", e))?;
+        }
 
         // Update active session pointer
         *self.active_session.lock().unwrap() = Some(session_id.clone());
@@ -123,7 +127,7 @@ impl SessionManager {
         )?;
 
         // Write initial .session.json (don't fail session start if this fails)
-        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(&session_id) {
+        if let Err(e) = SessionJsonWriter::new(Arc::clone(&self.db_conn)).write(&session_id) {
             eprintln!("Warning: Failed to write .session.json: {}", e);
         }
 
@@ -132,31 +136,35 @@ impl SessionManager {
 
     /// End the current session
     pub fn end_session(&self, session_id: &str) -> Result<(), String> {
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
-        let repo = SessionRepository::new(&conn);
+        let ended_at = {
+            let conn = self.db_conn.lock().unwrap();
+            let repo = SessionRepository::new(&conn);
 
-        // Get session
-        let mut session = repo
-            .get(session_id)
-            .map_err(|e| format!("Failed to get session: {}", e))?
-            .ok_or_else(|| format!("Session not found: {}", session_id))?;
+            // Get session
+            let mut session = repo
+                .get(session_id)
+                .map_err(|e| format!("Failed to get session: {}", e))?
+                .ok_or_else(|| format!("Session not found: {}", session_id))?;
 
-        // Update session
-        session.ended_at = Some(Utc::now().to_rfc3339());
-        session.status = SessionStatus::Ended;
+            // Update session
+            let ended = Utc::now().to_rfc3339();
+            session.ended_at = Some(ended.clone());
+            session.status = SessionStatus::Ended;
 
-        repo.update(&session)
-            .map_err(|e| format!("Failed to update session: {}", e))?;
+            repo.update(&session)
+                .map_err(|e| format!("Failed to update session: {}", e))?;
+
+            ended
+        };
 
         // Generate session summary (don't fail if this fails)
-        let summary_generator = SessionSummaryGenerator::new(self.db_path.clone());
+        let summary_generator = SessionSummaryGenerator::new(Arc::clone(&self.db_conn));
         if let Err(e) = summary_generator.generate_summary(session_id, true) {
             eprintln!("Warning: Failed to generate session summary: {}", e);
         }
 
         // Update .session.json with final state (don't fail if this fails)
-        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(session_id) {
+        if let Err(e) = SessionJsonWriter::new(Arc::clone(&self.db_conn)).write(session_id) {
             eprintln!("Warning: Failed to update .session.json on end: {}", e);
         }
 
@@ -174,7 +182,7 @@ impl SessionManager {
             "session:ended",
             json!({
                 "sessionId": session_id,
-                "endedAt": session.ended_at
+                "endedAt": ended_at
             }),
         )?;
 
@@ -183,48 +191,51 @@ impl SessionManager {
 
     /// Resume an existing session
     pub fn resume_session(&self, session_id: &str) -> Result<Session, String> {
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
-        let repo = SessionRepository::new(&conn);
+        let session = {
+            let conn = self.db_conn.lock().unwrap();
+            let repo = SessionRepository::new(&conn);
 
-        // Get session
-        let mut session = repo
-            .get(session_id)
-            .map_err(|e| format!("Failed to get session: {}", e))?
-            .ok_or_else(|| format!("Session not found: {}", session_id))?;
+            // Get session
+            let mut session = repo
+                .get(session_id)
+                .map_err(|e| format!("Failed to get session: {}", e))?
+                .ok_or_else(|| format!("Session not found: {}", session_id))?;
 
-        // Update status to active
-        session.status = SessionStatus::Active;
-        session.ended_at = None;
+            // Update status to active
+            session.status = SessionStatus::Active;
+            session.ended_at = None;
 
-        repo.update(&session)
-            .map_err(|e| format!("Failed to update session: {}", e))?;
+            repo.update(&session)
+                .map_err(|e| format!("Failed to update session: {}", e))?;
 
-        // Update active session pointer
-        *self.active_session.lock().unwrap() = Some(session_id.to_string());
+            // Update active session pointer
+            *self.active_session.lock().unwrap() = Some(session_id.to_string());
 
-        // Restore active_bug pointer: if a bug was in 'capturing' state when the app
-        // crashed/restarted, its status remains 'capturing' in the DB. Restore the
-        // in-memory active_bug so the capture watcher and frontend can resume correctly.
-        // Any additional stale 'capturing' bugs are auto-completed (only one should be active).
-        let bug_repo = BugRepository::new(&conn);
-        let bugs = bug_repo
-            .list_by_session(session_id)
-            .map_err(|e| format!("Failed to list bugs for session: {}", e))?;
-        let capturing_bugs: Vec<Bug> = bugs.into_iter().filter(|b| b.status == BugStatus::Capturing).collect();
-        if let Some(active) = capturing_bugs.first() {
-            *self.active_bug.lock().unwrap() = Some(active.id.clone());
-            // Auto-complete any other stale capturing bugs
-            for stale in capturing_bugs.iter().skip(1) {
-                let mut fixed = stale.clone();
-                fixed.status = BugStatus::Captured;
-                if let Err(e) = bug_repo.update(&fixed) {
-                    eprintln!("Warning: Failed to auto-complete stale bug {}: {}", stale.id, e);
+            // Restore active_bug pointer: if a bug was in 'capturing' state when the app
+            // crashed/restarted, its status remains 'capturing' in the DB. Restore the
+            // in-memory active_bug so the capture watcher and frontend can resume correctly.
+            // Any additional stale 'capturing' bugs are auto-completed (only one should be active).
+            let bug_repo = BugRepository::new(&conn);
+            let bugs = bug_repo
+                .list_by_session(session_id)
+                .map_err(|e| format!("Failed to list bugs for session: {}", e))?;
+            let capturing_bugs: Vec<Bug> = bugs.into_iter().filter(|b| b.status == BugStatus::Capturing).collect();
+            if let Some(active) = capturing_bugs.first() {
+                *self.active_bug.lock().unwrap() = Some(active.id.clone());
+                // Auto-complete any other stale capturing bugs
+                for stale in capturing_bugs.iter().skip(1) {
+                    let mut fixed = stale.clone();
+                    fixed.status = BugStatus::Captured;
+                    if let Err(e) = bug_repo.update(&fixed) {
+                        eprintln!("Warning: Failed to auto-complete stale bug {}: {}", stale.id, e);
+                    }
                 }
+            } else {
+                *self.active_bug.lock().unwrap() = None;
             }
-        } else {
-            *self.active_bug.lock().unwrap() = None;
-        }
+
+            session
+        };
 
         // Emit event
         self.event_emitter.emit(
@@ -236,7 +247,7 @@ impl SessionManager {
         )?;
 
         // Update .session.json to reflect resumed status (don't fail if this fails)
-        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(session_id) {
+        if let Err(e) = SessionJsonWriter::new(Arc::clone(&self.db_conn)).write(session_id) {
             eprintln!("Warning: Failed to update .session.json on resume: {}", e);
         }
 
@@ -245,81 +256,84 @@ impl SessionManager {
 
     /// Start capturing a new bug
     pub fn start_bug_capture(&self, session_id: &str) -> Result<Bug, String> {
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
-        let session_repo = SessionRepository::new(&conn);
-        let bug_repo = BugRepository::new(&conn);
+        let bug = {
+            let conn = self.db_conn.lock().unwrap();
+            let session_repo = SessionRepository::new(&conn);
+            let bug_repo = BugRepository::new(&conn);
 
-        // Verify session exists and is active
-        let session = session_repo
-            .get(session_id)
-            .map_err(|e| format!("Failed to get session: {}", e))?
-            .ok_or_else(|| format!("Session not found: {}", session_id))?;
+            // Verify session exists and is active
+            let session = session_repo
+                .get(session_id)
+                .map_err(|e| format!("Failed to get session: {}", e))?
+                .ok_or_else(|| format!("Session not found: {}", session_id))?;
 
-        if session.status != SessionStatus::Active {
-            return Err("Session is not active".to_string());
-        }
+            if session.status != SessionStatus::Active {
+                return Err("Session is not active".to_string());
+            }
 
-        // Get next bug number
-        let bug_number = bug_repo
-            .get_next_bug_number(session_id)
-            .map_err(|e| format!("Failed to get next bug number: {}", e))?;
+            // Get next bug number
+            let bug_number = bug_repo
+                .get_next_bug_number(session_id)
+                .map_err(|e| format!("Failed to get next bug number: {}", e))?;
 
-        // Create bug folder
-        let session_folder = PathBuf::from(&session.folder_path);
-        let bug_folder_name = format!("bug_{:03}", bug_number);
-        let bug_folder_path = session_folder.join(&bug_folder_name);
+            // Create bug folder
+            let session_folder = PathBuf::from(&session.folder_path);
+            let bug_folder_name = format!("bug_{:03}", bug_number);
+            let bug_folder_path = session_folder.join(&bug_folder_name);
 
-        self.filesystem.create_dir_all(&bug_folder_path)?;
+            self.filesystem.create_dir_all(&bug_folder_path)?;
 
-        // Create bug record
-        let bug_id = Uuid::new_v4().to_string();
-        let now = Utc::now();
-        let display_id = format!("BUG-{:03}", bug_number);
+            // Create bug record
+            let bug_id = Uuid::new_v4().to_string();
+            let now = Utc::now();
+            let display_id = format!("BUG-{:03}", bug_number);
 
-        let bug = Bug {
-            id: bug_id.clone(),
-            session_id: session_id.to_string(),
-            bug_number,
-            display_id: display_id.clone(),
-            bug_type: BugType::Bug,
-            title: None,
-            notes: None,
-            description: None,
-            ai_description: None,
-            status: BugStatus::Capturing,
-            meeting_id: None,
-            software_version: None,
-            console_parse_json: None,
-            metadata_json: None,
-            custom_metadata: None,
-            folder_path: bug_folder_path.to_string_lossy().to_string(),
-            created_at: now.to_rfc3339(),
-            updated_at: now.to_rfc3339(),
+            let bug = Bug {
+                id: bug_id.clone(),
+                session_id: session_id.to_string(),
+                bug_number,
+                display_id: display_id.clone(),
+                bug_type: BugType::Bug,
+                title: None,
+                notes: None,
+                description: None,
+                ai_description: None,
+                status: BugStatus::Capturing,
+                meeting_id: None,
+                software_version: None,
+                console_parse_json: None,
+                metadata_json: None,
+                custom_metadata: None,
+                folder_path: bug_folder_path.to_string_lossy().to_string(),
+                created_at: now.to_rfc3339(),
+                updated_at: now.to_rfc3339(),
+            };
+
+            // Save to database
+            bug_repo
+                .create(&bug)
+                .map_err(|e| format!("Failed to create bug: {}", e))?;
+
+            // Update active bug pointer
+            *self.active_bug.lock().unwrap() = Some(bug_id.clone());
+
+            bug
         };
-
-        // Save to database
-        bug_repo
-            .create(&bug)
-            .map_err(|e| format!("Failed to create bug: {}", e))?;
-
-        // Update active bug pointer
-        *self.active_bug.lock().unwrap() = Some(bug_id.clone());
 
         // Emit event
         self.event_emitter.emit(
             "bug:capture-started",
             json!({
-                "bugId": bug_id,
+                "bugId": bug.id,
                 "sessionId": session_id,
-                "bugNumber": bug_number,
-                "displayId": display_id,
+                "bugNumber": bug.bug_number,
+                "displayId": bug.display_id,
                 "folderPath": bug.folder_path
             }),
         )?;
 
         // Update .session.json to include new bug (don't fail if this fails)
-        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(session_id) {
+        if let Err(e) = SessionJsonWriter::new(Arc::clone(&self.db_conn)).write(session_id) {
             eprintln!("Warning: Failed to update .session.json on bug start: {}", e);
         }
 
@@ -328,41 +342,44 @@ impl SessionManager {
 
     /// End bug capture
     pub fn end_bug_capture(&self, bug_id: &str) -> Result<(), String> {
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
-        let bug_repo = BugRepository::new(&conn);
+        let session_id = {
+            let conn = self.db_conn.lock().unwrap();
+            let bug_repo = BugRepository::new(&conn);
 
-        // Get bug
-        let mut bug = bug_repo
-            .get(bug_id)
-            .map_err(|e| format!("Failed to get bug: {}", e))?
-            .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
+            // Get bug
+            let mut bug = bug_repo
+                .get(bug_id)
+                .map_err(|e| format!("Failed to get bug: {}", e))?
+                .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
 
-        // Update bug status
-        bug.status = BugStatus::Captured;
-        bug.updated_at = Utc::now().to_rfc3339();
+            // Update bug status
+            bug.status = BugStatus::Captured;
+            bug.updated_at = Utc::now().to_rfc3339();
 
-        bug_repo
-            .update(&bug)
-            .map_err(|e| format!("Failed to update bug: {}", e))?;
+            bug_repo
+                .update(&bug)
+                .map_err(|e| format!("Failed to update bug: {}", e))?;
 
-        // Clear active bug if it matches
-        let mut active = self.active_bug.lock().unwrap();
-        if active.as_deref() == Some(bug_id) {
-            *active = None;
-        }
+            // Clear active bug if it matches
+            let mut active = self.active_bug.lock().unwrap();
+            if active.as_deref() == Some(bug_id) {
+                *active = None;
+            }
+
+            bug.session_id
+        };
 
         // Emit event
         self.event_emitter.emit(
             "bug:capture-ended",
             json!({
                 "bugId": bug_id,
-                "sessionId": bug.session_id
+                "sessionId": session_id
             }),
         )?;
 
         // Update .session.json to reflect bug status change (don't fail if this fails)
-        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(&bug.session_id) {
+        if let Err(e) = SessionJsonWriter::new(Arc::clone(&self.db_conn)).write(&session_id) {
             eprintln!("Warning: Failed to update .session.json on bug end: {}", e);
         }
 
@@ -371,28 +388,31 @@ impl SessionManager {
 
     /// Resume capturing for an existing bug (set its status back to Capturing and make it the active bug)
     pub fn resume_bug_capture(&self, bug_id: &str) -> Result<Bug, String> {
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
-        let bug_repo = BugRepository::new(&conn);
+        let bug = {
+            let conn = self.db_conn.lock().unwrap();
+            let bug_repo = BugRepository::new(&conn);
 
-        let mut bug = bug_repo
-            .get(bug_id)
-            .map_err(|e| format!("Failed to get bug: {}", e))?
-            .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
+            let mut bug = bug_repo
+                .get(bug_id)
+                .map_err(|e| format!("Failed to get bug: {}", e))?
+                .ok_or_else(|| format!("Bug not found: {}", bug_id))?;
 
-        // Set bug status back to capturing
-        bug.status = BugStatus::Capturing;
-        bug.updated_at = Utc::now().to_rfc3339();
+            // Set bug status back to capturing
+            bug.status = BugStatus::Capturing;
+            bug.updated_at = Utc::now().to_rfc3339();
 
-        bug_repo
-            .update(&bug)
-            .map_err(|e| format!("Failed to update bug: {}", e))?;
+            bug_repo
+                .update(&bug)
+                .map_err(|e| format!("Failed to update bug: {}", e))?;
 
-        // Set as active bug
-        {
-            let mut active = self.active_bug.lock().unwrap();
-            *active = Some(bug_id.to_string());
-        }
+            // Set as active bug
+            {
+                let mut active = self.active_bug.lock().unwrap();
+                *active = Some(bug_id.to_string());
+            }
+
+            bug
+        };
 
         // Emit event so the frontend knows
         self.event_emitter.emit(
@@ -404,7 +424,7 @@ impl SessionManager {
         )?;
 
         // Update .session.json
-        if let Err(e) = SessionJsonWriter::new(self.db_path.clone()).write(&bug.session_id) {
+        if let Err(e) = SessionJsonWriter::new(Arc::clone(&self.db_conn)).write(&bug.session_id) {
             eprintln!("Warning: Failed to update .session.json on bug resume: {}", e);
         }
 
@@ -489,15 +509,16 @@ mod tests {
 
         std::fs::create_dir_all(&temp_dir).unwrap();
 
-        // Initialize database
+        // Initialize database and wrap in Arc<Mutex<>>
         let conn = Connection::open(&db_path).unwrap();
         crate::database::init_database(&conn).unwrap();
+        let db_conn: Arc<Mutex<Connection>> = Arc::new(Mutex::new(conn));
 
         let emitter = Arc::new(MockEventEmitter::new());
         let filesystem = Arc::new(MockFileSystem::new());
 
         let manager = SessionManager::new(
-            db_path,
+            db_conn,
             storage_root,
             emitter.clone() as Arc<dyn EventEmitter>,
             filesystem as Arc<dyn FileSystem>,

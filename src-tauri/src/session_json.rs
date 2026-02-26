@@ -12,7 +12,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::database::{Bug, BugOps, BugRepository, Session, SessionOps, SessionRepository};
 use crate::session_summary::FileWriter;
@@ -45,23 +45,23 @@ pub struct BugJson {
 
 /// Generates and writes .session.json for a given session
 pub struct SessionJsonWriter {
-    db_path: PathBuf,
+    db_conn: Arc<Mutex<Connection>>,
     file_writer: Arc<dyn FileWriter>,
 }
 
 impl SessionJsonWriter {
     /// Create a new writer with real file I/O
-    pub fn new(db_path: PathBuf) -> Self {
+    pub fn new(db_conn: Arc<Mutex<Connection>>) -> Self {
         Self {
-            db_path,
+            db_conn,
             file_writer: Arc::new(crate::session_summary::RealFileWriter),
         }
     }
 
     /// Create a writer with injected dependencies (for testing)
     #[allow(dead_code)]
-    pub fn with_deps(db_path: PathBuf, file_writer: Arc<dyn FileWriter>) -> Self {
-        Self { db_path, file_writer }
+    pub fn with_deps(db_conn: Arc<Mutex<Connection>>, file_writer: Arc<dyn FileWriter>) -> Self {
+        Self { db_conn, file_writer }
     }
 
     /// Write or update the .session.json file for the given session.
@@ -69,20 +69,23 @@ impl SessionJsonWriter {
     /// Reads the current session and its bugs from the database, builds the JSON,
     /// and writes it to `{session_folder}/.session.json`.
     pub fn write(&self, session_id: &str) -> Result<String, String> {
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
+        // Fetch data then release the lock before writing to disk.
+        let (session, bugs) = {
+            let conn = self.db_conn.lock().unwrap();
+            let session_repo = SessionRepository::new(&conn);
+            let bug_repo = BugRepository::new(&conn);
 
-        let session_repo = SessionRepository::new(&conn);
-        let bug_repo = BugRepository::new(&conn);
+            let session = session_repo
+                .get(session_id)
+                .map_err(|e| format!("Failed to get session: {}", e))?
+                .ok_or_else(|| format!("Session not found: {}", session_id))?;
 
-        let session = session_repo
-            .get(session_id)
-            .map_err(|e| format!("Failed to get session: {}", e))?
-            .ok_or_else(|| format!("Session not found: {}", session_id))?;
+            let bugs = bug_repo
+                .list_by_session(session_id)
+                .map_err(|e| format!("Failed to list bugs: {}", e))?;
 
-        let bugs = bug_repo
-            .list_by_session(session_id)
-            .map_err(|e| format!("Failed to list bugs: {}", e))?;
+            (session, bugs)
+        };
 
         let json = self.build_session_json(&session, &bugs);
         let content = serde_json::to_string_pretty(&json)
@@ -212,14 +215,10 @@ mod tests {
         }
     }
 
-    fn setup_db() -> (PathBuf, Connection) {
-        let temp_dir =
-            std::env::temp_dir().join(format!("test_session_json_{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&temp_dir).unwrap();
-        let db_path = temp_dir.join("test.db");
-        let conn = Connection::open(&db_path).unwrap();
+    fn setup_db() -> Arc<std::sync::Mutex<Connection>> {
+        let conn = Connection::open_in_memory().unwrap();
         init_database(&conn).unwrap();
-        (db_path, conn)
+        Arc::new(std::sync::Mutex::new(conn))
     }
 
     fn insert_session(conn: &Connection, id: &str, ended_at: Option<&str>) -> Session {
@@ -272,12 +271,12 @@ mod tests {
 
     #[test]
     fn test_write_creates_session_json_file() {
-        let (db_path, conn) = setup_db();
-        let session = insert_session(&conn, "sess-1", None);
-        let _ = insert_bug(&conn, &session.id, 1);
+        let db_conn = setup_db();
+        let session = { insert_session(&db_conn.lock().unwrap(), "sess-1", None) };
+        let _ = { insert_bug(&db_conn.lock().unwrap(), &session.id, 1) };
 
         let writer_mock = Arc::new(MockFileWriter::new());
-        let writer = SessionJsonWriter::with_deps(db_path, writer_mock.clone());
+        let writer = SessionJsonWriter::with_deps(Arc::clone(&db_conn), writer_mock.clone());
 
         let result = writer.write(&session.id);
         assert!(result.is_ok(), "write() should succeed");
@@ -289,13 +288,13 @@ mod tests {
 
     #[test]
     fn test_session_json_schema() {
-        let (db_path, conn) = setup_db();
-        let session = insert_session(&conn, "sess-2", Some("2024-01-15T12:00:00Z"));
-        let _ = insert_bug(&conn, &session.id, 1);
-        let _ = insert_bug(&conn, &session.id, 2);
+        let db_conn = setup_db();
+        let session = { insert_session(&db_conn.lock().unwrap(), "sess-2", Some("2024-01-15T12:00:00Z")) };
+        let _ = { insert_bug(&db_conn.lock().unwrap(), &session.id, 1) };
+        let _ = { insert_bug(&db_conn.lock().unwrap(), &session.id, 2) };
 
         let writer_mock = Arc::new(MockFileWriter::new());
-        let writer = SessionJsonWriter::with_deps(db_path, writer_mock.clone());
+        let writer = SessionJsonWriter::with_deps(Arc::clone(&db_conn), writer_mock.clone());
 
         writer.write(&session.id).unwrap();
 
@@ -329,11 +328,11 @@ mod tests {
 
     #[test]
     fn test_active_session_has_no_ended_at() {
-        let (db_path, conn) = setup_db();
-        let session = insert_session(&conn, "sess-3", None);
+        let db_conn = setup_db();
+        let session = { insert_session(&db_conn.lock().unwrap(), "sess-3", None) };
 
         let writer_mock = Arc::new(MockFileWriter::new());
-        let writer = SessionJsonWriter::with_deps(db_path, writer_mock.clone());
+        let writer = SessionJsonWriter::with_deps(Arc::clone(&db_conn), writer_mock.clone());
 
         writer.write(&session.id).unwrap();
 
@@ -348,9 +347,9 @@ mod tests {
 
     #[test]
     fn test_nonexistent_session_returns_error() {
-        let (db_path, _conn) = setup_db();
+        let db_conn = setup_db();
         let writer_mock = Arc::new(MockFileWriter::new());
-        let writer = SessionJsonWriter::with_deps(db_path, writer_mock.clone());
+        let writer = SessionJsonWriter::with_deps(Arc::clone(&db_conn), writer_mock.clone());
 
         let result = writer.write("does-not-exist");
         assert!(result.is_err());
@@ -359,8 +358,8 @@ mod tests {
 
     #[test]
     fn test_bug_uses_ai_description_fallback() {
-        let (db_path, conn) = setup_db();
-        let session = insert_session(&conn, "sess-4", None);
+        let db_conn = setup_db();
+        let session = { insert_session(&db_conn.lock().unwrap(), "sess-4", None) };
 
         // Insert bug with no description but with ai_description
         use crate::database::BugOps;
@@ -384,10 +383,10 @@ mod tests {
             created_at: "2024-01-15T10:15:00Z".to_string(),
             updated_at: "2024-01-15T10:15:00Z".to_string(),
         };
-        BugRepository::new(&conn).create(&bug).unwrap();
+        BugRepository::new(&db_conn.lock().unwrap()).create(&bug).unwrap();
 
         let writer_mock = Arc::new(MockFileWriter::new());
-        let writer = SessionJsonWriter::with_deps(db_path, writer_mock.clone());
+        let writer = SessionJsonWriter::with_deps(Arc::clone(&db_conn), writer_mock.clone());
 
         writer.write(&session.id).unwrap();
 

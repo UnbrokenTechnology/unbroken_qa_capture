@@ -67,6 +67,8 @@ struct TestEnv {
     root: PathBuf,
     db_path: PathBuf,
     storage_root: PathBuf,
+    /// Shared database connection — kept alive for the duration of the test.
+    db_conn: Arc<Mutex<Connection>>,
 }
 
 impl TestEnv {
@@ -83,11 +85,13 @@ impl TestEnv {
         // Initialise the database
         let conn = Connection::open(&db_path).unwrap();
         init_database(&conn).unwrap();
+        let db_conn = Arc::new(Mutex::new(conn));
 
         TestEnv {
             root,
             db_path,
             storage_root,
+            db_conn,
         }
     }
 
@@ -96,7 +100,7 @@ impl TestEnv {
         let emitter = Arc::new(MockEventEmitter::new());
         let fs = Arc::new(RealFileSystem);
         let manager = SessionManager::new(
-            self.db_path.clone(),
+            Arc::clone(&self.db_conn),
             self.storage_root.clone(),
             emitter.clone() as Arc<dyn EventEmitter>,
             fs as Arc<dyn unbroken_qa_capture_lib::session_manager::FileSystem>,
